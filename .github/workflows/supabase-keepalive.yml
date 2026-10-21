@@ -1,0 +1,17 @@
+name: Supabase keep-alive
+# Free Supabase projects pause after ~7 days of inactivity; a query every 3 days prevents it.
+on:
+  schedule: [{ cron: "0 4 */3 * *" }]
+  workflow_dispatch: {}
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query the database
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          curl --fail --silent --show-error \
+            -H "apikey: $SUPABASE_ANON_KEY" -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            "$SUPABASE_URL/rest/v1/employees?select=id&limit=1"
