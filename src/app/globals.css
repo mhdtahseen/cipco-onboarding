@@ -12,3 +12,8 @@ body { background: #f6f7fb; color: #1b2233; font-family: ui-sans-serif, system-u
 .warn { font-size: 12px; color: #b54708; margin-top: 3px; }
 .tab { padding: 8px 14px; font-size: 14px; border-bottom: 2px solid transparent; cursor: pointer; color: #4a5470; }
 .tab-on { border-color: #1e4fa3; color: #1e4fa3; font-weight: 600; }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.btn:focus-visible, .tab:focus-visible, a:focus-visible { outline: 2px solid #1e4fa3; outline-offset: 2px; }
+.inp:disabled { background: #f3f4f8; color: #7a8299; }
+.tab { background: none; border: 0; border-bottom: 2px solid transparent; white-space: nowrap; }
+@media (max-width: 640px) { .btn { padding: 10px 14px; } }

@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { REMEMBER_COOKIE, withLifetime } from "@/lib/supabase/session";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Keeps the Supabase session fresh and sends logged-out visitors to /login.
@@ -10,7 +11,8 @@ export async function middleware(req: NextRequest) {
       setAll: (list) => {
         list.forEach(({ name, value }) => req.cookies.set(name, value));
         res = NextResponse.next({ request: req });
-        list.forEach(({ name, value, options }) => res.cookies.set(name, value, options));
+        const remember = req.cookies.get(REMEMBER_COOKIE)?.value !== "0";
+        list.forEach(({ name, value, options }) => res.cookies.set(name, value, withLifetime(options as any, remember)));
       },
     },
   });
@@ -20,4 +22,4 @@ export async function middleware(req: NextRequest) {
   if (data.user && isLogin) return NextResponse.redirect(new URL("/", req.url));
   return res;
 }
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|branding/).*)"] };
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|branding/).*)"] };

@@ -31,8 +31,8 @@ export default function DocsTab({ emp }: { emp: Employee }) {
       <div className="divide-y divide-slate-100">
         {DOC_TYPES.map((d) => { const r = rows[d.key]; return (
           <div key={d.key} className="py-3 flex flex-wrap items-center gap-3">
-            <div className="w-64 text-sm font-medium">{d.label}</div>
-            <select className="inp !w-36" value={r?.status || "pending"} onChange={(e) => upsert(d.key, { status: e.target.value })}>{STATUS.map((s) => <option key={s}>{s}</option>)}</select>
+            <div className="w-full sm:w-64 text-sm font-medium">{d.label}</div>
+            <select className="inp !w-36" value={r?.status || "pending"} onChange={(e) => upsert(d.key, { status: e.target.value })}>{STATUS.map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}</select>
             <label className="btn cursor-pointer">{busy === d.key ? "Uploading…" : r?.file_path ? "Replace file" : "Upload file"}<input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && upload(d.key, e.target.files[0])} /></label>
             {r?.file_path && <button className="btn" onClick={() => view(r.file_path!)}>View</button>}
             <input className="inp flex-1 min-w-40" placeholder="Notes" defaultValue={r?.notes || ""} onBlur={(e) => e.target.value !== (r?.notes || "") && upsert(d.key, { notes: e.target.value })} />

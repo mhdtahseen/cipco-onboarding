@@ -1,19 +1,22 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
 export default function Nav() {
-  const path = usePathname(); const router = useRouter();
+  const path = usePathname(); const router = useRouter(); const [email, setEmail] = useState("");
+  useEffect(() => { supabase().auth.getUser().then(({ data }) => setEmail(data.user?.email || "")); }, []);
   if (path.startsWith("/login")) return null;
   const link = (href: string, label: string) => (
-    <Link href={href} className={`px-3 py-1.5 rounded-md text-sm ${path === href || (href !== "/" && path.startsWith(href)) ? "bg-blue-50 text-blue-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}`}>{label}</Link>);
+    <Link href={href} className={`px-3 py-1.5 rounded-md text-sm whitespace-nowrap ${path === href || (href !== "/" && path.startsWith(href)) ? "bg-blue-50 text-blue-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}`}>{label}</Link>);
   return (
-    <header className="bg-white border-b border-slate-200">
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
       <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-2">
-        <span className="font-bold text-blue-900 mr-4">CIPCO <span className="font-normal text-slate-500">Onboarding</span></span>
-        {link("/", "Employees")}{link("/clauses", "Clause library")}{link("/mail-templates", "Mail templates")}
-        <button className="btn ml-auto" onClick={async () => { await supabase().auth.signOut(); router.push("/login"); router.refresh(); }}>Sign out</button>
+        <Link href="/" className="mr-3 shrink-0 flex items-center gap-2"><img src="/branding/logo.png" alt="CIPCO" className="h-7 w-auto" /><span className="hidden sm:inline text-sm font-semibold text-slate-500">Operations</span></Link>
+        <nav className="flex items-center gap-1 overflow-x-auto">{link("/", "Employees")}{link("/clauses", "Clause library")}{link("/mail-templates", "Mail templates")}</nav>
+        {email && <span className="ml-auto hidden md:inline text-xs text-slate-500 truncate max-w-48" title={email}>{email}</span>}
+        <button className={`btn shrink-0 ${email ? "" : "ml-auto"}`} onClick={async () => { await supabase().auth.signOut(); router.push("/login"); router.refresh(); }}>Sign out</button>
       </div>
     </header>
   );

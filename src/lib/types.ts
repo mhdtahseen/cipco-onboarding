@@ -11,6 +11,8 @@ export type Employee = {
   designation: string | null; department: string | null; project: string | null; site_location: string | null; base_location: string | null;
   employment_type: string | null; join_date: string | null; probation_months: number | null; monthly_ctc: number | null; salary: Partial<SalaryCfg> | null;
   week_off: string | null; status: string | null; notes: string | null;
+  call_notes: string | null; interview_notes: string | null;
+  stage: string; outcome: "active" | "rejected"; closed_reason: string | null; closed_note: string | null; closed_stage: string | null; closed_at: string | null;
 };
 
 export type Clause = {

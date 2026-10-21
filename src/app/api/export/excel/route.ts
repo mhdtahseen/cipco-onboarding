@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   const { data: u } = await sb.auth.getUser();
   if (!u.user) return new NextResponse("Unauthorized", { status: 401 });
   const ids = req.nextUrl.searchParams.get("ids")?.split(",").filter(Boolean);
-  let q = sb.from("employees").select("*").order("created_at");
+  let q = sb.from("employees").select("*").neq("outcome", "rejected").order("created_at");   // never export the rejected pile
   if (ids?.length) q = q.in("id", ids);
   const { data } = await q;
   const buf = await buildImportExcel((data || []) as Employee[]);

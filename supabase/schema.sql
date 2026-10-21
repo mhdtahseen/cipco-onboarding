@@ -50,7 +50,11 @@ create table if not exists public.employees (
   monthly_ctc numeric,                              -- kept in sync with the calculated monthly CTC
   salary jsonb default '{}'::jsonb,                 -- salary basis + structure (see src/lib/salary.ts)
   week_off text default 'Sunday',
-  status text default 'onboarding',                 -- onboarding | active | exited
+  status text default 'onboarding',                 -- legacy, unused
+  stage text not null default 'resume' check (stage in ('resume','call','interview','offer','appointment','forms','onboarded')),
+  outcome text not null default 'active' check (outcome in ('active','rejected')),   -- rejected = closed pile; nothing is deleted
+  call_notes text, interview_notes text,
+  closed_reason text, closed_note text, closed_stage text, closed_at timestamptz,
   notes text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
@@ -144,3 +148,9 @@ on conflict (id) do nothing;
 drop policy if exists "auth docs all" on storage.objects;
 create policy "auth docs all" on storage.objects for all to authenticated
   using (bucket_id = 'employee-docs') with check (bucket_id = 'employee-docs');
+
+-- Duplicate protection (one person, one record)
+create unique index if not exists employees_phone_uq   on public.employees (phone)   where phone is not null;
+create unique index if not exists employees_email_uq   on public.employees (email)   where email is not null;
+create unique index if not exists employees_aadhaar_uq on public.employees (aadhaar) where aadhaar is not null;
+create unique index if not exists employees_pan_uq     on public.employees (pan)     where pan is not null;

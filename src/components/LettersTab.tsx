@@ -5,7 +5,7 @@ import { buildVars, isSuggested, renderSections, salaryFor, type AcceptMode } fr
 import { annexureNotes, annexureRows } from "@/lib/salary";
 import type { Clause, Employee, LetterRow, Section } from "@/lib/types";
 
-export default function LettersTab({ emp }: { emp: Employee }) {
+export default function LettersTab({ emp, onIssued }: { emp: Employee; onIssued?: (kind: "offer" | "appointment") => void }) {
   const [kind, setKind] = useState<"offer" | "appointment">("offer");
   const [clauses, setClauses] = useState<Clause[]>([]); const [picked, setPicked] = useState<Set<string>>(new Set());
   const [overrides, setOverrides] = useState<Record<string, Section>>({}); const [editing, setEditing] = useState<string | null>(null);
@@ -47,7 +47,7 @@ export default function LettersTab({ emp }: { emp: Employee }) {
     const r = await fetch("/api/letters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload(false)) });
     const j = await r.json(); setBusy("");
     if (!r.ok) { setMsg(j.error || "Failed"); return; }
-    setMsg(`Issued ${j.ref_no}`); setExtras([]); await loadLetters(); window.open(`/api/letters/${j.id}/pdf`, "_blank");
+    setMsg(`Issued ${j.ref_no}`); onIssued?.(kind); setExtras([]); await loadLetters(); window.open(`/api/letters/${j.id}/pdf`, "_blank");
   }
   const setAll = (on: boolean) => setPicked(on ? new Set(clauses.map((c) => c.id)) : new Set());
   const rows = calc ? annexureRows(calc) : [];
