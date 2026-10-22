@@ -12,8 +12,8 @@ export default function MailTemplates() {
   async function add() { await supabase().from("mail_templates").insert({ key: "tpl_" + Date.now().toString(36), name: "New template", subject: "Subject", body: "Dear {{first_name}},\n\n", sort_order: 100 }); await load(); }
   return (
     <div className="space-y-4">
-      <div className="flex items-center"><h1 className="text-xl font-bold mr-auto">Mail templates</h1><button className="btn" onClick={add}>+ New template</button></div>
-      <p className="text-sm text-slate-500">Placeholders: <code>{"{{first_name}} {{full_name}} {{designation}} {{department}} {{project}} {{site_location}} {{join_date}} {{ctc_figure}}"}</code></p>
+      <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-bold mr-auto">Mail templates</h1><button className="btn" onClick={add}>+ New template</button></div>
+      <p className="text-sm text-slate-500 break-words">Placeholders: <code className="break-words whitespace-normal">{"{{first_name}} {{full_name}} {{designation}} {{department}} {{project}} {{site_location}} {{join_date}} {{ctc_figure}}"}</code></p>
       {msg && <p className="text-sm text-green-700">{msg}</p>}
       {list.map((t) => (
         <div key={t.id} className="card space-y-3">

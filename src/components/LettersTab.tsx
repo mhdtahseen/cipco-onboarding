@@ -57,7 +57,7 @@ export default function LettersTab({ emp, onIssued }: { emp: Employee; onIssued?
       <div className="card space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           {(["offer", "appointment"] as const).map((k) => <button key={k} className={`btn ${kind === k ? "btn-primary" : ""}`} onClick={() => setKind(k)}>{k === "offer" ? "Offer letter" : "Appointment letter"}</button>)}
-          <span className="ml-auto flex gap-2"><button className="btn !text-xs" onClick={() => setAll(true)}>Tick all</button><button className="btn !text-xs" onClick={() => setAll(false)}>Untick all</button><button className="btn !text-xs" onClick={() => setPicked(new Set(clauses.filter((c) => isSuggested(c, emp)).map((c) => c.id)))}>Reset to suggested</button></span>
+          <span className="sm:ml-auto flex flex-wrap gap-2"><button className="btn !text-xs" onClick={() => setAll(true)}>Tick all</button><button className="btn !text-xs" onClick={() => setAll(false)}>Untick all</button><button className="btn !text-xs" onClick={() => setPicked(new Set(clauses.filter((c) => isSuggested(c, emp)).map((c) => c.id)))}>Reset to suggested</button></span>
         </div>
         <p className="text-sm text-slate-500">Every section is optional. Suggested ones are pre-ticked. Use <b>Edit wording</b> to change any section for this letter only — to change it for all future letters, edit it in the Clause library.</p>
 

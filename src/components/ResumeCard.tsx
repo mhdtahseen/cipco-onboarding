@@ -23,8 +23,8 @@ export default function ResumeCard({ emp }: { emp: Employee }) {
   const name = path ? path.split("/").pop()!.replace(/^\d+-/, "") : "";
   return (
     <div className="card !py-3 flex flex-wrap items-center gap-3">
-      <div className="text-sm font-semibold w-20">Resume</div>
-      {path ? <span className="text-sm text-slate-600 truncate max-w-64" title={name}>📄 {name}</span> : <span className="text-sm text-slate-500">No resume uploaded yet</span>}
+      <div className="text-sm font-semibold sm:w-20">Resume</div>
+      {path ? <span className="text-sm text-slate-600 truncate max-w-[60vw] sm:max-w-64" title={name}>📄 {name}</span> : <span className="text-sm text-slate-500">No resume uploaded yet</span>}
       {path && <a className="btn" href={`/api/docs/view?path=${encodeURIComponent(path)}`} target="_blank">View</a>}
       <label className="btn cursor-pointer">{busy ? "Uploading…" : path ? "Replace" : "Upload resume"}
         <input type="file" className="hidden" accept=".pdf,.doc,.docx,image/*" disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }} /></label>

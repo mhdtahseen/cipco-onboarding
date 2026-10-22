@@ -17,3 +17,11 @@ body { background: #f6f7fb; color: #1b2233; font-family: ui-sans-serif, system-u
 .inp:disabled { background: #f3f4f8; color: #7a8299; }
 .tab { background: none; border: 0; border-bottom: 2px solid transparent; white-space: nowrap; }
 @media (max-width: 640px) { .btn { padding: 10px 14px; } }
+
+/* Mobile: 16px inputs stop iOS Safari zooming on focus; tighter cards; page never scrolls sideways */
+@media (max-width: 640px) {
+  .inp { font-size: 16px; padding: 10px 12px; }
+  .card { padding: 14px; border-radius: 10px; }
+  .tab { padding: 10px 12px; }
+}
+body { overflow-x: clip; }   /* clip (not hidden) so the sticky nav keeps working */

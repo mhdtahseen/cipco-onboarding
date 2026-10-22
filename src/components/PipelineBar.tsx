@@ -27,14 +27,14 @@ export default function PipelineBar({ emp, onChange }: { emp: Employee; onChange
           <button className="btn ml-auto" disabled={busy} onClick={reopen}>Reopen candidate</button>
         </div>
       ) : null}
-      <div className="flex items-center gap-1 overflow-x-auto" role="list">
+      <div className="flex items-center gap-1 overflow-x-auto pb-1 -mx-1 px-1" role="list">
         {STAGES.map((s, i) => { const done = i < cur, on = i === cur; return (
           <button key={s.key} role="listitem" disabled={rejected || busy} onClick={() => setStage(s.key)} title={rejected ? "Reopen to change stage" : `Move to ${s.label}`}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm whitespace-nowrap border ${rejected ? "opacity-50 cursor-not-allowed" : "cursor-pointer"} ${on ? "bg-[#1e4fa3] text-white border-[#1e4fa3] font-semibold" : done ? "bg-blue-50 text-blue-800 border-blue-100" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}>
+            className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full text-sm whitespace-nowrap border ${rejected ? "opacity-50 cursor-not-allowed" : "cursor-pointer"} ${on ? "bg-[#1e4fa3] text-white border-[#1e4fa3] font-semibold" : done ? "bg-blue-50 text-blue-800 border-blue-100" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}>
             <span className={`inline-grid place-items-center h-4 w-4 rounded-full text-[10px] ${on ? "bg-white text-[#1e4fa3]" : done ? "bg-[#1e4fa3] text-white" : "bg-slate-200 text-slate-600"}`}>{done ? "✓" : i + 1}</span>{s.label}
           </button>); })}
-        {!rejected && <button className="btn btn-danger ml-auto shrink-0" onClick={() => setOpen(!open)}>Reject / declined…</button>}
       </div>
+      {!rejected && <div><button className="btn btn-danger" onClick={() => setOpen(!open)}>Reject / declined…</button></div>}
       {open && !rejected && (
         <div className="border border-red-200 bg-red-50/50 rounded-lg p-3 space-y-3">
           <p className="text-sm text-slate-600">Moves this candidate to the Rejected pile. Nothing is deleted — letters, documents and details stay saved, and you can reopen them any time.</p>

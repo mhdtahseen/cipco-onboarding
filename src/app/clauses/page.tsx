@@ -25,16 +25,16 @@ export default function ClausePage() {
     <div><label className="lbl">{label}</label><input className="inp" placeholder="comma separated, e.g. engineer, supervisor" value={csv(c.rules?.[k])} onChange={(e) => upd(c.id, { rules: { ...(c.rules || {}), [k]: arr(e.target.value) } })} /></div>);
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2"><h1 className="text-xl font-bold mr-auto">Clause library</h1>
+      <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-bold sm:mr-auto w-full sm:w-auto">Clause library</h1>
         {(["offer", "appointment"] as const).map((k) => <button key={k} className={`btn ${kind === k ? "btn-primary" : ""}`} onClick={() => setKind(k)}>{k === "offer" ? "Offer letter" : "Appointment letter"}</button>)}
         <button className="btn" onClick={add}>+ New clause</button></div>
       <p className="text-sm text-slate-500">Each clause is a section of the letter. <b>Rules</b> pre-tick a clause when the employee’s designation / department / project / type contains any listed word (all filled-in rule boxes must match). Empty rules = never auto-ticked unless “pre-ticked” is on. Formatting: <code>- </code> makes a bullet, <code>**bold**</code> makes bold, <code>{"{{placeholders}}"}</code> pull from the employee record.</p>
       {msg && <p className="text-sm text-green-700">{msg}</p>}
       {list.map((c) => (
         <div key={c.id} className={`card ${c.active ? "" : "opacity-60"}`}>
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setOpen(open === c.id ? null : c.id)}>
-            <span className="text-xs text-slate-400 w-8">{c.sort_order}</span><span className="font-medium">{c.title}</span>
-            {c.is_core && <span className="text-xs bg-blue-50 text-blue-700 rounded px-2">core</span>}{c.default_on && !c.is_core && <span className="text-xs bg-green-50 text-green-700 rounded px-2">pre-ticked</span>}
+          <div className="flex items-center gap-3 cursor-pointer min-w-0" onClick={() => setOpen(open === c.id ? null : c.id)}>
+            <span className="text-xs text-slate-400 w-8">{c.sort_order}</span><span className="font-medium truncate">{c.title}</span>
+            {c.is_core && <span className="text-xs whitespace-nowrap shrink-0 bg-blue-50 text-blue-700 rounded px-2">core</span>}{c.default_on && !c.is_core && <span className="text-xs whitespace-nowrap shrink-0 bg-green-50 text-green-700 rounded px-2">pre-ticked</span>}
             <span className="ml-auto text-xs text-slate-400">{open === c.id ? "close" : "edit"}</span>
           </div>
           {open === c.id && (

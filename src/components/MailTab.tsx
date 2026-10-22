@@ -20,7 +20,7 @@ export default function MailTab({ emp }: { emp: Employee }) {
       {t && (<>
         <div><label className="lbl">To</label><input className="inp" readOnly value={emp.email || "(no email on record)"} /></div>
         <div><label className="lbl">Subject</label><input className="inp" readOnly value={subject} /></div>
-        <div><label className="lbl">Message</label><textarea className="inp font-sans" rows={14} readOnly value={body} /></div>
+        <div><label className="lbl">Message</label><textarea className="inp font-sans" rows={12} readOnly value={body} /></div>
         <p className="text-xs text-slate-500">Attach: {ATTACH[t.key] || "relevant PDFs"} (download from the Letters / Forms tabs).</p>
         <div className="flex flex-wrap gap-2">
           <a className="btn btn-primary" href={`mailto:${emp.email || ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`}>Open in mail app</a>

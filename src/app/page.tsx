@@ -22,19 +22,40 @@ export default function Dashboard() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-xl font-bold mr-auto">Candidates &amp; employees</h1>
-        <input className="inp !w-64" placeholder="Search name, role, project…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <a className="btn" href={`/api/export/excel${sel.length ? `?ids=${sel.join(",")}` : ""}`}>⬇ Excel import file{sel.length ? ` (${sel.length})` : " (all)"}</a>
-        <Link className="btn btn-primary" href="/employees/new">+ New candidate</Link>
+        <h1 className="text-xl font-bold sm:mr-auto w-full sm:w-auto">Candidates &amp; employees</h1>
+        <input className="inp w-full sm:!w-64" placeholder="Search name, role, project…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <a className="btn flex-1 sm:flex-none justify-center" href={`/api/export/excel${sel.length ? `?ids=${sel.join(",")}` : ""}`}>⬇ Excel file{sel.length ? ` (${sel.length})` : " (all)"}</a>
+        <Link className="btn btn-primary flex-1 sm:flex-none justify-center" href="/employees/new">+ New candidate</Link>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {([["process", `In process (${n("process")})`], ["onboarded", `Onboarded (${n("onboarded")})`], ["rejected", `Rejected / declined (${n("rejected")})`]] as const).map(([k, l]) => <button key={k} className={`btn ${pile === k ? "btn-primary" : ""}`} onClick={() => { setPile(k); setStage(""); setSel([]); }}>{l}</button>)}
-        {pile === "process" && <span className="mx-1 h-5 w-px bg-slate-200" />}
-        {pile === "process" && <button className={`btn !py-1 !text-xs ${!stage ? "!bg-slate-100" : ""}`} onClick={() => setStage("")}>All stages</button>}
-        {pile === "process" && STAGES.filter((s) => s.key !== "onboarded").map((s) => <button key={s.key} className={`btn !py-1 !text-xs ${stage === s.key ? "!bg-blue-50 !border-[#1e4fa3] !text-blue-800" : ""}`} onClick={() => setStage(stage === s.key ? "" : s.key)}>{s.label} <span className="text-slate-400">{count(s.key)}</span></button>)}
+      <div className="grid grid-cols-3 sm:flex sm:flex-wrap items-center gap-2">
+        {([["process", `In process (${n("process")})`], ["onboarded", `Onboarded (${n("onboarded")})`], ["rejected", `Rejected (${n("rejected")})`]] as const).map(([k, l]) => <button key={k} className={`btn ${pile === k ? "btn-primary" : ""}`} onClick={() => { setPile(k); setStage(""); setSel([]); }}>{l}</button>)}
       </div>
+      {pile === "process" && <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap">
+                <button className={`btn shrink-0 !py-1 !text-xs ${!stage ? "!bg-slate-100" : ""}`} onClick={() => setStage("")}>All stages</button>
+        {STAGES.filter((s) => s.key !== "onboarded").map((s) => <button key={s.key} className={`btn shrink-0 !py-1 !text-xs ${stage === s.key ? "!bg-blue-50 !border-[#1e4fa3] !text-blue-800" : ""}`} onClick={() => setStage(stage === s.key ? "" : s.key)}>{s.label} <span className="text-slate-400">{count(s.key)}</span></button>)}
+      </div>}
       {err && <p className="warn">{err} — has the schema been run in Supabase?</p>}
-      <div className="card !p-0 overflow-x-auto">
+      <div className="md:hidden space-y-2">
+        {loading && <p className="card text-center text-sm text-slate-500">Loading…</p>}
+        {!loading && !shown.length && <p className="card text-center text-sm text-slate-500">{q ? "Nothing matches your search." : pile === "rejected" ? "Nobody has been rejected or declined." : pile === "onboarded" ? "Nobody has been marked Onboarded yet." : "No candidates here yet."}</p>}
+        {shown.map((r) => (
+          <div key={r.id} className="card !p-3 flex gap-3">
+            <input type="checkbox" className="mt-1 h-4 w-4" aria-label={`Select ${r.full_name}`} checked={sel.includes(r.id)} onChange={(e) => setSel(e.target.checked ? [...sel, r.id] : sel.filter((x) => x !== r.id))} />
+            <Link href={`/employees/${r.id}`} className="flex-1 min-w-0">
+              <div className="flex items-start gap-2"><span className="font-semibold text-blue-800 truncate">{r.full_name}</span>
+                {pile === "rejected" ? null : <span className="ml-auto shrink-0 text-xs bg-blue-50 text-blue-800 rounded-full px-2 py-0.5">{stageLabel(r.stage)}</span>}</div>
+              <div className="text-sm text-slate-600 truncate">{[r.designation, r.department].filter(Boolean).join(" · ") || "—"}</div>
+              <div className="text-xs text-slate-500 truncate">{[r.project, r.site_location].filter(Boolean).join(" · ")}</div>
+              {pile === "rejected" ? <div className="text-xs text-red-800 mt-1">{r.closed_reason} · at {stageLabel(r.closed_stage)}</div> : (
+                <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
+                  <div className="h-1.5 w-16 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-[#1e4fa3]" style={{ width: `${((docs[r.id] || 0) / DOC_TYPES.length) * 100}%` }} /></div>
+                  <span>{docs[r.id] || 0}/{DOC_TYPES.length} docs</span>
+                  {r.join_date && <span className="ml-auto">Joins {new Date(r.join_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</span>}
+                </div>)}
+            </Link>
+          </div>))}
+      </div>
+      <div className="card !p-0 overflow-x-auto hidden md:block">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-500"><tr><th className="p-3 w-8"><input type="checkbox" aria-label="Select all shown" checked={shown.length > 0 && shown.every((r) => sel.includes(r.id))} onChange={(e) => setSel(e.target.checked ? shown.map((r) => r.id) : [])} /></th><th className="p-3">Name</th><th className="p-3">Role</th><th className="p-3">Project / site</th><th className="p-3">Joining</th><th className="p-3">{pile === "rejected" ? "Closed" : "Stage"}</th><th className="p-3">Documents</th></tr></thead>
           <tbody>
