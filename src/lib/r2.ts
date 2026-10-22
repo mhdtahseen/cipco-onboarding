@@ -17,3 +17,8 @@ export async function r2SignedGetUrl(key: string, seconds = 120) {
   const s = await client().sign(u.toString(), { method: "GET", aws: { signQuery: true } });
   return s.url;
 }
+
+/** Returns the object's bytes, or null if it is missing / unreadable (callers fall back gracefully). */
+export async function r2Get(key: string): Promise<Uint8Array | null> {
+  try { const r = await client().fetch(objectUrl(key)); return r.ok ? new Uint8Array(await r.arrayBuffer()) : null; } catch { return null; }
+}

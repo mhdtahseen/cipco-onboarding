@@ -2,7 +2,7 @@ import { PDFDocument } from "pdf-lib";
 import { COMPANY } from "../company";
 import { dmyParts, fmtDateDMY, fmtDateLong, todayISO } from "../format";
 import type { Employee } from "../types";
-import { Fonts, blank, circle, drawStamp, embedFonts, newDoc, put, readAsset, tick, wrapPlain } from "./common";
+import { Fonts, blank, circle, drawPhotoBox, drawStamp, embedFonts, newDoc, put, readAsset, tick, wrapPlain } from "./common";
 
 const groups = (s?: string | null, n = 4) => (s || "").replace(/\s+/g, "").replace(new RegExp(`(.{${n}})(?=.)`, "g"), "$1 ").trim();
 const centered = (page: any, f: any, text: string, cx: number, base: number, size = 9) => text && put(page, f, text, cx - f.widthOfTextAtSize(text, size) / 2, base, size);
@@ -15,8 +15,9 @@ async function load(name: string) {
 }
 
 // ------------------------------------------------------------------ Joining form (1 page)
-export async function fillJoiningForm(e: Employee, withSeal: boolean): Promise<Uint8Array> {
+export async function fillJoiningForm(e: Employee, withSeal: boolean, photo?: Uint8Array | null): Promise<Uint8Array> {
   const { doc, f } = await load("joining_form.pdf"); const p = doc.getPage(0); const r = f.reg;
+  await drawPhotoBox(doc, p, { x: 472, top: 30, w: 90, h: 112 }, photo);   // top-right corner, ~32 x 40 mm
   put(p, r, e.full_name, 178, 178, 9.5, 258);
   put(p, r, e.father_spouse_name, 168, 196, 9.5, 258);
   const d = dmyParts(e.dob);
@@ -91,9 +92,9 @@ export async function fillGratuity(e: Employee, withSeal: boolean): Promise<Uint
 }
 
 // ------------------------------------------------------------------ Joining kit = joining form + Form 11 + Form F
-export async function buildKit(e: Employee, withSeal: boolean): Promise<Uint8Array> {
+export async function buildKit(e: Employee, withSeal: boolean, photo?: Uint8Array | null): Promise<Uint8Array> {
   const out = await PDFDocument.create();
-  for (const bytes of [await fillJoiningForm(e, withSeal), await fillForm11(e, withSeal), await fillGratuity(e, withSeal)]) {
+  for (const bytes of [await fillJoiningForm(e, withSeal, photo), await fillForm11(e, withSeal), await fillGratuity(e, withSeal)]) {
     const src = await PDFDocument.load(bytes); const pages = await out.copyPages(src, src.getPageIndices()); pages.forEach((pg) => out.addPage(pg));
   }
   return out.save();

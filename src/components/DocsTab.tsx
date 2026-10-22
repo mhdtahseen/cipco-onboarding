@@ -16,7 +16,7 @@ export default function DocsTab({ emp }: { emp: Employee }) {
     await supabase().from("employee_documents").upsert({ employee_id: emp.id, ...cur, ...patch, updated_at: new Date().toISOString() }, { onConflict: "employee_id,doc_type" }); await load();
   }
   async function upload(doc_type: string, picked: File) {
-    const file = await prepareUpload(picked);
+    const file = await prepareUpload(picked, { forceJpeg: doc_type === "photo" });   // photos go on the joining form, which needs JPEG/PNG
     if (file.size > MAX_UPLOAD) return alert("File is larger than 5 MB. Please compress the PDF or upload a smaller photo.");
     setBusy(doc_type);
     const fd = new FormData(); fd.set("file", file); fd.set("employeeId", emp.id); fd.set("docType", doc_type);
