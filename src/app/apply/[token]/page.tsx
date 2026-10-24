@@ -54,7 +54,7 @@ export default function ApplyPage() {
     setState("done"); window.scrollTo(0, 0);
   }
 
-  const shell = (c: React.ReactNode) => <div className="max-w-2xl mx-auto space-y-4"><div className="flex items-center gap-3"><img src="/branding/logo.png" alt="CIPCO" className="h-8 w-auto" /><span className="text-sm font-semibold text-slate-500">Joining details</span></div>{c}</div>;
+  const shell = (c: React.ReactNode) => <div className="apply max-w-2xl mx-auto space-y-4 pb-4"><div className="flex items-center gap-3"><img src="/branding/logo.png" alt="CIPCO" className="h-8 w-auto" /><span className="text-sm font-semibold text-slate-500">Joining details</span></div>{c}</div>;
   if (state === "loading") return shell(<p className="text-slate-500">Loading…</p>);
   if (state === "bad") return shell(<div className="card"><h1 className="font-bold text-lg">This link isn't active</h1><p className="text-sm text-slate-600 mt-1">It may have expired or been replaced. Please contact the CIPCO HR team for a new link.</p></div>);
   if (state === "applied") return shell(<div className="card"><h1 className="font-bold text-lg">Thank you</h1><p className="text-sm text-slate-600 mt-1">Your details have already been received. Nothing more is needed here.</p></div>);
@@ -68,11 +68,11 @@ export default function ApplyPage() {
         <h3 className="font-semibold mb-3">{g.title}</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           {g.fields.map((f) => (
-            <div key={f.key} className={f.wide ? "sm:col-span-2" : ""}>
+            <div key={f.key} className={`min-w-0 ${f.wide ? "sm:col-span-2" : ""}`}>
               <label className="lbl" htmlFor={f.key}>{f.label}</label>
               {f.type === "select" ? <select id={f.key} className="inp" value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}><option value=""></option>{f.options!.map((o) => <option key={o}>{o}</option>)}</select>
                 : f.type === "textarea" ? <textarea id={f.key} className="inp" rows={2} value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />
-                : <input id={f.key} className="inp" type={f.type === "date" ? "date" : "text"} inputMode={["phone", "alt_phone", "pin", "aadhaar", "account_no", "uan", "nominee_phone", "emergency_phone"].includes(f.key) ? "numeric" : undefined} value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />}
+                : <input id={f.key} className="inp" type={f.type === "date" ? "date" : f.key === "email" ? "email" : "text"} inputMode={f.key === "email" ? "email" : ["phone", "alt_phone", "nominee_phone", "emergency_phone"].includes(f.key) ? "tel" : ["pin", "aadhaar", "account_no", "uan"].includes(f.key) ? "numeric" : undefined} autoComplete={f.key === "email" ? "email" : f.key === "phone" ? "tel" : f.key === "full_name" ? "name" : "off"} autoCapitalize={["pan", "ifsc"].includes(f.key) ? "characters" : undefined} value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />}
               {warn[f.key] && <p className="warn">{warn[f.key]}</p>}
             </div>))}
         </div>
@@ -87,8 +87,8 @@ export default function ApplyPage() {
             <input type="file" className="hidden" accept="image/*,.pdf" disabled={!!busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(u.key, f); }} /></label>
         </div>))}</div>
     </div>
-    <label className="flex items-start gap-2 text-sm text-slate-600"><input type="checkbox" className="mt-1" checked={ok} onChange={(e) => setOk(e.target.checked)} />I confirm these details and documents are mine and correct, and I agree to CIPCO using them for my employment, PF and statutory records.</label>
+    <label className="flex items-start gap-3 text-sm text-slate-600"><input type="checkbox" className="mt-0.5" checked={ok} onChange={(e) => setOk(e.target.checked)} />I confirm these details and documents are mine and correct, and I agree to CIPCO using them for my employment, PF and statutory records.</label>
     {err && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</p>}
-    <div className="sticky bottom-0 border-t border-slate-200 bg-[#f6f7fb] py-3"><button className="btn btn-primary w-full justify-center" disabled={!!busy} onClick={submit}>{busy === "submit" ? "Sending…" : "Submit to HR"}</button></div>
+    <div className="sticky bottom-0 z-10 -mx-4 px-4 border-t border-slate-200 bg-[#f6f7fb] py-3"><button className="btn btn-primary w-full justify-center" disabled={!!busy} onClick={submit}>{busy === "submit" ? "Sending…" : "Submit to HR"}</button></div>
   </>);
 }
