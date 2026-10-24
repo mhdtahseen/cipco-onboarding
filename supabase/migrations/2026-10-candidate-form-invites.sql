@@ -17,16 +17,26 @@ alter table public.form_invites enable row level security;
 drop policy if exists "auth all" on public.form_invites;
 create policy "auth all" on public.form_invites for all to authenticated using (true) with check (true);
 
--- What the candidate sees: their own name / phone / email (pre-filled by staff) and anything they already submitted.
+-- What the candidate sees: details staff already entered (pre-filled) and anything they already submitted.
+-- Sensitive identifiers (Aadhaar, PAN, account no., IFSC, UAN, previous PF no.) are NEVER sent back — only a list of which
+-- ones are on file — because the link is a bearer token and could be forwarded.
 create or replace function public.invite_get(p_token text) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare i public.form_invites; e public.employees;
+declare i public.form_invites; e public.employees; pre jsonb; onfile jsonb;
+  sensitive text[] := array['aadhaar','pan','account_no','ifsc','uan','prev_pf_no'];
+  shown text[] := array['father_spouse_name','father_spouse_type','dob','gender','marital_status','religion','blood_group','alt_phone',
+    'permanent_address','current_address','city','district','state','pin','bank_name','bank_branch',
+    'nominee_name','nominee_relation','nominee_age_dob','nominee_address','nominee_phone','emergency_name','emergency_phone'];
 begin
   select * into i from public.form_invites where token = p_token;
   if not found or i.status = 'revoked' or i.expires_at < now() then return null; end if;
   select * into e from public.employees where id = i.employee_id;
+  select coalesce(jsonb_object_agg(key, value), '{}') into pre from jsonb_each(to_jsonb(e))
+    where key = any(shown) and jsonb_typeof(value) = 'string' and btrim(value #>> '{}') <> '';
+  select coalesce(jsonb_agg(key), '[]') into onfile from jsonb_each(to_jsonb(e))
+    where key = any(sensitive) and jsonb_typeof(value) = 'string' and btrim(value #>> '{}') <> '';
   return jsonb_build_object('employee_id', e.id, 'status', i.status, 'name', e.full_name, 'phone', e.phone, 'email', e.email,
-                            'submission', i.submission, 'files', i.files);
+                            'prefill', pre, 'on_file', onfile, 'submission', i.submission, 'files', i.files);
 end $$;
 
 -- Stores the candidate's answers. Only whitelisted keys, text only, max 500 chars each. Allowed until staff apply it.

@@ -23,12 +23,13 @@ const nice = (p?: string) => (p ? p.split("/").pop()!.replace(/^\d+-/, "") : "")
 export default function ApplyPage() {
   const { token } = useParams<{ token: string }>();
   const [inv, setInv] = useState<any>(null); const [state, setState] = useState<"loading" | "bad" | "form" | "done" | "applied">("loading");
-  const [v, setV] = useState<Record<string, string>>({}); const [files, setFiles] = useState<Record<string, string>>({}); const [busy, setBusy] = useState(""); const [err, setErr] = useState(""); const [ok, setOk] = useState(false);
+  const [v, setV] = useState<Record<string, string>>({}); const [files, setFiles] = useState<Record<string, string>>({}); const [busy, setBusy] = useState(""); const [err, setErr] = useState(""); const [ok, setOk] = useState(false); const [onFile, setOnFile] = useState<string[]>([]);
   useEffect(() => { (async () => {
     const { data } = await supabase().rpc("invite_get", { p_token: token });
     if (!data) { setState("bad"); return; }
     setInv(data); setFiles(data.files || {});
-    setV({ full_name: data.name || "", phone: data.phone || "", email: data.email || "", father_spouse_type: "Father", ...(data.submission || {}) });
+    setV({ father_spouse_type: "Father", full_name: data.name || "", phone: data.phone || "", email: data.email || "", ...(data.prefill || {}), ...(data.submission || {}) });
+    setOnFile(data.on_file || []);
     setState(data.status === "applied" ? "applied" : "form");
   })(); }, [token]);
   const warn = validate(v); const set = (k: string, x: string) => setV((p) => ({ ...p, [k]: x }));
@@ -72,7 +73,7 @@ export default function ApplyPage() {
               <label className="lbl" htmlFor={f.key}>{f.label}</label>
               {f.type === "select" ? <select id={f.key} className="inp" value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}><option value=""></option>{f.options!.map((o) => <option key={o}>{o}</option>)}</select>
                 : f.type === "textarea" ? <textarea id={f.key} className="inp" rows={2} value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />
-                : <input id={f.key} className="inp" type={f.type === "date" ? "date" : f.key === "email" ? "email" : "text"} inputMode={f.key === "email" ? "email" : ["phone", "alt_phone", "nominee_phone", "emergency_phone"].includes(f.key) ? "tel" : ["pin", "aadhaar", "account_no", "uan"].includes(f.key) ? "numeric" : undefined} autoComplete={f.key === "email" ? "email" : f.key === "phone" ? "tel" : f.key === "full_name" ? "name" : "off"} autoCapitalize={["pan", "ifsc"].includes(f.key) ? "characters" : undefined} value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />}
+                : <input id={f.key} className="inp" type={f.type === "date" ? "date" : f.key === "email" ? "email" : "text"} inputMode={f.key === "email" ? "email" : ["phone", "alt_phone", "nominee_phone", "emergency_phone"].includes(f.key) ? "tel" : ["pin", "aadhaar", "account_no", "uan"].includes(f.key) ? "numeric" : undefined} autoComplete={f.key === "email" ? "email" : f.key === "phone" ? "tel" : f.key === "full_name" ? "name" : "off"} autoCapitalize={["pan", "ifsc"].includes(f.key) ? "characters" : undefined} placeholder={onFile.includes(f.key) ? "On file — type only to change" : undefined} value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />}
               {warn[f.key] && <p className="warn">{warn[f.key]}</p>}
             </div>))}
         </div>

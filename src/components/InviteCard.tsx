@@ -62,8 +62,8 @@ export default function InviteCard({ emp, onChange }: { emp: Employee; onChange:
         {msg && <span className="text-sm text-slate-600 w-full">{msg}</span>}
       </div>
       {inv?.status === "submitted" && <div className="space-y-2 text-sm border-t border-slate-100 pt-3">
-        <p className="text-xs text-slate-500">Tick what to save to the record. Fields that would replace a different existing value start unticked.</p>
-        <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">{Object.entries(inv.submission).map(([k, x]) => { const cur = (emp as any)[k]; const differs = cur && String(cur) !== clean(k, x); return (
+        <p className="text-xs text-slate-500">Showing only new or changed answers. Tick what to save to the record. Fields that would replace a different existing value start unticked.</p>
+        <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">{Object.entries(inv.submission).filter(([k, x]) => String((emp as any)[k] ?? "") !== clean(k, x)).map(([k, x]) => { const cur = (emp as any)[k]; const differs = cur && String(cur) !== clean(k, x); return (
           <label key={k} className="flex items-start gap-2"><input type="checkbox" className="mt-1" checked={!!pick[k]} onChange={(e) => setPick({ ...pick, [k]: e.target.checked })} />
             <span><span className="text-slate-500">{LABEL[k] || k}: </span><span className="font-medium break-words">{x}</span>{differs && <span className="block text-xs text-amber-700">currently “{String(cur)}”</span>}</span></label>); })}</div>
         {fileList && <div><div className="text-xs text-slate-500 mb-1">Uploaded documents (added to the Documents checklist as “received” when you apply)</div>{fileList}</div>}
