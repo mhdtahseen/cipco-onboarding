@@ -6,8 +6,8 @@ import type { AnnexureSnapshot, Section } from "../types";
 import { wrapPlain } from "./common";
 import { Fonts, drawStamp, embedFonts, newDoc, readAsset } from "./common";
 
-const W = 595.28, H = 841.89, ML = 66, MR = 66, TOP_P1 = 160, TOP = 64, BOTTOM = 70;
-const INK = rgb(0.12, 0.14, 0.2), BLUE = rgb(0.1, 0.3, 0.62);
+export const W = 595.28, H = 841.89, ML = 66, MR = 66, TOP_P1 = 160, TOP = 64, BOTTOM = 70;
+export const INK = rgb(0.12, 0.14, 0.2), BLUE = rgb(0.1, 0.3, 0.62);
 type Tok = { t: string; b: boolean };
 
 function tokens(s: string): Tok[] {
@@ -33,8 +33,8 @@ function wrap(toks: Tok[], width: number, size: number, f: Fonts): Tok[][] {
   return lines;
 }
 
-class Writer {
-  page!: PDFPage; y = 0; first = true;
+export class Writer {
+  page!: PDFPage; y = 0; first = true; line3: string = COMPANY.line3;
   constructor(public doc: Awaited<ReturnType<typeof newDoc>>, public f: Fonts) {}
   async start() { this.page = this.doc.addPage([W, H]); this.y = TOP_P1; await this.header(); }
   async header() {
@@ -45,7 +45,7 @@ class Writer {
       this.page.drawText(t, { x: (W - font.widthOfTextAtSize(t, size)) / 2 + 22, y: H - top, size, font, color });
     c(COMPANY.headline1, 25, 62, this.f.bold, BLUE);
     c(COMPANY.headline2, 15.5, 82, this.f.bold, BLUE);
-    c(COMPANY.line1, 6.6, 97, this.f.bold); c(COMPANY.line2, 6.6, 106, this.f.bold); c(COMPANY.line3, 6.6, 115, this.f.bold);
+    c(COMPANY.line1, 6.6, 97, this.f.bold); c(COMPANY.line2, 6.6, 106, this.f.bold); c(this.line3, 6.6, 115, this.f.bold);
   }
   async newPage() { this.page = this.doc.addPage([W, H]); this.y = TOP; }
   async ensure(h: number) { if (this.y + h > H - BOTTOM) await this.newPage(); }
