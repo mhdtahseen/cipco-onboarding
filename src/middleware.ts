@@ -18,6 +18,8 @@ export async function middleware(req: NextRequest) {
   });
   const { data } = await sb.auth.getUser();
   const isLogin = req.nextUrl.pathname.startsWith("/login");
+  const isPublic = req.nextUrl.pathname.startsWith("/apply") || req.nextUrl.pathname.startsWith("/api/apply"); // candidate self-fill links
+  if (isPublic) return res;
   if (!data.user && !isLogin) return NextResponse.redirect(new URL("/login", req.url));
   if (data.user && isLogin) return NextResponse.redirect(new URL("/", req.url));
   return res;

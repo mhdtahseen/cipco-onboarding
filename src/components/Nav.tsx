@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase/client";
 export default function Nav() {
   const path = usePathname(); const router = useRouter(); const [email, setEmail] = useState("");
   useEffect(() => { supabase().auth.getUser().then(({ data }) => setEmail(data.user?.email || "")); }, []);
-  if (path.startsWith("/login")) return null;
+  if (path.startsWith("/login") || path.startsWith("/apply")) return null;
   const link = (href: string, label: string) => (
     <Link href={href} className={`px-3 py-1.5 rounded-md text-sm whitespace-nowrap ${path === href || (href !== "/" && path.startsWith(href)) ? "bg-blue-50 text-blue-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}`}>{label}</Link>);
   return (

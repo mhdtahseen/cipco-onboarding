@@ -11,6 +11,7 @@ import DocsTab from "@/components/DocsTab";
 import MailTab from "@/components/MailTab";
 import PipelineBar from "@/components/PipelineBar";
 import ResumeCard from "@/components/ResumeCard";
+import InviteCard from "@/components/InviteCard";
 import NotesCard from "@/components/NotesCard";
 import { stageIndex } from "@/lib/pipeline";
 
@@ -27,6 +28,7 @@ export default function EmployeePage() {
       <div><h1 className="text-xl font-bold">{emp.full_name}</h1><p className="text-sm text-slate-500">{[emp.designation, emp.department, emp.project, emp.site_location].filter(Boolean).join(" · ")}</p></div>
       <PipelineBar emp={emp} onChange={setEmp} />
       <ResumeCard emp={emp} />
+      <InviteCard emp={emp} onChange={setEmp} />
       <NotesCard emp={emp} onChange={setEmp} />
       <div role="tablist" className="flex border-b border-slate-200 overflow-x-auto">{TABS.map((t) => <button key={t} role="tab" aria-selected={tab === t} className={`tab ${tab === t ? "tab-on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</div>
       {tab === "Details" && <EmployeeForm initial={emp} onSaved={setEmp} />}
