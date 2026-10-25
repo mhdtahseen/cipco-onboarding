@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { stageLabel } from "@/lib/pipeline";
 import { useRouter } from "next/navigation";
@@ -11,6 +11,14 @@ import type { Department, Project } from "@/lib/types";
 
 export default function EmployeeForm({ initial, onSaved }: { initial: Record<string, any> | null; onSaved?: (e: any) => void }) {
   const [v, setV] = useState<Record<string, any>>(initial ?? EMPTY); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(""); const [dup, setDup] = useState<{ id: string; full_name: string; why: string; where: string } | null>(null); const router = useRouter();
+  // If the record changes from outside the form (e.g. a candidate's self-fill answers were applied), show the new values
+  // without discarding anything else typed in the meantime.
+  const prev = useRef(initial);
+  useEffect(() => {
+    const before = prev.current; prev.current = initial; if (!initial || !before || initial === before) return;
+    const diff: Record<string, any> = {}; Object.keys(initial).forEach((k) => { if (k !== "updated_at" && JSON.stringify(initial[k]) !== JSON.stringify(before[k])) diff[k] = initial[k]; });
+    if (Object.keys(diff).length) setV((p) => ({ ...p, ...diff }));
+  }, [initial]);
   const [projects, setProjects] = useState<Project[]>([]); const [depts, setDepts] = useState<Department[]>([]);
   useEffect(() => { (async () => {
     const sb = supabase(); const [p, d] = await Promise.all([sb.from("projects").select("*").order("name"), sb.from("departments").select("*").eq("active", true).order("name")]);

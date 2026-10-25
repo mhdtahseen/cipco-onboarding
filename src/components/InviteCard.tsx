@@ -11,7 +11,7 @@ const fmt = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-dig
 const clean = (k: string, x: string) => k === "phone" || k === "alt_phone" || k === "nominee_phone" || k === "emergency_phone" ? (() => { const d = x.replace(/\D/g, ""); return d.length > 10 && d.startsWith("91") ? d.slice(-10) : d; })() : k === "email" ? x.trim().toLowerCase() : k === "aadhaar" || k === "uan" ? x.replace(/\s|-/g, "") : k === "pan" || k === "ifsc" ? x.replace(/\s/g, "").toUpperCase() : x.trim();
 
 // Per-candidate self-fill link: create it, share it, then review what the candidate submitted before it touches the record.
-export default function InviteCard({ emp, onChange }: { emp: Employee; onChange: (e: Employee) => void }) {
+export default function InviteCard({ emp, onChange, onApplied }: { emp: Employee; onChange: (e: Employee) => void; onApplied?: () => void }) {
   const [inv, setInv] = useState<Invite | null>(null); const [loaded, setLoaded] = useState(false); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(""); const [copied, setCopied] = useState(false);
   const [pick, setPick] = useState<Record<string, boolean>>({});
   async function load() {
@@ -38,7 +38,7 @@ export default function InviteCard({ emp, onChange }: { emp: Employee; onChange:
     const docs = Object.entries(inv.files).map(([doc_type, file_path]) => ({ employee_id: emp.id, doc_type, status: "received", file_path, updated_at: now }));
     if (docs.length) { const { error } = await sb.from("employee_documents").upsert(docs, { onConflict: "employee_id,doc_type" }); if (error) { setBusy(false); setMsg(error.message); return; } }
     await sb.from("form_invites").update({ status: "applied" }).eq("id", inv.id);
-    setBusy(false); setMsg(`Applied ${Object.keys(patch).length} detail(s) and ${docs.length} document(s) ✓`); load();
+    setBusy(false); setMsg(`Applied ${Object.keys(patch).length} detail(s) and ${docs.length} document(s) ✓ — see the Details and Documents tabs.`); onApplied?.(); load();
   }
 
   if (!loaded) return null;
