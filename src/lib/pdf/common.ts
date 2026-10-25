@@ -23,16 +23,17 @@ export async function loadBranding() {
   const [seal, sign] = await Promise.all([readPublic("branding", "seal.png"), readPublic("branding", "signature.png")]);
   return { seal, sign };
 }
-export type Stamp = { x: number; top: number; signW?: number; sealW?: number; sealDx?: number; sealDy?: number };
+export type Stamp = { x: number; top: number; signW?: number; signMaxH?: number; sealW?: number; sealDx?: number; sealDy?: number };
 /** Draw signature (left) and seal (overlapping right). x = left edge, top = top edge in "from top" coordinates. */
 export async function drawStamp(doc: PDFDocument, page: PDFPage, s: Stamp) {
   const { seal, sign } = await loadBranding();
   const H = page.getHeight();
   const signImg = await doc.embedPng(sign), sealImg = await doc.embedPng(seal);
-  const sw = s.signW ?? 90, sh = (sw * signImg.height) / signImg.width;
+  const sw = s.signW ?? 90; let sh = (sw * signImg.height) / signImg.width, signDrawW = sw;
+  if (s.signMaxH && sh > s.signMaxH) { sh = s.signMaxH; signDrawW = (sh * signImg.width) / signImg.height; }   // tall signatures shrink to fit tight form layouts
   const dw = s.sealW ?? 62, dh = (dw * sealImg.height) / sealImg.width;
   page.drawImage(sealImg, { x: s.x + (s.sealDx ?? sw * 0.55), y: H - s.top - dh - (s.sealDy ?? 0), width: dw, height: dh, opacity: 0.88 });
-  page.drawImage(signImg, { x: s.x, y: H - s.top - sh - 8, width: sw, height: sh });
+  page.drawImage(signImg, { x: s.x, y: H - s.top - sh - 8, width: signDrawW, height: sh });
 }
 
 /** Write text so that its BASELINE is `baseTop` points from the top of the page. Shrinks to fit maxWidth. */

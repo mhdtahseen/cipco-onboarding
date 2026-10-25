@@ -34,7 +34,7 @@ export async function fillJoiningForm(e: Employee, withSeal: boolean, photo?: Ui
   put(p, r, e.nominee_name, 151, 500.7, 9.5, 258);
   put(p, r, e.nominee_relation, 176, 518.5, 9, 142); put(p, r, e.nominee_age_dob, 381, 518.5, 9, 80);
   put(p, r, e.emergency_name, 181, 536.2, 9, 138); put(p, r, e.emergency_phone, 378, 536.2, 9, 85);
-  if (withSeal) await drawStamp(doc, p, { x: 352, top: 626, signW: 80, sealW: 56, sealDx: 92, sealDy: 0 });
+  if (withSeal) await drawStamp(doc, p, { x: 352, top: 634, signW: 80, signMaxH: 34, sealW: 56, sealDx: 92, sealDy: 0 });
   return doc.save();
 }
 
@@ -60,7 +60,7 @@ export async function fillForm11(e: Employee, withSeal: boolean): Promise<Uint8A
   // employer declaration
   put(p, r, e.full_name, 177, 577, 8, 60);
   put(p, r, fmtDateDMY(e.join_date), 299, 577, 7, 38);
-  if (withSeal) { put(p, r, fmtDateDMY(todayISO()), 88, 765.5, 8.5); await drawStamp(doc, p, { x: 398, top: 728, signW: 70, sealW: 44, sealDx: 108, sealDy: 17 }); }
+  if (withSeal) { put(p, r, fmtDateDMY(todayISO()), 88, 765.5, 8.5); await drawStamp(doc, p, { x: 398, top: 728, signW: 70, signMaxH: 30, sealW: 44, sealDx: 108, sealDy: 17 }); }
   return doc.save();
 }
 
@@ -86,7 +86,7 @@ export async function fillGratuity(e: Employee, withSeal: boolean): Promise<Uint
   put(p2, r, COMPANY.city, 124, 205, 9);
   if (withSeal) {
     put(p2, r, fmtDateDMY(todayISO()), 122, 495, 9);
-    await drawStamp(doc, p2, { x: 408, top: 452, signW: 82, sealW: 60, sealDx: -142, sealDy: 78 });
+    await drawStamp(doc, p2, { x: 408, top: 452, signW: 82, signMaxH: 36, sealW: 60, sealDx: -142, sealDy: 78 });
   }
   return doc.save();
 }
