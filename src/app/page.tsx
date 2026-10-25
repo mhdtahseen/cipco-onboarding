@@ -2,14 +2,15 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
-import type { Employee } from "@/lib/types";
+import type { Employee, Project } from "@/lib/types";
 import { DOC_TYPES } from "@/lib/types";
 import { STAGES, pileOf, stageLabel } from "@/lib/pipeline";
 
 export default function Dashboard() {
-  const [rows, setRows] = useState<Employee[]>([]); const [docs, setDocs] = useState<Record<string, number>>({}); const [q, setQ] = useState(""); const [sel, setSel] = useState<string[]>([]); const [err, setErr] = useState(""); const [loading, setLoading] = useState(true); const [pile, setPile] = useState<"process" | "onboarded" | "rejected">("process"); const [stage, setStage] = useState("");
+  const [rows, setRows] = useState<Employee[]>([]); const [docs, setDocs] = useState<Record<string, number>>({}); const [q, setQ] = useState(""); const [sel, setSel] = useState<string[]>([]); const [err, setErr] = useState(""); const [loading, setLoading] = useState(true); const [pile, setPile] = useState<"process" | "onboarded" | "rejected">("process"); const [stage, setStage] = useState(""); const [projects, setProjects] = useState<Project[]>([]); const [proj, setProj] = useState("");
   useEffect(() => { (async () => {
     const sb = supabase();
+    sb.from("projects").select("*").order("name").then(({ data: pj }) => setProjects((pj || []) as Project[]));   // empty until the projects migration has been run
     const { data, error } = await sb.from("employees").select("*").order("created_at", { ascending: false });
     if (error) setErr(error.message); setRows((data || []) as Employee[]);
     const { data: d } = await sb.from("employee_documents").select("employee_id,status").neq("doc_type", "resume");
@@ -18,11 +19,12 @@ export default function Dashboard() {
   const inPile = rows.filter((r) => pileOf(r) === pile);
   const count = (k: string) => rows.filter((r) => pileOf(r) === "process" && r.stage === k).length;
   const n = (k: string) => rows.filter((r) => pileOf(r) === k).length;
-  const shown = inPile.filter((r) => !stage || pile === "rejected" || r.stage === stage).filter((r) => (r.full_name + " " + (r.designation || "") + " " + (r.project || "") + " " + (r.emp_no || "")).toLowerCase().includes(q.toLowerCase()));
+  const shown = inPile.filter((r) => !stage || pile === "rejected" || r.stage === stage).filter((r) => !proj || r.project_id === proj).filter((r) => (r.full_name + " " + (r.designation || "") + " " + (r.project || "") + " " + (r.emp_no || "")).toLowerCase().includes(q.toLowerCase()));
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold sm:mr-auto w-full sm:w-auto">Candidates &amp; employees</h1>
+        {projects.length > 0 && <select className="inp w-full sm:!w-52" aria-label="Filter by project" value={proj} onChange={(e) => { setProj(e.target.value); setSel([]); }}><option value="">All projects</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.status === "closed" ? " (closed)" : ""}</option>)}</select>}
         <input className="inp w-full sm:!w-64" placeholder="Search name, role, project…" value={q} onChange={(e) => setQ(e.target.value)} />
         <a className="btn flex-1 sm:flex-none justify-center" href={`/api/export/excel${sel.length ? `?ids=${sel.join(",")}` : ""}`}>⬇ Excel file{sel.length ? ` (${sel.length})` : " (all)"}</a>
         <Link className="btn btn-primary flex-1 sm:flex-none justify-center" href="/employees/new">+ New candidate</Link>

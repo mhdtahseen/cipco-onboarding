@@ -2,7 +2,7 @@ import { numToWordsIN } from "./format";
 
 /** How the salary is entered and how it is split. Stored per employee (employees.salary jsonb). */
 export type SalaryCfg = {
-  basis: "ctc" | "inhand" | "gross";          // which number YOU fix; everything else is calculated
+  basis: "ctc" | "inhand" | "gross" | "daily"; // which number YOU fix; "daily" = per-day wage for site workers (6-day week, 1 weekly off)
   amount: number;                              // the number for that basis
   period: "month" | "year";                    // only meaningful for ctc / gross
   basic_mode: "pct_gross" | "pct_ctc" | "fixed";
@@ -12,12 +12,14 @@ export type SalaryCfg = {
   pf_cap: boolean;                             // PF on max ₹15,000 wage
   employer_in_ctc: boolean;                    // CTC = gross + employer PF/admin/ESI  (false: CTC = gross)
   pt_monthly?: number | null;                  // override Professional Tax per month (blank = Maharashtra slab)
+  days_per_month?: number;                     // daily wage only: working days the monthly estimate is based on (26 = 30 days less 4 weekly offs)
 };
 
 export const PF_WAGE_CEILING = 15000, ESI_CEILING = 21000;
+export const DAILY_DAYS_PER_WEEK = 6, DAILY_DEFAULT_DAYS = 26;
 const PF_EE = 0.12, PF_ER = 0.12, ADMIN_EDLI = 0.01, ESI_EE = 0.0075, ESI_ER = 0.0325;
 
-export const DEFAULT_CFG: SalaryCfg = { basis: "inhand", amount: 0, period: "month", basic_mode: "pct_gross", basic_value: 50, hra_pct: 40, pf_applicable: true, pf_cap: true, employer_in_ctc: true, pt_monthly: null };
+export const DEFAULT_CFG: SalaryCfg = { basis: "inhand", amount: 0, period: "month", basic_mode: "pct_gross", basic_value: 50, hra_pct: 40, pf_applicable: true, pf_cap: true, employer_in_ctc: true, pt_monthly: null, days_per_month: DAILY_DEFAULT_DAYS };
 
 /** One-click structures that mirror the letters you already issue. */
 export const PRESETS: { key: string; label: string; cfg: Partial<SalaryCfg> }[] = [
@@ -30,6 +32,7 @@ export type Month = { basic: number; hra: number; special: number; gross: number
 export type Calc = {
   cfg: SalaryCfg; monthly: Month; annual: Month; ptAnnual: number; exact: boolean; diff: number; warnings: string[];
   labels: { basic: string; hra: string; pf: string; esi: string; pt: string; special: string };
+  daily?: { rate: number; days: number };      // set for daily-wage workers
 };
 
 /** Maharashtra Professional Tax slab (men / women). Verify with your CA — slabs change. */
@@ -67,8 +70,28 @@ function build(cfg: SalaryCfg, gender: string | null | undefined, x: number): { 
 
 const pick = (m: Month, basis: SalaryCfg["basis"]) => (basis === "inhand" ? m.net : basis === "gross" ? m.gross : m.ctc);
 
+/** Daily wage: rate × working days = estimated monthly earnings. Weekly off is not a working day (unpaid unless you raise the days). */
+function calcDaily(cfg: SalaryCfg, gender?: string | null): Calc | null {
+  const rate = Number(cfg.amount); if (!rate || rate <= 0) return null;
+  const days = Number(cfg.days_per_month) > 0 ? Number(cfg.days_per_month) : DAILY_DEFAULT_DAYS;
+  const R = Math.round, gross = R(rate * days), wage = cfg.pf_cap ? Math.min(gross, PF_WAGE_CEILING) : gross;
+  const pf = cfg.pf_applicable ? R(wage * PF_EE) : 0, esi = gross <= ESI_CEILING ? Math.ceil(gross * ESI_EE) : 0;
+  const pt = cfg.pt_monthly != null && cfg.pt_monthly !== ("" as any) ? Number(cfg.pt_monthly) : ptSlab(gross, gender);
+  const erPF = cfg.employer_in_ctc && cfg.pf_applicable ? R(wage * PF_ER) : 0, erAdmin = cfg.employer_in_ctc && cfg.pf_applicable ? R(wage * ADMIN_EDLI) : 0;
+  const erESI = cfg.employer_in_ctc && gross <= ESI_CEILING ? Math.ceil(gross * ESI_ER) : 0, erTotal = erPF + erAdmin + erESI, ded = pf + esi + pt;
+  const m: Month = { basic: gross, hra: 0, special: 0, gross, pf, esi, pt, ded, net: gross - ded, erPF, erAdmin, erESI, erTotal, ctc: gross + erTotal };
+  const ptA = m.pt === 0 ? 0 : ptYear(m.pt), A = (k: keyof Month) => m[k] * 12;
+  const annual: Month = { basic: A("basic"), hra: 0, special: 0, gross: A("gross"), pf: A("pf"), esi: A("esi"), pt: ptA, ded: 0, net: 0, erPF: A("erPF"), erAdmin: A("erAdmin"), erESI: A("erESI"), erTotal: A("erTotal"), ctc: 0 };
+  annual.ded = annual.pf + annual.esi + annual.pt; annual.net = annual.gross - annual.ded; annual.ctc = annual.gross + annual.erTotal;
+  const warnings = [`Estimate: ₹${rate.toLocaleString("en-IN")} per day × ${days} working days. Actual pay follows days worked (${DAILY_DAYS_PER_WEEK}-day week, one weekly off).`];
+  if (gross <= ESI_CEILING) warnings.push("Estimated monthly earnings are ₹21,000 or below, so ESI (0.75% employee, 3.25% employer) is applied automatically.");
+  return { cfg, monthly: m, annual, ptAnnual: ptA, exact: true, diff: 0, warnings, daily: { rate, days },
+    labels: { basic: `Daily Wages (₹${rate.toLocaleString("en-IN")} × ${days} days)`, hra: "", special: "", pf: `Employee PF Contribution (12% of wages${cfg.pf_cap && gross > PF_WAGE_CEILING ? ", capped at ₹15k statutory ceiling" : ""})`, esi: "Employee ESI Contribution (Gross > ₹21,000 = nil)", pt: "Professional Tax (PT - Maharashtra Standard)" } };
+}
+
 export function calcSalary(cfg0: Partial<SalaryCfg>, gender?: string | null): Calc | null {
   const cfg = { ...DEFAULT_CFG, ...cfg0 } as SalaryCfg;
+  if (cfg.basis === "daily") return calcDaily(cfg, gender);
   const amt = Number(cfg.amount); if (!amt || amt <= 0) return null;
   const target = cfg.period === "year" && cfg.basis !== "inhand" ? Math.round(amt / 12) : Math.round(amt);
   const warnings: string[] = [];
@@ -123,6 +146,7 @@ export const rupeesWords = (n: number) => `Rupees ${numToWordsIN(n)} Only`;
 export type AnnexureRow = { label: string; monthly: string; annual: string; kind?: "head" | "total" | "grand" | "row" };
 /** Rows exactly as printed in Annexure A (same order/wording as your existing letters). */
 export function annexureRows(c: Calc): AnnexureRow[] {
+  if (c.daily) return dailyRows(c);
   const m = c.monthly, a = c.annual, L = c.labels, r = (label: string, mv: number, av: number, kind: AnnexureRow["kind"] = "row"): AnnexureRow => ({ label, monthly: inr(mv), annual: inr(av), kind });
   const showEr = c.cfg.employer_in_ctc;
   const rows: AnnexureRow[] = [{ label: "A. Earnings", monthly: "", annual: "", kind: "head" },
@@ -137,7 +161,26 @@ export function annexureRows(c: Calc): AnnexureRow[] {
     r("Total Cost to Company - CTC (A + D)", m.ctc, a.ctc, "grand"));
   return rows;
 }
+function dailyRows(c: Calc): AnnexureRow[] {
+  const m = c.monthly, a = c.annual, d = c.daily!, L = c.labels, r = (label: string, mv: number, av: number, kind: AnnexureRow["kind"] = "row"): AnnexureRow => ({ label, monthly: inr(mv), annual: inr(av), kind });
+  const info = (label: string, v: string): AnnexureRow => ({ label, monthly: v, annual: "", kind: "row" });
+  const rows: AnnexureRow[] = [{ label: "A. Wages", monthly: "", annual: "", kind: "head" },
+    info("Daily Wage Rate (per day worked)", inr(d.rate)), info("Working days per week", `${DAILY_DAYS_PER_WEEK} (one weekly off)`), info("Estimated working days per month", String(d.days)),
+    r("Estimated Monthly Wages (A)", m.gross, a.gross, "total"),
+    { label: "B. Employee Deductions", monthly: "", annual: "", kind: "head" },
+    ...(c.cfg.pf_applicable ? [r(L.pf, m.pf, a.pf)] : []), r(L.esi, m.esi, a.esi), r(L.pt, m.pt, a.pt),
+    r("Total Deductions (B)", m.ded, a.ded, "total"), r("C. Estimated Net In-Hand (A - B)", m.net, a.net, "total")];
+  if (c.cfg.employer_in_ctc) rows.push({ label: "D. Employer Contributions", monthly: "", annual: "", kind: "head" },
+    ...(c.cfg.pf_applicable ? [r("Employer PF Contribution (12% of wages)", m.erPF, a.erPF), r("PF Admin & EDLI Charges (~1% of PF wage)", m.erAdmin, a.erAdmin)] : []),
+    r("Employer ESI Contribution", m.erESI, a.erESI), r("Total Employer Contributions (D)", m.erTotal, a.erTotal, "total"), r("Estimated Monthly Cost to Company (A + D)", m.ctc, a.ctc, "grand"));
+  return rows;
+}
 export function annexureNotes(c: Calc, tfa = true): string[] {
+  if (c.daily) {
+    const n = [`Wages are paid at the daily rate for each day actually worked. The working week is ${DAILY_DAYS_PER_WEEK} days with one weekly off, which is not a working day. Monthly figures are an estimate based on ${c.daily.days} working days and will vary with actual attendance.`];
+    if (tfa) n.push("All Site Travel, Food, Lodging, and Local Transportation costs are borne directly by the company and are over and above the daily wage listed above.");
+    return n;
+  }
   const n = ["Professional Tax is calculated per Maharashtra rules (₹200/month for 11 months, ₹300 for February)."];
   if (tfa) n.push(`All Site Travel, Food, Lodging, and Local Transportation costs are borne directly by the company and are over and above the ${c.cfg.basis === "inhand" ? "monthly salary" : "CTC"} listed above.`);
   return n;

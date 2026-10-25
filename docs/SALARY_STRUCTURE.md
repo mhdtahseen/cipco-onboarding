@@ -181,3 +181,14 @@ Gratuity / bonus / variable pay, LWF, TDS, conveyance or other allowances, emplo
 
 - `employees.salary` — the inputs in §2. `employees.monthly_ctc` — kept in sync with the calculated monthly CTC (used in lists/export).
 - `letters.annexure` — the exact rows and notes printed on that letter; `letters.vars` — the wording variables used.
+
+## 13. Daily-wage workers (`basis = "daily"`)
+
+For site workers paid per day worked: **6 working days a week, one weekly off.** You fix the **daily rate**; nothing is split into basic / HRA / special.
+
+- **Monthly estimate** = daily rate × working days per month (`days_per_month`, default **26** = 30 days less 4 weekly offs). The weekly off is *not* a working day, so it is unpaid by default. If the weekly off is paid for a worker, set 30.
+- **Deductions** use the same rules as other staff, applied to the estimated monthly wages: PF 12% (wage capped at ₹15,000 when "cap PF wage" is ticked), ESI 0.75% when the estimate is ₹21,000 or below, Professional Tax by the Maharashtra slab (or the override).
+- **Employer contributions** are excluded from the cost by default for daily wage (the editor switches "CTC includes employer PF / EDLI / ESI" off); tick it to include them.
+- `employees.monthly_ctc` stores the monthly estimate (plus employer contributions if included), so project reports show an estimate for daily-wage staff.
+- **Letters**: `{{comp_label}}` = "Daily wage", `{{comp_figure}}` = the daily rate, `{{comp_period}}` = "per day" (it is "per month" for everyone else), and `{{comp_suffix}}` adds the six-day-week wording. Annexure A prints the daily rate, working days, estimated monthly wages and deductions, with a note that pay follows days actually worked.
+- Run `supabase/migrations/2026-10-daily-wage-wording.sql` once so existing compensation clauses use `{{comp_period}}`.

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { stageLabel } from "@/lib/pipeline";
 import { useRouter } from "next/navigation";
@@ -7,13 +7,45 @@ import { supabase } from "@/lib/supabase/client";
 import { EMPTY, FIELD_GROUPS, validate } from "@/lib/fields";
 import SalaryEditor from "./SalaryEditor";
 import { calcSalary } from "@/lib/salary";
+import type { Department, Project } from "@/lib/types";
 
 export default function EmployeeForm({ initial, onSaved }: { initial: Record<string, any> | null; onSaved?: (e: any) => void }) {
   const [v, setV] = useState<Record<string, any>>(initial ?? EMPTY); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(""); const [dup, setDup] = useState<{ id: string; full_name: string; why: string; where: string } | null>(null); const router = useRouter();
+  const [projects, setProjects] = useState<Project[]>([]); const [depts, setDepts] = useState<Department[]>([]);
+  useEffect(() => { (async () => {
+    const sb = supabase(); const [p, d] = await Promise.all([sb.from("projects").select("*").order("name"), sb.from("departments").select("*").eq("active", true).order("name")]);
+    setProjects((p.data || []) as Project[]); setDepts((d.data || []) as Department[]);   // empty until the projects migration has been run
+  })(); }, []);
   const warn = validate(v); const isNew = !initial;
   const groups = isNew ? [{ title: "Candidate", fields: FIELD_GROUPS.flatMap((g) => g.fields).filter((f) => ["full_name", "phone", "email", "designation", "department"].includes(f.key)) }] : FIELD_GROUPS;
   const need: Record<string, string> = { Employment: "needed for offer", "Personal & family": "needed for joining forms", Address: "needed for joining forms", "Statutory & bank": "needed for joining forms", "Nominee & emergency contact": "needed for joining forms" };
   const set = (k: string, val: any) => setV((p) => ({ ...p, [k]: val }));
+  async function addDept() {
+    const name = prompt("New department name (it will be available in the dropdown from now on):")?.trim(); if (!name) return;
+    const ex = depts.find((d) => d.name.toLowerCase() === name.toLowerCase()); if (ex) { set("department", ex.name); return; }
+    const { data, error } = await supabase().from("departments").insert({ name }).select().single();
+    if (error) { alert(error.message + " — has the projects & departments SQL migration been run?"); return; }
+    setDepts((l) => [...l, data as Department].sort((a, b) => a.name.localeCompare(b.name))); set("department", name);
+  }
+  function pickProject(id: string) {
+    if (id === "__legacy") return;
+    if (!id) { setV((p) => ({ ...p, project: "", project_id: null })); return; }
+    const pr = projects.find((x) => x.id === id); if (!pr) return;
+    setV((p) => ({ ...p, project: pr.name, project_id: pr.id, ...(pr.location ? { site_location: pr.location } : {}) }));   // location follows the project
+  }
+  const refField = (key: string) => {
+    if (key === "department") {
+      const cur = v.department ?? ""; const hit = depts.find((d) => d.name.toLowerCase() === cur.toLowerCase()); const val = hit?.name ?? cur;
+      return <select className="inp" value={val} onChange={(e) => (e.target.value === "__new" ? addDept() : set("department", e.target.value))}><option value=""></option>{cur && !hit && <option value={cur}>{cur}</option>}{depts.map((d) => <option key={d.id}>{d.name}</option>)}<option value="__new">+ Add new department…</option></select>;
+    }
+    const sel = projects.find((x) => x.id === v.project_id); const active = projects.filter((x) => x.status === "active");
+    const val = v.project_id && sel ? sel.id : v.project ? "__legacy" : "";
+    return <><select className="inp" value={val} onChange={(e) => pickProject(e.target.value)}><option value=""></option>
+      {val === "__legacy" && <option value="__legacy">{v.project} (not in project list)</option>}
+      {sel && sel.status === "closed" && <option value={sel.id}>{sel.name} (closed)</option>}
+      {active.map((x) => <option key={x.id} value={x.id}>{x.name}{x.location ? ` — ${x.location}` : ""}</option>)}</select>
+      <Link href="/projects" className="text-xs text-blue-700">Manage projects</Link></>;
+  };
   async function save() {
     if (!v.full_name) { setMsg("Full name is required"); return; }
     setBusy(true); setMsg("");
@@ -21,6 +53,7 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
     FIELD_GROUPS.flatMap((g) => g.fields).forEach((f) => { const x = v[f.key]; clean[f.key] = x === "" || x === undefined ? null : f.type === "number" && x !== null ? Number(x) : x; });
     if (clean.aadhaar) clean.aadhaar = String(clean.aadhaar).replace(/\s/g, "");
     if (clean.pan) clean.pan = String(clean.pan).toUpperCase(); if (clean.ifsc) clean.ifsc = String(clean.ifsc).toUpperCase();
+    if (v.project_id !== undefined) clean.project_id = v.project_id;   // only once the projects migration exists
     clean.salary = v.salary ?? {};
     clean.monthly_ctc = calcSalary(v.salary ?? {}, v.gender)?.monthly.ctc ?? null;
     clean.updated_at = new Date().toISOString();
@@ -57,7 +90,7 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
             {g.fields.map((f) => (
               <div key={f.key} className={f.wide ? "sm:col-span-2 lg:col-span-3" : ""}>
                 <label className="lbl">{f.label}</label>
-                {f.type === "select" ? (
+                {f.key === "department" || f.key === "project" ? refField(f.key) : f.type === "select" ? (
                   <select className="inp" value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}><option value=""></option>{f.options!.map((o) => <option key={o}>{o}</option>)}</select>
                 ) : f.type === "textarea" ? (
                   <textarea className="inp" rows={2} value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />

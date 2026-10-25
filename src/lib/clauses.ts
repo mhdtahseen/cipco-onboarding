@@ -14,7 +14,7 @@ export function buildVars(e: Employee, opts: { annexure?: boolean; accept_mode?:
   const mode: AcceptMode = opts.accept_mode ?? "email";
   const first = (e.full_name || "").trim().split(/\s+/)[0] || "";
   const c = salaryFor(e); const basis = c?.cfg.basis ?? "ctc";
-  const target = !c ? 0 : basis === "inhand" ? c.monthly.net : basis === "gross" ? c.monthly.gross : c.monthly.ctc;
+  const target = !c ? 0 : basis === "daily" ? c.daily!.rate : basis === "inhand" ? c.monthly.net : basis === "gross" ? c.monthly.gross : c.monthly.ctc;
   const annualCtc = c ? c.annual.ctc : 0;
   return {
     full_name: e.full_name || "", first_name: first,
@@ -23,9 +23,10 @@ export function buildVars(e: Employee, opts: { annexure?: boolean; accept_mode?:
     site_location: e.site_location || "", base_location: e.base_location || "",
     join_date: fmtDateLong(e.join_date), probation: probationText(e.probation_months),
     // --- compensation wording (follows the basis you chose: CTC / in-hand / gross) ---
-    comp_label: basis === "inhand" ? "Net In-Hand salary" : basis === "gross" ? "Gross salary" : "Cost to Company (CTC)",
+    comp_label: basis === "daily" ? "Daily wage" : basis === "inhand" ? "Net In-Hand salary" : basis === "gross" ? "Gross salary" : "Cost to Company (CTC)",
     comp_figure: target ? inrDash(target) : "", comp_words: target ? rupeesWords(target) : "",
-    comp_suffix: !c ? "" : basis === "inhand" ? ", after applicable statutory deductions (Employee PF and Professional Tax)" : basis === "ctc" ? ` (${inrDash(annualCtc)} per annum)` : "",
+    comp_period: basis === "daily" ? "per day" : "per month",
+    comp_suffix: !c ? "" : basis === "daily" ? ", for a six-day working week with one weekly off (wages are paid for the days actually worked)" : basis === "inhand" ? ", after applicable statutory deductions (Employee PF and Professional Tax)" : basis === "ctc" ? ` (${inrDash(annualCtc)} per annum)` : "",
     comp_annexure_ref: opts.annexure ? "The detailed salary structure is specified in Annexure A." : "Provident Fund (PF) and Professional Tax (PT) will be deducted as per company policy.",
     comp_heading: opts.annexure ? "Compensation & Compensation Break-Up" : "Compensation",
     ctc_figure: c ? inrDash(c.monthly.ctc) : "", ctc_words: c ? rupeesWords(c.monthly.ctc) : "",

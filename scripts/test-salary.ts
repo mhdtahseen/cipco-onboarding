@@ -12,3 +12,6 @@ show("Sanjivan (CTC 7,00,000/yr, 50% of CTC)", calcSalary({ ...P("pct_ctc"), bas
 show("CTC 3,00,000/yr, 50% of gross", calcSalary({ ...P("pct_gross"), basis: "ctc", amount: 300000, period: "year" }, "Male"), {});
 show("Gross 40,000/month fixed 15k", calcSalary({ ...P("fixed15"), basis: "gross", amount: 40000 }, "Male"), {});
 show("In-hand 18,000 (ESI range)", calcSalary({ ...P("pct_gross"), basis: "inhand", amount: 18000 }, "Male"), {});
+// Daily wage: ₹800/day × 26 days = 20,800 gross; PF on the ₹15,000 cap = 1,800; ESI 0.75% = 156; PT 200 → net 18,644
+show("Daily wage ₹800 × 26 days", calcSalary({ basis: "daily", amount: 800, pf_applicable: true, pf_cap: true, employer_in_ctc: false }, "Male"), { gross: 20800, pf: 1800, esi: 156, pt: 200, net: 18644, ctc: 20800 });
+show("Daily wage ₹1,000 × 30 days (weekly off paid), no PF", calcSalary({ basis: "daily", amount: 1000, days_per_month: 30, pf_applicable: false, employer_in_ctc: false }, "Male"), { gross: 30000, pf: 0, esi: 0, pt: 200, net: 29800 });
