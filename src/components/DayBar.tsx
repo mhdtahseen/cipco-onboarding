@@ -1,24 +1,21 @@
 "use client";
 import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
-import { effectiveStatus, fmtTime, isSupervisorRole, type AttRow, type DayRow, type Passenger, type Person, type Trip } from "@/lib/attendance";
+import { effectiveStatus, fmtTime, isSupervisorRole, type AttRow, type DayRow, type Person, type Run, type Vehicle } from "@/lib/attendance";
 
 // Day sign-off: the Supervisor submits the day, the Site Engineer (or Admin) verifies it. Before either, the exceptions are listed.
-export default function DayBar({ projectId, date, role, day, names, people, rows, trips, passengers, canWrite, reload }: { projectId: string; date: string; role: string | null; day: DayRow | null; names: Record<string, string>; people: Person[]; rows: Record<string, AttRow>; trips: Trip[]; passengers: Passenger[]; canWrite: boolean; reload: () => void }) {
+export default function DayBar({ projectId, date, role, day, names, people, rows, vehicles, runs, canWrite, reload }: { projectId: string; date: string; role: string | null; day: DayRow | null; names: Record<string, string>; people: Person[]; rows: Record<string, AttRow>; vehicles: Vehicle[]; runs: Run[]; canWrite: boolean; reload: () => void }) {
   const [open, setOpen] = useState(false); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   const verifier = role === "site_engineer" || role === "staff" || role === "admin"; const submitted = !!day?.submitted_at, verified = !!day?.verified_at;
   const who = (id: string | null) => (id && names[id]) || "someone";
   const issues = useMemo(() => {
-    const onPick = new Set(passengers.filter((p) => p.leg === "pickup").map((p) => p.employee_id)), onDrop = new Set(passengers.filter((p) => p.leg === "drop").map((p) => p.employee_id));
-    const hasPick = trips.some((t) => t.leg === "pickup"), hasDrop = trips.some((t) => t.leg === "drop"); const out: { label: string; names: string[] }[] = [];
-    const st = (p: Person) => effectiveStatus(p, date, rows[p.employee_id]);
-    const add = (label: string, list: Person[]) => { if (list.length) out.push({ label, names: list.map((p) => p.full_name) }); };
-    add("Not marked yet", people.filter((p) => st(p) === null));
-    add("Marked absent but on a trip", people.filter((p) => st(p) === "absent" && (onPick.has(p.employee_id) || onDrop.has(p.employee_id))));
-    if (hasPick) add("Present but not on a pickup", people.filter((p) => (st(p) === "present" || st(p) === "half") && !onPick.has(p.employee_id)));
-    if (hasDrop) add("Present but not on a drop", people.filter((p) => (st(p) === "present" || st(p) === "half") && !onDrop.has(p.employee_id)));
+    const out: { label: string; names: string[] }[] = []; const act = vehicles.filter((v) => v.active || runs.some((r) => r.vehicle_id === v.id));
+    const unmarked = people.filter((p) => effectiveStatus(p, date, rows[p.employee_id]) === null).map((p) => p.full_name); if (unmarked.length) out.push({ label: "Not marked yet", names: unmarked });
+    const todo: string[] = [], missed: string[] = [];
+    act.forEach((v) => (["pickup", "drop"] as const).forEach((leg) => { const r = runs.find((x) => x.vehicle_id === v.id && x.leg === leg); const t = `${v.name} ${leg}`; if (!r) todo.push(t); else if (r.status === "no_show") missed.push(t); }));
+    if (todo.length) out.push({ label: "Transport not recorded", names: todo }); if (missed.length) out.push({ label: "Vehicle didn't show", names: missed });
     return out;
-  }, [people, rows, trips, passengers, date]);
+  }, [people, rows, vehicles, runs, date]);
   async function run(fn: "day_submit" | "day_verify" | "day_reopen") { setBusy(true); setErr(""); const { error } = await supabase().rpc(fn, { p_project: projectId, p_date: date }); setBusy(false); if (error) { setErr(error.message); return; } reload(); }
   const count = issues.reduce((n, i) => n + i.names.length, 0);
 

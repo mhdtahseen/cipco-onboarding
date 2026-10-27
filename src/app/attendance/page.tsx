@@ -31,7 +31,7 @@ export default function AttendancePage() {
       {!loading && !err && !projects.length && <p className="card text-center text-sm text-slate-500">{rank === 1 ? "No project has been assigned to you yet. Please ask an admin." : "No projects yet."}</p>}
       {proj && <>
         <div role="tablist" className="flex border-b border-slate-200">{([["day", "Daily sheet"], ["month", "Monthly"], ...(rank >= 2 ? [["activity", "Activity"] as const] : [])] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={`tab flex-1 sm:flex-none justify-center min-h-12 touch-manipulation ${tab === k ? "tab-on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>
-        <ErrorBoundary key={`${tab}-${pid}`} label={tab === "day" ? "The daily sheet" : tab === "month" ? "The monthly view" : "The activity log"}>{tab === "day" ? <AttendanceSheet projectId={pid} role={role} vendors={vendors} vehicles={vehicles} names={names} /> : tab === "month" ? <AttendanceMonth projectId={pid} projectName={proj.name} vendors={vendors} rates={rates} /> : <ActivityFeed projectId={pid} />}</ErrorBoundary>
+        <ErrorBoundary key={`${tab}-${pid}`} label={tab === "day" ? "The daily sheet" : tab === "month" ? "The monthly view" : "The activity log"}>{tab === "day" ? <AttendanceSheet projectId={pid} role={role} vendors={vendors.filter((v) => v.project_id === pid)} vehicles={vehicles.filter((v) => v.project_id === pid)} names={names} /> : tab === "month" ? <AttendanceMonth projectId={pid} projectName={proj.name} vendors={vendors.filter((v) => v.project_id === pid)} rates={rates} /> : <ActivityFeed projectId={pid} />}</ErrorBoundary>
       </>}
     </div>
   );

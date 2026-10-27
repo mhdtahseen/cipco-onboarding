@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase/client";
 import { ROLE_LABEL } from "@/lib/roles";
 
 type Log = { id: number; at: string; tx: number; user_name: string | null; user_role: string | null; work_date: string | null; employee_name: string | null; field: string; old_value: string | null; new_value: string | null; action: string; overrode: string | null };
-const FIELD: Record<string, string> = { status: "work", breakfast: "breakfast", lunch: "lunch", dinner: "dinner", pickup: "pickup", drop: "drop", trip: "trip", trip_time: "trip time", trip_vehicle: "trip vehicle", day: "day" };
+const FIELD: Record<string, string> = { status: "work", breakfast: "breakfast", lunch: "lunch", dinner: "dinner", pickup: "pickup", drop: "drop", day: "day" };
 const when = (iso: string) => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" });
 
 // Who changed what, newest first. Read-only: the database writes this log and nothing can edit it.
@@ -15,6 +15,7 @@ export default function ActivityFeed({ projectId }: { projectId: string }) {
   const line = (r: Log) => {
     const who = r.employee_name ? <b className="font-medium text-slate-900">{r.employee_name}</b> : null;
     if (r.action === "submit" || r.action === "verify" || r.action === "reopen") return <>{r.action === "submit" ? "submitted" : r.action === "verify" ? "verified" : "reopened"} the day</>;
+    if (r.field === "pickup" || r.field === "drop") return r.action === "delete" ? <>cleared {r.field}: {r.old_value}</> : r.action === "create" ? <>{r.field}: {r.new_value}</> : <>{r.field}: {r.old_value} → {r.new_value}</>;
     if (r.action === "create") return <>{FIELD[r.field] ?? r.field}: {who} → {r.new_value || "—"}</>;
     if (r.action === "delete") return <>removed {FIELD[r.field] ?? r.field}: {who} (was {r.old_value || "—"})</>;
     return <>{FIELD[r.field] ?? r.field}: {who} {r.old_value || "—"} → {r.new_value || "—"}</>;

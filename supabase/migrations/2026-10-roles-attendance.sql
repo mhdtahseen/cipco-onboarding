@@ -1,6 +1,7 @@
 -- Roles (admin / staff / supervisor) + the attendance tracker (work + breakfast / lunch / dinner per vendor).
 -- Run AFTER the other 2026-10 migrations (the tables they create are protected here if they exist).
--- Safe to run more than once.
+-- Run this ONCE, first. If 2026-10-attendance-accountability-transport.sql has already been run, do not run this file again:
+-- run only the accountability file (it contains everything newer and is safe to re-run).
 --
 -- WHAT THIS CHANGES: before, any logged-in user could read and write every table. After this, a user needs a row in
 -- user_roles. Everyone who has an account today is made an ADMIN below, so nothing changes for you. Accounts created
@@ -12,7 +13,7 @@ create table if not exists public.user_roles (
   role text not null check (role in ('admin','staff','attendance')),
   created_at timestamptz not null default now()
 );
-create table if not exists public.user_projects (          -- which projects an supervisor may handle
+create table if not exists public.user_projects (          -- which projects a supervisor may handle
   user_id uuid not null references auth.users(id) on delete cascade,
   project_id uuid not null references public.projects(id) on delete cascade,
   primary key (user_id, project_id)
@@ -40,6 +41,7 @@ create policy "read own projects" on public.user_projects for select to authenti
 create policy "admin manages user projects" on public.user_projects for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 -- Admin-only list of logins (emails live in auth.users, which the app cannot read directly).
+drop function if exists public.admin_list_users();
 create or replace function public.admin_list_users() returns table (user_id uuid, email text, last_sign_in_at timestamptz, role text, project_ids uuid[])
 language plpgsql stable security definer set search_path = public as $$
 begin
@@ -60,7 +62,7 @@ do $$ declare t text; begin
     end if;
   end loop;
 end $$;
--- An supervisor may see the projects they are assigned to (name / location only matter here).
+-- A supervisor may see the projects they are assigned to (name / location only matter here).
 drop policy if exists "attendance read assigned" on public.projects;
 create policy "attendance read assigned" on public.projects for select to authenticated
   using (public.app_role() = 'attendance' and exists (select 1 from public.user_projects up where up.user_id = auth.uid() and up.project_id = projects.id));

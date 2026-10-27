@@ -11,7 +11,7 @@ import { Icon } from "./NavIcons";
 //  desktop (≥1280px): a sidebar with section headings, collapsible to an icon rail
 //  tablet  (768–1279): a permanent icon rail; its menu button opens the full labelled menu
 //  phone   (<768):     a top bar with a menu button, a bottom bar with the main pages + More, and a slide-out menu
-//  single-purpose logins (an supervisor): no sidebar and no bottom bar, just the top bar
+//  single-purpose logins (a supervisor): no sidebar and no bottom bar, just the top bar
 const BARE = ["/login", "/apply"];   // login and the public candidate form carry no app chrome
 
 export default function AppShell({ children }: { children: React.ReactNode }) {

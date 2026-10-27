@@ -69,7 +69,7 @@ export default function AttendanceMonth({ projectId, projectName, vendors, rates
   const shift = (n: number) => { const d = new Date(+month.slice(0, 4), +month.slice(5, 7) - 1 + n, 1); setMonth(toISO(d).slice(0, 7)); };
   const dl = (name: string, table: (string | number)[][]) => { const q = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`; const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + table.map((r) => r.map(q).join(",")).join("\n")], { type: "text/csv" })); a.download = `${projectName} - ${name} ${month}.csv`; a.click(); };
   const totalsCsv = () => dl("attendance totals", [["Name", "Emp no.", "Days worked", "Absent days", "Breakfasts", "Lunches", "Dinners", "Meal cost"], ...calc.per.map((x) => [x.p.full_name, x.p.emp_no ?? "", x.worked, x.absent, ...x.meals, x.cost])]);
-  const detailCsv = () => dl("attendance daily", [["Name", "Emp no.", "Date", "Status", "Breakfast", "Lunch", "Dinner"], ...rows.map((r) => { const p = people.find((x) => x.employee_id === r.employee_id); return [p?.full_name ?? "", p?.emp_no ?? "", r.work_date, r.status, vName(r.breakfast_vendor_id), vName(r.lunch_vendor_id), vName(r.dinner_vendor_id)]; })]);
+  const detailCsv = () => dl("attendance daily", [["Name", "Emp no.", "Date", "Status", "Breakfast", "Lunch", "Dinner"], ...rows.map((r) => { const p = people.find((x) => x.employee_id === r.employee_id); return [p?.full_name ?? "", p?.emp_no ?? "", r.work_date, r.status ?? "", vName(r.breakfast_vendor_id), vName(r.lunch_vendor_id), vName(r.dinner_vendor_id)]; })]);
 
   return (
     <div className="space-y-3">

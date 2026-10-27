@@ -72,10 +72,11 @@ Supervisor sees only the Attendance page for their assigned project(s). Work (pr
 Roles are now Admin, Site Engineer (sees attendance only) and Supervisor. Every attendance / transport change is stamped with who and when (server time) and written to an append-only log. A Supervisor's entry can be overridden by the Site Engineer (stamped, no reason needed); the Supervisor edits the same day until 11 PM, the Site Engineer that day plus the next, Admin always.
 
 - [x] Migration `supabase/migrations/2026-10-attendance-accountability-transport.sql` (run AFTER `2026-10-roles-attendance.sql`): role rename, names on logins, rank-protected entries, activity log, day sign-off, transport vehicles / trips / passengers / payments, money visible to Admin only
-- [x] Daily sheet: "who · time" on every row, Transport card (Pickup / Drop trips with people on board), day bar (Supervisor submits, Site Engineer verifies, reopen) with a review list
-- [x] Activity tab (Admin / Site Engineer), Sites today page, Transport page (vehicles, price per trip, payments, balance due)
+- [x] Daily sheet: "who · time" on every row, Transport card (per vehicle: Pickup and Drop, Showed / No show with a server time), day bar (Supervisor submits, Site Engineer verifies, reopen) with a review list
+- [x] Activity tab (Admin / Site Engineer), Sites today page, Transport page per project (vehicles paid per trip or monthly, no-shows, errands, payments, balance due)
 - [ ] Run the migration in Supabase, then give each person a name and role on the Users page
-- [ ] Add vehicles and trip prices on the Transport page
+- [ ] Settings → Food vendors: pick each project and add its vendors (e.g. accommodation mess, site canteen) with prices; assign any old vendors listed as "Not assigned"
+- [ ] Add the hired vehicles on the Transport page for each project, choosing per trip or monthly and the price
 - [ ] Try the Supervisor and Site Engineer logins on a phone at the site
 - [x] Update docs/ROLES_AND_ATTENDANCE.md (repo copy)
 - [ ] Update the online Claude Doc to match (still shows the old three-role version)

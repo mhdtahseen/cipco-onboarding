@@ -6,15 +6,15 @@ import { Icon } from "./NavIcons";
 import { roleRank } from "@/lib/roles";
 import TransportCard from "./TransportCard";
 import DayBar from "./DayBar";
-import { MEALS, STATUS_LABEL, addDays, canWriteDay, dayName, effectiveStatus, fmtTime, isFuture, isLocked, isSupervisorRole, isWeeklyOff, istToday, type AttRow, type DayRow, type Meal, type Passenger, type Person, type Status, type Trip, type Vehicle, type Vendor } from "@/lib/attendance";
+import { MEALS, STATUS_LABEL, addDays, canWriteDay, dayName, effectiveStatus, fmtTime, isFuture, isLocked, isSupervisorRole, isWeeklyOff, istToday, type AttRow, type DayRow, type Meal, type Person, type Run, type Status, type Vehicle, type Vendor } from "@/lib/attendance";
 
 const WORK: { s: Status; label: string }[] = [{ s: "present", label: "Present" }, { s: "absent", label: "Absent" }, { s: "half", label: "Half-day" }, { s: "off", label: "Off" }];
-const blank = (p: Person, projectId: string, date: string, status: Status): AttRow => ({ employee_id: p.employee_id, project_id: projectId, work_date: date, status, breakfast_vendor_id: null, lunch_vendor_id: null, dinner_vendor_id: null });
+const blank = (p: Person, projectId: string, date: string, status: Status | null): AttRow => ({ employee_id: p.employee_id, project_id: projectId, work_date: date, status, breakfast_vendor_id: null, lunch_vendor_id: null, dinner_vendor_id: null });
 
 // The daily sheet: one card per person on the project — work status and, for each meal, which vendor (or none). Saves on every tap.
 export default function AttendanceSheet({ projectId, role, vendors, vehicles, names }: { projectId: string; role: string | null; vendors: Vendor[]; vehicles: Vehicle[]; names: Record<string, string> }) {
   const admin = role === "admin"; const myRank = roleRank(role);
-  const [trips, setTrips] = useState<Trip[]>([]); const [passengers, setPassengers] = useState<Passenger[]>([]); const [day, setDay] = useState<DayRow | null>(null);
+  const [runs, setRuns] = useState<Run[]>([]); const [day, setDay] = useState<DayRow | null>(null);
   const [date, setDate] = useState(istToday()); const [people, setPeople] = useState<Person[]>([]); const [rows, setRows] = useState<Record<string, AttRow>>({});
   const [loading, setLoading] = useState(true); const [err, setErr] = useState(""); const [msg, setMsg] = useState(""); const [bulkMeal, setBulkMeal] = useState<Meal>("lunch"); const [bulkVendor, setBulkVendor] = useState(""); const [q, setQ] = useState(""); const [onlyOpen, setOnlyOpen] = useState(false); const [qa, setQa] = useState(false); const [statusPick, setStatusPick] = useState<Status>("present"); const [scopePick, setScopePick] = useState<"open" | "all">("open"); const [qm, setQm] = useState(false); const qmRef = useRef<HTMLDivElement>(null); const wide = useMedia("(min-width: 1024px)");
   useEffect(() => {
@@ -32,8 +32,8 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
     const list = (ppl || []) as Person[]; setPeople(list);
     const { data: att } = list.length ? await sb().from("attendance").select("*").eq("work_date", date).in("employee_id", list.map((p) => p.employee_id)) : { data: [] };
     const m: Record<string, AttRow> = {}; ((att || []) as AttRow[]).forEach((a) => (m[a.employee_id] = a)); setRows(m);
-    const [t, ps, d] = await Promise.all([sb().from("transport_trips").select("*").eq("project_id", projectId).eq("work_date", date), sb().from("transport_passengers").select("*").eq("project_id", projectId).eq("work_date", date), sb().from("attendance_days").select("*").eq("project_id", projectId).eq("work_date", date).maybeSingle()]);
-    setTrips((t.data || []) as Trip[]); setPassengers((ps.data || []) as Passenger[]); setDay((d.data as DayRow) ?? null); setLoading(false); return m;
+    const [t, d] = await Promise.all([sb().from("transport_runs").select("*").eq("project_id", projectId).eq("work_date", date), sb().from("attendance_days").select("*").eq("project_id", projectId).eq("work_date", date).maybeSingle()]);
+    setRuns((t.data || []) as Run[]); setDay((d.data as DayRow) ?? null); setLoading(false); return m;
   }
   useEffect(() => { load(); }, [projectId, date]);
 
@@ -41,7 +41,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
   async function save(p: Person, patch: Partial<AttRow>) {
     if (locked) return; const cur = rows[p.employee_id];
     if (cur?.rank && cur.rank > myRank) { setErr(`${p.full_name} was set by the ${cur.rank === 3 ? "Admin" : "Site Engineer"}; you can't change it.`); return; }
-    const next: AttRow = { ...(cur ?? blank(p, projectId, date, effectiveStatus(p, date) ?? "present")), ...patch };   // tapping a meal on an unmarked person marks them present (or weekly off on their off day)
+    const next: AttRow = { ...(cur ?? blank(p, projectId, date, null)), ...patch };   // a meal can be recorded for anyone (absent, off, not marked): meals are ours to pay for whatever their work status
     setRows((r) => ({ ...r, [p.employee_id]: next })); setErr("");
     const { data, error } = await sb().from("attendance").upsert(toRecord(next), { onConflict: "employee_id,work_date" }).select().single();
     if (error) { setErr(error.message); setRows((r) => { const c = { ...r }; if (cur) c[p.employee_id] = cur; else delete c[p.employee_id]; return c; }); return; }
@@ -74,16 +74,16 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
   async function copyYesterdayAttendance() {
     const { data } = await sb().from("attendance").select("*").eq("work_date", addDays(date, -1)).in("employee_id", people.map((p) => p.employee_id));
     const y: Record<string, AttRow> = {}; ((data || []) as AttRow[]).forEach((a) => (y[a.employee_id] = a));
-    const ups: AttRow[] = []; people.forEach((p) => { const prev = y[p.employee_id]; if (!prev || prev.status === "off" || effectiveStatus(p, date, rows[p.employee_id]) !== null) return; ups.push(blank(p, projectId, date, prev.status)); });   // only people still open; yesterday's weekly off is not carried over
+    const ups: AttRow[] = []; people.forEach((p) => { const prev = y[p.employee_id]; if (!prev || !prev.status || prev.status === "off" || effectiveStatus(p, date, rows[p.employee_id]) !== null) return; ups.push(blank(p, projectId, date, prev.status)); });   // only people still open; yesterday's weekly off is not carried over
     bulk(ups, "Copied yesterday's attendance ✓", "Nothing to copy — nobody who was marked yesterday is still open today.");
   }
   async function copyYesterday() {
     const { data } = await sb().from("attendance").select("*").eq("work_date", addDays(date, -1)).in("employee_id", people.map((p) => p.employee_id));
     const y: Record<string, AttRow> = {}; ((data || []) as AttRow[]).forEach((a) => (y[a.employee_id] = a));
-    const ups: AttRow[] = []; people.forEach((p) => { const prev = y[p.employee_id]; if (!prev || prev.status === "absent" || prev.status === "off") return; const cur = rows[p.employee_id] ?? blank(p, projectId, date, effectiveStatus(p, date) ?? "present"); if (cur.status === "absent") return; ups.push({ ...cur, breakfast_vendor_id: prev.breakfast_vendor_id, lunch_vendor_id: prev.lunch_vendor_id, dinner_vendor_id: prev.dinner_vendor_id }); });
-    bulk(ups, "Copied yesterday's meals ✓", "Nothing to copy — nobody who was present yesterday is still unmarked or present today.");
+    const ups: AttRow[] = []; people.forEach((p) => { const prev = y[p.employee_id]; if (!prev || !(prev.breakfast_vendor_id || prev.lunch_vendor_id || prev.dinner_vendor_id)) return; ups.push({ ...(rows[p.employee_id] ?? blank(p, projectId, date, null)), breakfast_vendor_id: prev.breakfast_vendor_id, lunch_vendor_id: prev.lunch_vendor_id, dinner_vendor_id: prev.dinner_vendor_id }); });   // meals are repeated for everyone who had them, whatever their work status
+    bulk(ups, "Copied yesterday's meals ✓", "Nothing to copy — nobody had a meal recorded yesterday.");
   }
-  const setAllMeal = () => { const col = MEALS.find((m) => m.key === bulkMeal)!.col; const ups: AttRow[] = []; people.forEach((p) => { const cur = rows[p.employee_id]; const st = cur?.status ?? effectiveStatus(p, date); if (st !== "present" && st !== "half") return; ups.push({ ...(cur ?? blank(p, projectId, date, "present")), [col]: bulkVendor || null }); }); bulk(ups, "Meals updated ✓", "Nobody is marked Present or Half-day yet — mark people present first, then apply."); };
+  const setAllMeal = () => { const col = MEALS.find((m) => m.key === bulkMeal)!.col; const ups: AttRow[] = people.map((p) => ({ ...(rows[p.employee_id] ?? blank(p, projectId, date, null)), [col]: bulkVendor || null })); bulk(ups, "Meals updated ✓", "Nobody on this project."); };
 
   const quickPanel = (done: () => void, menu = false) => (
     <div className="space-y-4">
@@ -94,7 +94,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
         <button type="button" role={menu ? "menuitem" : undefined} className="btn w-full justify-center" onClick={() => { done(); markAs(); }}>Mark as {STATUS_LABEL[statusPick].toLowerCase()}</button></div>
       <div className="space-y-2 border-t border-slate-100 pt-3"><div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Meals</div>
         <button type="button" role={menu ? "menuitem" : undefined} className="btn w-full justify-center" onClick={() => { done(); copyYesterday(); }}>Copy yesterday's meals</button>
-        <div className="lbl !mb-0">Set a meal for everyone who is present</div>
+        <div className="lbl !mb-0">Set a meal for everyone</div>
         <div className="grid grid-cols-2 gap-2"><select className="inp" aria-label="Meal" value={bulkMeal} onChange={(e) => setBulkMeal(e.target.value as Meal)}>{MEALS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}</select>
           <select className="inp" aria-label="Vendor" value={bulkVendor} onChange={(e) => setBulkVendor(e.target.value)}><option value="">No meal</option>{vendors.filter((v) => v.active).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></div>
         <button type="button" role={menu ? "menuitem" : undefined} className="btn w-full justify-center" onClick={() => { done(); setAllMeal(); }}>Apply</button></div>
@@ -108,9 +108,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
   }, [people, rows, date]);
   const stamp = (r?: AttRow) => (r?.updated_by && r.updated_at ? `${names[r.updated_by] ?? "someone"} · ${fmtTime(r.updated_at)}` : "");
   const prot = (r?: AttRow) => !!r?.rank && r.rank > myRank;   // set by someone senior: shown, not editable
-  const pickedUp = new Set(passengers.filter((x) => x.leg === "pickup").map((x) => x.employee_id)), droppedOff = new Set(passengers.filter((x) => x.leg === "drop").map((x) => x.employee_id));
-  const rideNote = (id: string) => [pickedUp.has(id) ? "Pickup" : "", droppedOff.has(id) ? "Drop" : ""].filter(Boolean).join(" · ");
-  const extras = !loading && people.length > 0 && <div className="space-y-3"><DayBar projectId={projectId} date={date} role={role} day={day} names={names} people={people} rows={rows} trips={trips} passengers={passengers} canWrite={!future || admin} reload={() => load(true)} /><TransportCard projectId={projectId} date={date} people={people} rows={rows} vehicles={vehicles} trips={trips} passengers={passengers} canWrite={!locked} reload={() => load(true)} /></div>;
+  const extras = !loading && people.length > 0 && <div className="space-y-3"><DayBar projectId={projectId} date={date} role={role} day={day} names={names} people={people} rows={rows} vehicles={vehicles} runs={runs} canWrite={!future || admin} reload={() => load(true)} /><TransportCard projectId={projectId} date={date} vehicles={vehicles} runs={runs} canWrite={!locked} today={date === istToday()} reload={() => load(true)} /></div>;
   const vName = (id: string) => vendors.find((v) => v.id === id)?.name ?? "?";
   const shownVendors = (cur: string | null) => vendors.filter((v) => v.active || v.id === cur);
 
@@ -169,12 +167,13 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
       {loading && <p className="text-center text-sm text-slate-400 py-6">Loading…</p>}
       {!loading && !err && !people.length && <p className="text-center text-sm text-slate-400 py-6">Nobody is on this project for {dayName(date)} {date}. People appear once they have a joining date on or before the day.</p>}
       {!loading && people.length > 0 && !shown.length && <p className="text-center text-sm text-slate-400 py-6">{onlyOpen && !q ? "Everyone is marked ✓" : "No one matches."}</p>}
+      {/* meals are shown for everyone: an absent or weekly-off worker still eats, at the accommodation or the site */}
       <div className="space-y-2.5 md:space-y-0 md:grid md:grid-cols-2 md:gap-3">
-        {shown.map((p) => { const r = rows[p.employee_id]; const st = effectiveStatus(p, date, r); const virtualOff = !r && st === "off"; const showMeals = st === "present" || st === "half" || MEALS.some((m) => r?.[m.col]); return (
+        {shown.map((p) => { const r = rows[p.employee_id]; const st = effectiveStatus(p, date, r); const virtualOff = !r && st === "off"; const showMeals = true; return (
           <div key={p.employee_id} data-person className="rounded-2xl bg-white border border-slate-200/80 p-3.5 space-y-3">
             <div className="flex items-center gap-2.5 min-w-0"><span className={`h-2 w-2 shrink-0 rounded-full ${st ? "bg-transparent" : "bg-amber-400"}`} title={st ? undefined : "Not marked yet"} />
               <div className="min-w-0"><div className="text-[15px] font-medium text-slate-900 truncate">{p.full_name}</div><div className="text-xs text-slate-400 truncate">{[p.emp_no, p.designation].filter(Boolean).join(" · ") || "—"}{virtualOff ? " · weekly off" : ""}</div></div>
-              {(stamp(r) || rideNote(p.employee_id)) && <div className="ml-auto text-right text-[11px] leading-tight text-slate-400 shrink-0" data-stamp>{rideNote(p.employee_id) && <div>{rideNote(p.employee_id)}</div>}{stamp(r) && <div>{stamp(r)}</div>}</div>}</div>
+              {stamp(r) && <div className="ml-auto text-right text-[11px] leading-tight text-slate-400 shrink-0" data-stamp>{stamp(r)}</div>}</div>
             <div role="group" aria-label={`Work – ${p.full_name}`} className="grid grid-cols-4 gap-0.5 rounded-xl bg-slate-100 p-1">
               {WORK.map((w) => <button key={w.s} type="button" disabled={locked || prot(r)} aria-pressed={st === w.s} onClick={() => save(p, { status: w.s })} className={`h-11 rounded-lg text-[13px] font-medium touch-manipulation transition-colors disabled:opacity-60 ${st === w.s ? `bg-white shadow-sm ${SEG[w.s]}` : "text-slate-500"}`}>{w.label}</button>)}</div>
             {showMeals && <div className="grid grid-cols-3 gap-2">
@@ -237,7 +236,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
 
       {shown.length > 0 && <div className="card !p-0 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="text-left font-medium pl-4 pr-2 py-2">Name</th><th className="text-left font-medium px-2 py-2 w-[19rem]">Work</th>{MEALS.map((m) => <th key={m.key} className="text-left font-medium px-2 py-2 w-32">{m.label}</th>)}<th className="text-left font-medium px-2 py-2 w-36">Ride · last change</th></tr></thead>
+          <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="text-left font-medium pl-4 pr-2 py-2">Name</th><th className="text-left font-medium px-2 py-2 w-[19rem]">Work</th>{MEALS.map((m) => <th key={m.key} className="text-left font-medium px-2 py-2 w-32">{m.label}</th>)}<th className="text-left font-medium px-2 py-2 w-36">Last change</th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {shown.map((p) => { const r = rows[p.employee_id]; const st = effectiveStatus(p, date, r); const virtualOff = !r && st === "off"; return (
               <tr key={p.employee_id} className="hover:bg-slate-50/70">
@@ -249,7 +248,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
                   <td key={m.key} className="px-2 py-1.5">{many
                     ? <select className="h-8 w-full rounded-lg border border-slate-300 bg-white px-1.5 text-xs disabled:opacity-60" disabled={locked || prot(r)} aria-label={`${m.label} – ${p.full_name}`} value={cur ?? ""} onChange={(e) => save(p, { [m.col]: e.target.value || null })}><option value="">–</option>{list.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
                     : <button type="button" disabled={locked || prot(r)} title="Click to change" aria-label={`${m.label} – ${p.full_name}: ${cur ? vName(cur) : "none"}. Click to change.`} onClick={() => save(p, { [m.col]: nextVendor(cur, list) })} className={`h-8 w-full rounded-lg border px-2 text-xs font-medium truncate disabled:cursor-not-allowed disabled:opacity-60 ${cur ? vTint(cur) : "border-dashed border-slate-300 text-slate-400 hover:bg-slate-50"}`}>{cur ? vName(cur) : "–"}</button>}</td>); })}
-                <td className="px-2 py-1.5 text-[11px] leading-tight text-slate-400" data-stamp>{rideNote(p.employee_id) && <div>{rideNote(p.employee_id)}</div>}<div>{stamp(r)}</div></td>
+                <td className="px-2 py-1.5 text-[11px] leading-tight text-slate-400" data-stamp>{stamp(r)}</td>
               </tr>); })}
           </tbody>
         </table>

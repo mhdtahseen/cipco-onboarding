@@ -1,6 +1,6 @@
 # Roles & attendance — how it works
 
-*Documentation for the role-based access (Admin / Site Engineer / Supervisor), the attendance tracker, trip-based transport, the activity log and day sign-off. Read this before changing who can see what, or how attendance is saved. Written 27 Oct 2026; updated the same day for roles, accountability and transport.*
+*Documentation for the role-based access (Admin / Site Engineer / Supervisor), the attendance tracker, hired-vehicle transport tracking, the activity log and day sign-off. Read this before changing who can see what, or how attendance is saved. Written 27 Oct 2026; updated the same day for roles, accountability and transport.*
 
 - **Database:** `supabase/migrations/2026-10-roles-attendance.sql` (tables, functions, access rules, the 11 PM lock), then `supabase/migrations/2026-10-attendance-accountability-transport.sql` (new roles, activity log, sign-off, transport; run it second).
 - **The list of pages and who may open them:** `src/lib/nav.ts` (one list, read by the menu and the route guard) · **Route guard:** `src/middleware.ts` · **Role helper:** `src/lib/roles.ts` · **Menu and page frame:** `src/components/AppShell.tsx`.
@@ -35,7 +35,7 @@ Every login has exactly one role. Higher roles can overrule lower ones; a lower 
 | Sites today overview, Transport page (vehicles, prices, payments) | Yes | No | No | No |
 | Attendance page, Monthly view, CSV downloads | Yes, all projects | Assigned sites | Assigned sites | No |
 | Meal prices and meal cost | Yes | No | No | No |
-| Mark attendance, meals and transport trips | Any day | Today and yesterday until 11:00 PM | Today until 11:00 PM | No |
+| Mark attendance, meals and transport show-ups | Any day | Today and yesterday until 11:00 PM | Today until 11:00 PM | No |
 | Change an entry the Supervisor set | Yes (stamped) | Yes (stamped) | Yes | No |
 | Change an entry the Site Engineer set | Yes | Yes | No | No |
 | Change an entry the Admin set | Yes | No | No | No |
@@ -174,7 +174,7 @@ The daily sheet shows one card per person on the chosen project and date. Each c
 
 A person with no saved row shows "not marked". The weekly off is automatic: if the day matches the weekly-off day on the employee record (Sunday unless changed), the card shows weekly off without saving anything. Tapping Present overrides it.
 
-**Meals.** Three buttons per person, Breakfast, Lunch and Dinner. One tap cycles none, then the first vendor, then the second, then none again, and each vendor has its own colour so a column can be scanned. With more than three vendors a dropdown is used instead. Tapping a meal for someone not yet marked marks them Present (or weekly off on their off day).
+**Meals are separate from work status.** Whatever a person's status (Present, Half-day, Absent, Off, or not marked at all), their meals are the company's responsibility, so the three meal buttons (Breakfast, Lunch, Dinner) are shown for **everyone**, on phones and computers. Each meal records the **vendor**, which is where the person ate (for example the accommodation mess or the site canteen) and so who is paid. One tap cycles none, then the first vendor, then the second, then none again, and each vendor has its own colour so a column can be scanned. With more than three vendors a dropdown is used instead. Tapping a meal for someone not yet marked records the meal only; it does **not** mark them present, so presence at the job site stays a separate record. A person can therefore have a meal with no work status.
 
 **Summary and shortcuts**
 
@@ -182,12 +182,12 @@ A person with no saved row shows "not marked". The weekly off is automatic: if t
 - **Everyone present** in the bottom bar marks everyone still open as Present, skipping people on their weekly off. The bar also shows "N still open" or "All marked".
 - **Quick actions** (a drop-down on a computer, a collapsible section on a phone), in two groups:
     - **Attendance:** **Copy yesterday's attendance** gives each person still open the status they had yesterday (present, half-day or absent; yesterday's weekly off is not carried over). **Mark as** sets a status (Present, Absent, Half-day or Off) for **People still open** or for **Everyone**. Choosing Everyone changes people already marked, so it asks "This changes N people who are already marked. Continue?" first. Meals are left as they are.
-    - **Meals:** **Copy yesterday's meals** repeats yesterday's vendors for people who were present or half-day yesterday, and **Set a meal for everyone who is present** applies one vendor (or no meal) to one meal for everyone marked Present or Half-day.
+    - **Meals:** **Copy yesterday's meals** repeats yesterday's vendors for everyone who had a meal recorded yesterday, whatever their work status, and **Set a meal for everyone** applies one vendor (or no meal) to one meal for everyone on the sheet, including people who are absent, on a weekly off or not marked.
 - With more than six people, a search box and an **Open only** button appear, so the last few unmarked names are easy to find.
 
 **How saving behaves.** One row is kept per person per day. A single tap updates the screen at once and reverts with a red message if the database refuses it, for example because the day is locked. Bulk actions save, then re-read what is stored and compare, so the screen cannot disagree with the database; if fewer rows saved than expected it says "Only X of Y were saved". When a bulk action has nothing to do, it says why, for example "Everyone is on their weekly off (Sunday)".
 
-**On a phone.** A calm layout with colour used sparingly. The date is a large centred label with previous and next arrows; tapping it opens the date picker. Each person is a white card with a name, role and a soft segmented control for Present, Absent, Half-day and Off (the chosen one is a white pill with a coloured label). A small amber dot beside a name means not yet marked. The three meal buttons appear only for people marked Present or Half-day, so unmarked and absent people stay a single line; each shows the vendor with a small coloured dot. All tap targets are at least 44 px, text in fields is 16 px so iPhones do not zoom in, and a bar pinned at the bottom shows how many are still open with the **Everyone present** button.
+**On a phone.** A calm layout with colour used sparingly. The date is a large centred label with previous and next arrows; tapping it opens the date picker. Each person is a white card with a name, role and a soft segmented control for Present, Absent, Half-day and Off (the chosen one is a white pill with a coloured label). A small amber dot beside a name means not yet marked. The three meal buttons are shown on every card, whatever the person's status, each showing the vendor with a small coloured dot. All tap targets are at least 44 px, text in fields is 16 px so iPhones do not zoom in, and a bar pinned at the bottom shows how many are still open with the **Everyone present** button.
 
 **On a computer (1024 px and wider).** The sheet becomes a compact roster instead of a card per person, so a whole crew fits on screen. Each person is one row of about 50 px: name and role, the four work buttons joined into one small control (the chosen one is tinted green, red, amber or grey), and a chip per meal showing the vendor in its colour (a dashed chip means no meal). One toolbar holds the date controls, search, **Open only**, **Quick actions** (a drop-down with Copy yesterday's meals and Set a meal for everyone) and **Everyone present**, with a one-line summary (Present, Half-day, Absent, Off, Open, and meal counts) under it. On screens 1280 px and wider the toolbar stays pinned while you scroll. Buttons here are about 32 to 36 px high because a mouse needs smaller targets than a thumb; phones and tablets keep 44 px.
 
@@ -195,16 +195,19 @@ A person with no saved row shows "not marked". The weekly off is automatic: if t
 
 ---
 
-## 7a. Transport (trip based)
+## 7a. Transport (hired vehicles: did they show up?)
 
-Transport lives inside the daily sheet, above the roster; everyone who can take attendance can use it. It is independent of attendance: people can be marked present before, after or without being on a trip.
+Workers are ferried from their accommodation to the job site and back by autos, jeeps or buses hired locally. The transport tracker answers one question each day: **did each vehicle show up, or did the workers have to find their own way?** It sits inside the daily sheet, above the roster, and is independent of attendance (people can be marked present whether or not the vehicle came).
 
-- **A trip** is one vehicle run, either **Pickup** or **Drop**, for one site and day. Tap **+ Pickup trip** or **+ Drop trip**, choose the vehicle, tick who is on board (everyone not already on another trip of the same direction starts ticked), and tap **Stamp**. For today the **server stamps the time** when you save; for another day, or to correct a time, tap "set a time". Several trips can run on one day (for example two vehicles).
-- **Each person can be on one pickup and one drop per day.** People already on another trip of that direction are greyed out ("on Tempo 1").
-- The card lists each trip as vehicle, time and number on board, with "N of M on board" per direction. Tap a trip to edit the vehicle, time or passengers, or delete it. A deleted or corrected trip is recorded in the activity log.
-- **Vehicles, prices and payments** are managed by the Admin on **Transport** (Operations menu). Each vehicle has an operator (who is paid) and a **price per trip**; a new price applies from today and older trips keep the price in force on their day. The page shows per vehicle the trips and cost for the chosen month, the total paid and the **balance due**.
-- **Payments** record vehicle, amount, date, reference (for example a UTR) and note. They are never edited or deleted; a wrong one is **voided** (it stays in the list, struck through) and re-entered. Only Admin (and old Staff) can see prices and payments; the Supervisor and Site Engineer see trips and times only.
-- Trips follow the same windows as attendance: Supervisor that day until 11:00 PM, Site Engineer that day and the next, Admin always; none for the future; none for the Supervisor once the day is verified.
+- **Transport is project based.** A vehicle is set up under one project; the Supervisor and Site Engineer see only their own site's vehicles. A vehicle used on two sites is added once per site.
+- **Per vehicle, per direction.** Each vehicle has a **Pickup** and a **Drop**, each marked **Showed** or **No show**. Marking Showed stamps the time from the server's clock (tap the small time to correct it, for example if recorded later). Tapping the chosen button again clears it. For a past day the time starts as a placeholder (07:00 pickup, 18:00 drop) to correct. The card summarises "2 showed · 1 didn't show · 1 not recorded". No passenger list is kept.
+- **Windows and locks** are the same as attendance: Supervisor that day until 11:00 PM, Site Engineer that day and the next, Admin always; nothing for the future; nothing for the Supervisor once the day is verified. Every record, switch, time correction and clearing is stamped with who and when, and appears in the activity log ("Pickup · Auto 1 · showed up 07:02").
+- **How vehicles are paid.** Set per vehicle on the **Transport** page (Admin): **per trip** or **monthly**, with a price (per trip, or per month). The first price set for a vehicle also applies to any earlier days; a later change applies from the chosen date (today by default) and earlier days keep the price in force.
+    - *Per trip:* billed only for trips that showed up, at the price in force on that day.
+    - *Monthly:* the fixed amount is billed for each month that has records (at the price in force on that month's first record). The **No-show** column shows days the vehicle missed, so a deduction can be raised with the operator; nothing is deducted automatically.
+- **Errands.** Extra jobs a vehicle runs that the operator quotes separately are entered by the Admin under **Errands**: vehicle, date, what it was for and the quoted amount. They add to that vehicle's balance. Like payments they are never edited or deleted, only voided.
+- **Payments** are recorded per vehicle (amount, date, reference such as a UTR, note) and belong to the vehicle's project. They are never edited or deleted; a wrong one is voided and re-entered. **Balance due** per vehicle = billed (trips or months, plus errands) minus paid.
+- **Who sees money.** Only Admin (and old Staff) see prices, errands, payments and balances. The Supervisor and Site Engineer only mark Showed / No show.
 
 ---
 
@@ -213,10 +216,10 @@ Transport lives inside the daily sheet, above the roster; everyone who can take 
 The **day bar** above the transport card shows the state of the day:
 
 1. **Day open.** Anyone with access can work.
-2. **Submitted** by the Supervisor ("Submitted by Ravi · 18:40 — waiting for the Site Engineer"). If anything changes afterwards (a status, meal, trip or boarding) the day returns to open and needs submitting again.
+2. **Submitted** by the Supervisor ("Submitted by Ravi · 18:40 — waiting for the Site Engineer"). If anything changes afterwards (a status, meal or transport record) the day returns to open and needs submitting again.
 3. **Verified** by the Site Engineer or Admin ("Verified by Meera · 19:10"). The Supervisor can no longer change the day; the Site Engineer or Admin can, or can **Reopen** it.
 
-The "N to review" link lists exceptions before signing off: people not yet marked, people marked absent but on a trip, and (once a trip exists) people marked present but not on the pickup or the drop. These are prompts, not blocks; the day can still be submitted. Submit, verify and reopen are stamped and appear in the activity log.
+The "N to review" link lists exceptions before signing off: people not yet marked, transport not recorded (a vehicle direction with no Showed / No show) and vehicles that did not show. These are prompts, not blocks; the day can still be submitted. Submit, verify and reopen are stamped and appear in the activity log.
 
 ---
 
@@ -224,7 +227,7 @@ The "N to review" link lists exceptions before signing off: people not yet marke
 
 A meal belongs to a vendor, a vendor can have a price per meal, and the monthly view multiplies the two. Prices are optional: without them meals are still counted, only the cost is left out. **Prices and meal costs are visible to Admin (and old Staff) only**; the Supervisor and Site Engineer see meal counts without costs.
 
-**Vendors.** Managed in **Settings → Food vendors**: add, rename, hide or show. The list starts with Maruti and Plant Mess. A hidden vendor disappears from the daily sheet buttons but stays on past records, and stays visible on a person's card if it was already chosen for them.
+**Vendors are project based.** Each project has its own vendors and so its own prices; a Supervisor or Site Engineer sees only their project's vendors, and a meal can only use a vendor of its own project (the database refuses another). Managed in **Settings → Food vendors**, with a project selector at the top: add, rename, hide or show. Because a meal records where the person ate, add every place people eat (for example the accommodation mess and the site canteen) as a vendor of the project. The older vendors Maruti and Plant Mess are assigned to the project that used them most when the migration runs; any left over appear under "Not assigned to a project yet" with an **Assign to this project** button. A hidden vendor disappears from the daily sheet buttons but stays on past records, and stays visible on a person's card if it was already chosen for them.
 
 **Prices.** Each vendor has three price boxes: breakfast, lunch and dinner, in rupees. Fill in only the meals that vendor serves; an empty box means no price. The page has a **Prices apply from** date, set to today by default.
 
@@ -252,7 +255,7 @@ Rules live in the database, not just on the screen, so a phone with a wrong cloc
 | Site Engineer | That day and the next day, until 11:00 PM (one extra day for corrections) |
 | Admin | Any day, including future days |
 
-Nobody except Admin can enter a future day. The lock applies to new entries as well as edits and to transport trips. A person must currently be on the project (not checked for Admin). Supervisors and Site Engineers must be assigned to the site.
+Nobody except Admin can enter a future day. The lock applies to new entries as well as edits and to transport records. A person must currently be on the project (not checked for Admin). Supervisors and Site Engineers must be assigned to the site.
 
 **Ranks.** Each attendance entry remembers the rank of whoever last set it (Supervisor 1, Site Engineer 2, Admin 3). A role can change entries at its own rank or lower; it cannot change a higher one. When a higher role changes a lower role's entry, the entry takes the higher rank, so the Supervisor cannot silently undo the correction, and the log marks it as an override. No reason is required.
 
@@ -294,7 +297,7 @@ The Monthly tab turns a month of daily taps into days worked per person and meal
 | Download | Columns |
 | --- | --- |
 | Totals CSV | Name, Emp no., Days worked, Absent days, Breakfasts, Lunches, Dinners, Meal cost |
-| Daily CSV | Name, Emp no., Date, Status, Breakfast vendor, Lunch vendor, Dinner vendor |
+| Daily CSV | Name, Emp no., Date, Status (empty if only meals were recorded), Breakfast vendor, Lunch vendor, Dinner vendor |
 
 Both files are named after the project and the month, for example "MAN Unit 2 - attendance totals 2026-10.csv", and open in Excel. They contain names and employee numbers only; no Aadhaar, bank or salary details.
 
@@ -332,7 +335,8 @@ Everything is in one migration file, `supabase/migrations/2026-10-roles-attendan
 | Employees, letters, mail templates, clauses, employee documents, candidate links, quotations and wording, departments, expense categories and expenses, document types and project documents | Admin, Staff | Admin, Staff |
 | Projects | Admin, Staff, and a Supervisor or Site Engineer for assigned projects | Admin, Staff |
 | user_roles, user_projects | Each login its own row; Admin all | Admin |
-| food_vendors, meal_rates | Any login with a role | Admin, Staff |
+| food_vendors | Admin, Staff, and a Supervisor or Site Engineer for vendors of their assigned projects | Admin, Staff |
+| meal_rates | Admin, Staff | Admin, Staff |
 | attendance | Admin, Staff, Supervisor or Site Engineer for assigned projects | Same, plus the lock rules |
 
 The migration also seeds every existing login as Admin, adds the vendors Maruti and Plant Mess, and tightens an old unused file-storage rule to Admin and Staff.
@@ -344,12 +348,15 @@ The migration also seeds every existing login as Admin, adds the vendors Maruti 
 | Roles | Allowed roles become admin, staff, site_engineer, supervisor; existing "attendance" logins are renamed supervisor. `role_rank`, `rank_name`, `app_rank` give the ranking; `can_attend` now covers supervisor and site_engineer |
 | user_profiles | A display name per login; `user_label` returns the name (or email); `admin_list_users` now returns names |
 | meal_rates | Readable by Admin and Staff only (was any role) |
+| food_vendors | New `project_id`: vendors belong to a project (name unique within a project); readable only for the user's own projects; existing vendors go to the project that uses them most |
+| attendance.status | May now be empty, so a meal can be recorded for someone not marked (the status default is removed). A meal's vendor must belong to the row's project |
 | attendance_days | Per site and day: submitted by/at, verified by/at. Written only by `day_submit`, `day_verify`, `day_reopen` |
 | attendance_log | Append-only log, written by triggers; readable by Admin, Staff and Site Engineer for assigned sites; no insert, update or delete policy |
 | attendance | New columns `rank`, `set_by_role`; `attendance_guard` enforces windows, ranks and the verified-day lock; `attendance_audit` writes the log and returns a submitted day to open |
-| transport_vehicles, transport_rates | Vehicles and price per trip with an effective date. Vehicles readable by any role, written by Admin/Staff; rates Admin/Staff only |
-| transport_trips, transport_passengers | A trip (leg, vehicle, server time) and who boarded; guards enforce the same windows, one pickup and one drop per person per day, and no future stamps; audit triggers log every create, change and delete |
-| transport_payments | Ledger, Admin/Staff only. Cannot be edited or deleted; can be voided once |
+| transport_vehicles, transport_rates | Vehicles belong to a project (`project_id`; a name is unique within a project) paid per trip or monthly (`billing`), with a price and effective date. Vehicles readable by Admin/Staff and by assigned Supervisors and Site Engineers for their own project only, written by Admin/Staff; rates Admin/Staff only |
+| transport_runs | One row per vehicle, day and direction (pickup / drop): showed (with a server time) or no_show. Same windows and locks as attendance, only a vehicle of the same project, correction and clearing logged |
+| transport_errands | Extra jobs quoted by the operator and paid by us; Admin/Staff only; never edited or deleted, only voided; each takes its vehicle's project |
+| transport_payments | Ledger, Admin/Staff only; each payment takes its vehicle's project. Cannot be edited or deleted; can be voided once |
 | Functions | `check_write`, `write_window_end`, `log_change`, `touch_day`, `day_submit`, `day_verify`, `day_reopen` |
 
 ---
@@ -392,9 +399,9 @@ The tracker records who worked and who ate where, and stops there. It does not y
 **Attendance itself**
 
 - No overtime hours, leave types, late arrival or early leave; the work states are Present, Absent, Half-day and Off.
-- No in and out times, shifts, location check, photo or biometric proof. Transport stamps record when a trip was logged, not GPS.
+- No in and out times, shifts, location check, photo or biometric proof. Transport stamps record when a show-up was logged, not GPS.
 - No reminders for people left unmarked. The approval step is submit then verify; it does not block anything downstream yet.
-- No trip cost per person, no fuel or distance, and transport cost is not posted into project expenses.
+- No fuel or distance, no automatic deduction for no-show days on monthly vehicles, no per-person alternate-transport record, and transport cost is not posted into project expenses.
 - No way to edit several days at once or to import a month of attendance.
 - One row per person per day, so someone moving projects mid-day is recorded on one project only.
 - The weekly off is worked out, not stored. If an employee's weekly-off day is changed later, past unsaved days will show the new off day.
@@ -436,7 +443,7 @@ The first three items would make the biggest difference: adding users without le
 | 6 | Post the monthly meal cost into project Food expenses, with a confirm step | Ends double entry and keeps project cost current | 0.5 |
 | 7 | ~~A change history for attendance~~ | Done: activity log | – |
 | 7b | Post transport cost and payments into project expenses; per-site transport report | Ends double entry, shows cost per site | 0.5 to 1 |
-| 7c | Alerts on unverified days and trips not matching attendance | Catch gaps earlier than the Admin's manual look | 0.5 |
+| 7c | Alerts on unverified days and vehicles that did not show several days running | Catch gaps earlier than the Admin's manual look | 0.5 |
 | 8 | An Attendance tab on the project page and headcount per day in the project report | Puts attendance beside people and costs | 0.5 |
 | 9 | Optionally link a login to an employee, and invite from an employee's record using the email on file | Makes "supervisor" a known person, not just a login | 0.5 |
 | 10 | Overtime hours, leave types and late arrival | Needed if pay depends on them | 1 |
@@ -456,11 +463,11 @@ Run the database change last, then check you can still sign in. The code can go 
 **Order**
 
 1. Run the other 2026-10 migrations first (candidate links, quotations, projects and departments, daily-wage wording, expenses, project documents). The roles migration locks the tables that exist when it runs.
-2. Run `2026-10-roles-attendance.sql` in the Supabase SQL editor, before the accountability migration. Every existing login becomes an Admin.
+2. Run `2026-10-roles-attendance.sql` in the Supabase SQL editor once, before the accountability migration. Do not run it again afterwards: it would try to restore the older versions of functions the accountability migration replaced. If you need to apply later changes, re-run only `2026-10-attendance-accountability-transport.sql`. Every existing login becomes an Admin.
 3. Sign in and confirm you see **Users** in the menu and can open Employees.
 4. Make sure the code for these screens is committed and deployed; it is separate from the database change.
 5. Run `2026-10-attendance-accountability-transport.sql` (it renames existing "Attendance clerk" logins to Supervisor and adds the activity log, sign-off and transport).
-6. On the Users page give everyone a name, set Site Engineer or Supervisor and tick their sites. On **Transport** add the vehicles and their price per trip.
+6. On the Users page give everyone a name, set Site Engineer or Supervisor and tick their sites. On **Transport** add the vehicles and how each is paid (per trip or monthly) and its price.
 7. Create the Supervisor's and Site Engineer's logins, and try each from their own account on a phone.
 
 **Recovery commands.** Run these in the Supabase SQL editor, which works whatever the app's own rules say. Replace the example emails and project name.
@@ -533,12 +540,12 @@ The security rules and the attendance screens were tested against a copy of the 
 - **The app in real Chrome** with iPhone 13 emulation and real touch taps, using the real route guard and the real Supabase library against a stand-in server: tapping Monthly, opening a person's calendar, tapping a day, and Everyone present, with no errors.
 - **The date, lock and price logic**, checked directly: today in India time, locked and future days, weekly off, the price in force on a date, and days worked.
 
-**Second round (roles, transport, sign-off).** The accountability migration was run in an in-memory Postgres after the first one (52 checks pass), covering: rank protection and override logging, the Supervisor and Site Engineer windows, the verified-day lock, future days, one pickup and one drop per person, append-only log and payments, and money hidden from non-Admin roles. The screens were run in real Chromium at 1440 and 390 px as Supervisor and as Admin: a pickup trip with 7 of 8 on board, stamps on rows, the review list, submitting and verifying, the Activity tab, Sites today, the Transport page with a recorded payment, and the Users page. No sideways scroll or page errors.
+**Second round (roles, transport, sign-off).** The accountability migration was run in an in-memory Postgres after the first one (63 checks pass), covering: rank protection and override logging, the Supervisor and Site Engineer windows, the verified-day lock, future days, one pickup and one drop per person, append-only log and payments, and money hidden from non-Admin roles. The screens were run in real Chromium at 1440 and 390 px as Supervisor and as Admin: marking vehicles Showed / No show, stamps on rows, the review list, submitting and verifying, the Activity tab, Sites today, the Transport page with a recorded payment and errand, and the Users page. No sideways scroll or page errors.
 
 **What was not tested**
 
 - The live Supabase project, including real sign-in, invitation and password emails, and the second migration on real data.
-- The Site Engineer login as its own browser run, trip corrections and deletions in the browser, and the Transport page below 390 px.
+- The Site Engineer login as its own browser run, time corrections in the browser, and the Transport page below 390 px.
 - The Users page and the Food vendors settings, in a browser with real data.
 - A real phone, and Safari or Firefox specifically; native date pickers vary by browser.
 - The exact moment of the 11:00 PM cut-off in real time. The rule was checked for yesterday (locked), today (open) and tomorrow (refused), but not by waiting for 11:00 PM.
