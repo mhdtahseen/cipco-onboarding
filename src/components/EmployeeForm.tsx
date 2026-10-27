@@ -110,7 +110,7 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
           </div>
         </div>))}
       {!isNew && <SalaryEditor value={v.salary ?? {}} gender={v.gender} onChange={(c) => set("salary", c)} />}
-      <div className="flex flex-wrap items-center gap-3 sticky bottom-0 z-10 border-t border-slate-200 bg-[#f6f7fb] py-3">
+      <div className="flex flex-wrap items-center gap-3 sticky bottom-[var(--bottom-nav-h,0px)] z-10 border-t border-slate-200 bg-[#f6f7fb] py-3">
         <button className="btn btn-primary" disabled={busy} onClick={save}>{busy ? "Saving…" : v.id ? "Save changes" : "Add candidate"}</button>
         {msg && <span className="text-sm text-slate-600">{msg}</span>}
         {dup && <span className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">Already exists — same {dup.why}: <Link className="underline font-medium" href={`/employees/${dup.id}`}>{dup.full_name}</Link> ({dup.where}). Open that record{dup.where === "Rejected pile" ? " and use Reopen" : ""} instead of adding again.</span>}

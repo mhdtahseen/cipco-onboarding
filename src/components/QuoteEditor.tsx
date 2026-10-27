@@ -133,7 +133,7 @@ export default function QuoteEditor({ id }: { id: string }) {
         <div className="card space-y-3"><h3 className="font-semibold">Chandrika will provide at the site</h3><LineList kind="our_supply" value={q.our_supply} onChange={(v) => set("our_supply", v)} lib={lib} reload={loadLib} placeholder="Something else we provide…" /></div>
       </fieldset>
 
-      <div className="flex flex-wrap items-center gap-3 sticky bottom-0 z-10 border-t border-slate-200 bg-[#f6f7fb] py-3">
+      <div className="flex flex-wrap items-center gap-3 sticky bottom-[var(--bottom-nav-h,0px)] z-10 border-t border-slate-200 bg-[#f6f7fb] py-3">
         {!locked && <button className="btn btn-primary" disabled={!!busy} onClick={() => save()}>{busy === "save" ? "Saving…" : "Save draft"}</button>}
         <button className="btn" disabled={!!busy} onClick={locked ? () => window.open(`/api/quotations/${q.id}/pdf`, "_blank") : preview}>{locked ? "View PDF" : busy === "preview" ? "Preparing…" : "Preview PDF"}</button>
         {!locked && <button className="btn" disabled={!!busy} onClick={issue}>{busy === "issue" ? "Issuing…" : "Issue (assign ref. no.)"}</button>}

@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { REMEMBER_COOKIE, withLifetime } from "@/lib/supabase/session";
 import { NextResponse, type NextRequest } from "next/server";
+import { canAccess, homeFor } from "@/lib/nav";
 
 // Keeps the Supabase session fresh and sends logged-out visitors to /login.
 export async function middleware(req: NextRequest) {
@@ -21,7 +22,15 @@ export async function middleware(req: NextRequest) {
   const isPublic = req.nextUrl.pathname.startsWith("/apply") || req.nextUrl.pathname.startsWith("/api/apply"); // candidate self-fill links
   if (isPublic) return res;
   if (!data.user && !isLogin) return NextResponse.redirect(new URL("/login", req.url));
-  if (data.user && isLogin) return NextResponse.redirect(new URL("/", req.url));
+  if (!data.user) return res;
+
+  // Roles: admin / staff / supervisor / none. If the roles table does not exist yet (migration not run) treat everyone as admin.
+  const path = req.nextUrl.pathname; const isApi = path.startsWith("/api/");
+  const { data: rr, error } = await sb.from("user_roles").select("role").eq("user_id", data.user.id).maybeSingle();
+  const role: string = error ? "admin" : rr?.role ?? "none";
+  const home = homeFor(role);
+  if (isLogin) return NextResponse.redirect(new URL(home, req.url));
+  if (!canAccess(role, path)) return isApi ? NextResponse.json({ error: "Not allowed" }, { status: 403 }) : NextResponse.redirect(new URL(home, req.url));
   return res;
 }
 export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|branding/).*)"] };

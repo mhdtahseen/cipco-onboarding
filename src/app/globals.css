@@ -32,3 +32,14 @@ body { overflow-x: clip; }   /* clip (not hidden) so the sticky nav keeps workin
 .apply .btn { min-height: 44px; padding-left: 16px; padding-right: 16px; }
 .apply input[type="date"].inp { display: block; min-width: 0; -webkit-appearance: none; appearance: none; }
 .apply input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; }
+
+/* Attendance (/attendance): phone-friendly controls — 16px text stops iOS zooming into fields, 44px minimum tap targets. */
+.att .inp { font-size: 14px; min-height: 36px; }
+.att .btn { min-height: 36px; padding-top: 6px; padding-bottom: 6px; }
+@media (max-width: 1023px), (pointer: coarse) { .att .inp { font-size: 16px; min-height: 44px; } .att .btn { min-height: 44px; } }   /* thumbs get big targets; a mouse gets compact controls */
+.att input[type="date"].inp, .att input[type="month"].inp { display: block; min-width: 0; -webkit-appearance: none; appearance: none; }
+
+/* App shell: on phones the bottom tab bar is fixed, so page-level bars that stick to the bottom sit just above it. */
+.shell-has-bar { --bottom-nav-h: 0px; }
+@media (max-width: 767px) { .shell-has-bar { --bottom-nav-h: calc(56px + env(safe-area-inset-bottom, 0px)); } }
+@media print { aside, header.sticky { display: none !important; } main { max-width: none !important; } div[class*="md:pl-"] { padding-left: 0 !important; } }
