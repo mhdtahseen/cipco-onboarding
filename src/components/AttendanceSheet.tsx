@@ -108,7 +108,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
   }, [people, rows, date]);
   const stamp = (r?: AttRow) => (r?.updated_by && r.updated_at ? `${names[r.updated_by] ?? "someone"} · ${fmtTime(r.updated_at)}` : "");
   const prot = (r?: AttRow) => !!r?.rank && r.rank > myRank;   // set by someone senior: shown, not editable
-  const extras = !loading && people.length > 0 && <div className="space-y-3"><DayBar projectId={projectId} date={date} role={role} day={day} names={names} people={people} rows={rows} vehicles={vehicles} runs={runs} canWrite={!future || admin} reload={() => load(true)} /><TransportCard projectId={projectId} date={date} vehicles={vehicles} runs={runs} canWrite={!locked} today={date === istToday()} reload={() => load(true)} /></div>;
+  const extras = !loading && people.length > 0 && <div className="space-y-3"><DayBar projectId={projectId} date={date} role={role} day={day} names={names} people={people} rows={rows} vehicles={vehicles} runs={runs} canWrite={!future || admin} reload={() => load(true)} /><TransportCard projectId={projectId} date={date} vehicles={vehicles} runs={runs} canWrite={!locked} today={date === istToday()} myRank={myRank} names={names} reload={() => load(true)} /></div>;
   const vName = (id: string) => vendors.find((v) => v.id === id)?.name ?? "?";
   const shownVendors = (cur: string | null) => vendors.filter((v) => v.active || v.id === cur);
 

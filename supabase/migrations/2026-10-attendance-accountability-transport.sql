@@ -239,6 +239,10 @@ create table if not exists public.transport_runs (        -- one row per vehicle
   unique (vehicle_id, work_date, leg)
 );
 create index if not exists transport_runs_idx on public.transport_runs (project_id, work_date);
+alter table public.transport_runs add column if not exists rank smallint not null default 1;      -- rank of whoever last set this record (a higher role's record is protected, as in attendance)
+alter table public.transport_runs add column if not exists set_by_role text;
+alter table public.transport_runs add column if not exists updated_by uuid;
+alter table public.transport_runs add column if not exists updated_at timestamptz;
 
 create table if not exists public.transport_errands (     -- extra jobs (errands) the operator quotes and we pay for; never edited, only voided
   id uuid primary key default gen_random_uuid(),
@@ -286,9 +290,11 @@ create or replace function public.run_label(p_vehicle uuid, p_status text, p_at 
   select coalesce(public.vehicle_name(p_vehicle), '?') || ' · ' || case when p_status = 'showed' then 'showed up ' || coalesce(to_char(p_at at time zone 'Asia/Kolkata', 'HH24:MI'), '') else 'did not show' end $$;
 
 create or replace function public.transport_run_guard() returns trigger language plpgsql security definer set search_path = public as $$
+declare rk int := public.role_rank(public.app_role());
 begin
   if public.app_role() is null then raise exception 'You do not have access to attendance.'; end if;
   if tg_op in ('UPDATE','DELETE') then perform public.check_write(old.project_id, old.work_date); end if;
+  if tg_op in ('UPDATE','DELETE') and old.rank > rk then raise exception 'This was set by the % and can''t be changed by a %.', public.rank_name(old.rank), public.rank_name(rk); end if;   -- the Site Engineer can overrule the Supervisor, not the other way round
   if tg_op = 'DELETE' then return old; end if;
   perform public.check_write(new.project_id, new.work_date);
   if not exists (select 1 from public.transport_vehicles v where v.id = new.vehicle_id and v.project_id = new.project_id) then raise exception 'That vehicle does not belong to this project.'; end if;
@@ -300,16 +306,18 @@ begin
     if public.app_role() <> 'admin' and new.at > now() + interval '5 minutes' then raise exception 'A time cannot be stamped in the future.'; end if;
   end if;
   new.created_by := coalesce(case when tg_op = 'UPDATE' then old.created_by end, auth.uid());
+  new.rank := greatest(case when tg_op = 'UPDATE' then old.rank else 1 end, rk, 1)::smallint; new.set_by_role := public.app_role(); new.updated_by := auth.uid(); new.updated_at := now();
   return new;
 end $$;
 drop trigger if exists transport_run_guard_trg on public.transport_runs;
 create trigger transport_run_guard_trg before insert or update or delete on public.transport_runs for each row execute function public.transport_run_guard();
 
 create or replace function public.transport_run_audit() returns trigger language plpgsql security definer set search_path = public as $$
+declare over text;
 begin
   if tg_op = 'INSERT' then perform public.log_change(new.project_id, new.work_date, null, new.leg, null, public.run_label(new.vehicle_id, new.status, new.at), 'create'); perform public.touch_day(new.project_id, new.work_date); return new; end if;
   if tg_op = 'DELETE' then perform public.log_change(old.project_id, old.work_date, null, old.leg, public.run_label(old.vehicle_id, old.status, old.at), null, 'delete'); perform public.touch_day(old.project_id, old.work_date); return old; end if;
-  if new.status is distinct from old.status or new.at is distinct from old.at then perform public.log_change(new.project_id, new.work_date, null, new.leg, public.run_label(old.vehicle_id, old.status, old.at), public.run_label(new.vehicle_id, new.status, new.at), 'change'); end if;
+  if new.status is distinct from old.status or new.at is distinct from old.at then perform public.log_change(new.project_id, new.work_date, null, new.leg, public.run_label(old.vehicle_id, old.status, old.at), public.run_label(new.vehicle_id, new.status, new.at), 'change', case when old.rank < new.rank then public.rank_name(old.rank) end); end if;
   perform public.touch_day(new.project_id, new.work_date);
   return new;
 end $$;

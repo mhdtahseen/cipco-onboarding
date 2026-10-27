@@ -44,7 +44,7 @@ export type Leg = "pickup" | "drop";
 export type Billing = "per_trip" | "monthly";
 export type Vehicle = { id: string; project_id: string | null; name: string; operator: string; billing: Billing; active: boolean; sort_order: number };
 /** One vehicle, one direction, one day: it showed up (with the time) or it did not. */
-export type Run = { id: string; project_id: string; work_date: string; leg: Leg; vehicle_id: string; status: "showed" | "no_show"; at: string | null; created_by?: string | null };
+export type Run = { id: string; project_id: string; work_date: string; leg: Leg; vehicle_id: string; status: "showed" | "no_show"; at: string | null; created_by?: string | null; rank?: number; updated_by?: string | null };
 export type TransportRate = { id: string; vehicle_id: string; price: number; effective_from: string };
 export type DayRow = { project_id: string; work_date: string; submitted_by: string | null; submitted_at: string | null; verified_by: string | null; verified_at: string | null };
 export const LEG_LABEL: Record<Leg, string> = { pickup: "Pickup", drop: "Drop" };

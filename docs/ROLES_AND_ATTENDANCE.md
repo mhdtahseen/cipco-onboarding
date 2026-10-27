@@ -32,11 +32,11 @@ Every login has exactly one role. Higher roles can overrule lower ones; a lower 
 | Employees, letters, forms, documents, salary, Aadhaar and bank details | Yes | No | No | No |
 | Quotations, projects, expenses, project documents, settings | Yes | No | No | No |
 | Users page (name, role, assigned sites) | Yes | No | No | No |
-| Sites today overview, Transport page (vehicles, prices, payments) | Yes | No | No | No |
+| Sites today overview, Transport page (set up vehicles, prices, errands, payments) | Yes | No | No | No |
 | Attendance page, Monthly view, CSV downloads | Yes, all projects | Assigned sites | Assigned sites | No |
 | Meal prices and meal cost | Yes | No | No | No |
-| Mark attendance, meals and transport show-ups | Any day | Today and yesterday until 11:00 PM | Today until 11:00 PM | No |
-| Change an entry the Supervisor set | Yes (stamped) | Yes (stamped) | Yes | No |
+| Mark attendance, meals and transport show-ups (Showed / No show) | Any day | Today and yesterday until 11:00 PM | Today until 11:00 PM | No |
+| Change an entry the Supervisor set (attendance, meals or transport) | Yes (stamped) | Yes (stamped) | Yes | No |
 | Change an entry the Site Engineer set | Yes | Yes | No | No |
 | Change an entry the Admin set | Yes | No | No | No |
 | Submit the day | Yes | Yes | Yes | No |
@@ -201,6 +201,7 @@ Workers are ferried from their accommodation to the job site and back by autos, 
 
 - **Transport is project based.** A vehicle is set up under one project; the Supervisor and Site Engineer see only their own site's vehicles. A vehicle used on two sites is added once per site.
 - **Per vehicle, per direction.** Each vehicle has a **Pickup** and a **Drop**, each marked **Showed** or **No show**. Marking Showed stamps the time from the server's clock (tap the small time to correct it, for example if recorded later). Tapping the chosen button again clears it. For a past day the time starts as a placeholder (07:00 pickup, 18:00 drop) to correct. The card summarises "2 showed · 1 didn't show · 1 not recorded". No passenger list is kept.
+- **The Site Engineer has the same transport access as the Supervisor on the daily sheet**: mark Showed / No show and correct times. Neither can set up vehicles, prices, errands or payments; that is the Admin's. **The Site Engineer can overrule the Supervisor's transport record** (stamped, flagged "overrode Supervisor" in the activity log, no reason needed); the Supervisor cannot change a record the Site Engineer or Admin set. Each leg shows who recorded it.
 - **Windows and locks** are the same as attendance: Supervisor that day until 11:00 PM, Site Engineer that day and the next, Admin always; nothing for the future; nothing for the Supervisor once the day is verified. Every record, switch, time correction and clearing is stamped with who and when, and appears in the activity log ("Pickup · Auto 1 · showed up 07:02").
 - **How vehicles are paid.** Set per vehicle on the **Transport** page (Admin): **per trip** or **monthly**, with a price (per trip, or per month). The first price set for a vehicle also applies to any earlier days; a later change applies from the chosen date (today by default) and earlier days keep the price in force.
     - *Per trip:* billed only for trips that showed up, at the price in force on that day.
