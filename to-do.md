@@ -33,6 +33,22 @@ Track recurring and one-off costs per project (accommodation, travel, food, and 
 - [ ] GST split on expense amounts
 - [ ] Attendance-based per-head costs (needs daily attendance data)
 
+## Project documents (agreed 2026-10-27)
+
+Keep letters, Job Safety Analyses, POs, emails etc. against a project for later reference.
+Defaults: one file per document · 5 MB per file · search within a project.
+
+- [x] Migration: document types (seeded: Letter, Permission / authorisation letter, JSA, PO, Email, Report, Drawing, Certificate, Contract, Other) + project documents (`supabase/migrations/2026-10-project-documents.sql`)
+- [x] Documents section on each project page: add, open, edit, replace file, delete, search, filter by type
+- [x] Manage document types on the Projects page, plus “+ Add new type…” from the form
+- [x] Project screens simplified: Projects list → project overview (tabs: Overview / People / Expenses / Documents) → separate Report page; dropdown lists moved to Settings
+- [ ] Run the migration in Supabase and try it with a real project
+- [ ] Check the new project screens on a phone
+- [ ] Larger files (drawings / big scans) — needs direct-to-storage upload instead of the 5 MB limit
+- [ ] Search across all projects at once
+- [ ] Draft letters in the app on company letterhead and save them straight to a project (optional)
+- [ ] Link quotations to their project so they appear here automatically
+
 ## Pending from earlier work — needs running / deciding
 - [ ] Run in Supabase (in this order, each is safe to re-run):
   - `supabase/migrations/2026-10-candidate-form-invites.sql` (self-fill links; re-run to get the 7-day expiry and pre-fill)
@@ -40,8 +56,9 @@ Track recurring and one-off costs per project (accommodation, travel, food, and 
   - `supabase/migrations/2026-10-projects-departments.sql`
   - `supabase/migrations/2026-10-daily-wage-wording.sql`
   - `supabase/migrations/2026-10-project-expenses.sql`
+  - `supabase/migrations/2026-10-project-documents.sql`
 - [ ] Add the 8 new employees (SQL was given in chat; it is kept out of the repo because it contains Aadhaar / PAN / bank numbers)
-- [ ] Commit and push the uncommitted work (projects, departments, daily wage, expenses)
+- [x] Commit and push projects, departments, daily wage and expenses (done); project documents still to commit
 - [ ] Open a real self-fill link on a phone and check the layout
 - [ ] Optional: make self-fill links always use `ops.cipcogroup.com` (needs a `NEXT_PUBLIC_APP_URL` setting)
 

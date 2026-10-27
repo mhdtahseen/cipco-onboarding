@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
 import { todayISO } from "@/lib/format";
@@ -10,8 +10,9 @@ const fmt = (d: string) => new Date(d + "T00:00:00").toLocaleDateString("en-IN",
 const BLANK = { expense_date: "", category_id: "", amount: "", description: "", employee_id: "" };
 
 // Expense entries for one project: quick add (with optional bill and employee tag), edit, delete, filter, CSV.
-export default function ProjectExpenses({ project, cats, setCats, expenses, people, reload }: { project: Project; cats: ExpenseCategory[]; setCats: (c: ExpenseCategory[]) => void; expenses: ProjectExpense[]; people: Employee[]; reload: () => void }) {
+export default function ProjectExpenses({ project, cats, setCats, expenses, people, reload, openSignal }: { openSignal?: number; project: Project; cats: ExpenseCategory[]; setCats: (c: ExpenseCategory[]) => void; expenses: ProjectExpense[]; people: Employee[]; reload: () => void }) {
   const [f, setF] = useState({ ...BLANK, expense_date: todayISO() }); const [bill, setBill] = useState<File | null>(null); const [editId, setEditId] = useState<string | null>(null);
+  const [open, setOpen] = useState(false); useEffect(() => { if (openSignal) setOpen(true); }, [openSignal]);   // form stays hidden until asked for
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(""); const [catF, setCatF] = useState(""); const [monthF, setMonthF] = useState("");
   const catName = (id: string) => cats.find((c) => c.id === id)?.name ?? "—";
   const personName = (id: string | null) => people.find((p) => p.id === id)?.full_name;
@@ -19,7 +20,7 @@ export default function ProjectExpenses({ project, cats, setCats, expenses, peop
   const shown = expenses.filter((e) => (!catF || e.category_id === catF) && (!monthF || e.expense_date.startsWith(monthF)));
   const total = shown.reduce((s, e) => s + Number(e.amount), 0);
   const set = (p: Partial<typeof BLANK>) => setF((x) => ({ ...x, ...p }));
-  const reset = () => { setF({ ...BLANK, expense_date: todayISO() }); setBill(null); setEditId(null); };
+  const reset = () => { setF({ ...BLANK, expense_date: todayISO() }); setBill(null); setEditId(null); setOpen(false); };
 
   async function addCategory() {
     const name = prompt("New expense category (it will be available on every project):")?.trim(); if (!name) return;
@@ -45,7 +46,7 @@ export default function ProjectExpenses({ project, cats, setCats, expenses, peop
     if (error) { setMsg(error.message + " — has the project-expenses SQL migration been run?"); return; }
     setMsg(editId ? "Saved ✓" : "Expense added ✓"); reset(); reload();
   }
-  function edit(e: ProjectExpense) { setEditId(e.id); setBill(null); setF({ expense_date: e.expense_date, category_id: e.category_id, amount: String(e.amount), description: e.description, employee_id: e.employee_id ?? "" }); window.scrollTo({ top: document.getElementById("expense-form")?.offsetTop ?? 0, behavior: "smooth" }); }
+  function edit(e: ProjectExpense) { setOpen(true); setEditId(e.id); setBill(null); setF({ expense_date: e.expense_date, category_id: e.category_id, amount: String(e.amount), description: e.description, employee_id: e.employee_id ?? "" }); window.scrollTo({ top: document.getElementById("expense-form")?.offsetTop ?? 0, behavior: "smooth" }); }
   async function del(e: ProjectExpense) { if (!confirm(`Delete this ₹${inr(Number(e.amount))} ${catName(e.category_id)} expense?`)) return; await supabase().from("project_expenses").delete().eq("id", e.id); if (editId === e.id) reset(); reload(); }
   function csv() {
     const q = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -55,8 +56,8 @@ export default function ProjectExpenses({ project, cats, setCats, expenses, peop
 
   return (
     <div className="card space-y-4" id="expense-form">
-      <h3 className="font-semibold">Expenses</h3>
-      <div className="rounded-xl border border-slate-200 p-3 space-y-3">
+      <div className="flex items-center gap-3"><h3 className="font-semibold">Expenses</h3>{!open && <button className="btn btn-primary ml-auto" onClick={() => setOpen(true)}>+ Add expense</button>}{!open && msg && <span className="text-sm text-green-700">{msg}</span>}</div>
+      {open && <div className="rounded-xl border border-slate-200 p-3 space-y-3">
         <div className="text-sm font-medium">{editId ? "Edit expense" : "Add an expense"}</div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div><label className="lbl">Date</label><input className="inp" type="date" value={f.expense_date} onChange={(e) => set({ expense_date: e.target.value })} /></div>
@@ -66,8 +67,8 @@ export default function ProjectExpenses({ project, cats, setCats, expenses, peop
           <div className="sm:col-span-2 lg:col-span-3"><label className="lbl">Description / vendor</label><input className="inp" value={f.description} onChange={(e) => set({ description: e.target.value })} placeholder="e.g. Maruti Hotel, October rent" /></div>
           <div><label className="lbl">Bill <span className="font-normal text-slate-400">(optional)</span></label><label className="btn cursor-pointer w-full justify-center truncate">{bill ? bill.name : editId ? "Replace bill" : "Attach bill"}<input type="file" className="hidden" accept="image/*,.pdf" onChange={(e) => { setBill(e.target.files?.[0] ?? null); e.target.value = ""; }} /></label></div>
         </div>
-        <div className="flex flex-wrap items-center gap-3"><button className="btn btn-primary" disabled={busy} onClick={save}>{busy ? "Saving…" : editId ? "Save changes" : "+ Add expense"}</button>{editId && <button className="btn" onClick={reset}>Cancel</button>}{msg && <span className="text-sm text-slate-600">{msg}</span>}</div>
-      </div>
+        <div className="flex flex-wrap items-center gap-3"><button className="btn btn-primary" disabled={busy} onClick={save}>{busy ? "Saving…" : editId ? "Save changes" : "+ Add expense"}</button><button className="btn" onClick={reset}>Cancel</button>{msg && <span className="text-sm text-slate-600">{msg}</span>}</div>
+      </div>}
 
       <div className="flex flex-wrap items-center gap-2">
         <select className="inp !w-auto" aria-label="Filter by category" value={catF} onChange={(e) => setCatF(e.target.value)}><option value="">All categories</option>{cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>

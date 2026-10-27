@@ -48,3 +48,5 @@ export type Project = { id: string; name: string; location: string; description:
 export type Department = { id: string; name: string; active: boolean };
 export type ExpenseCategory = { id: string; name: string; active: boolean; sort_order: number };
 export type ProjectExpense = { id: string; project_id: string; category_id: string; expense_date: string; amount: number; description: string; employee_id: string | null; bill_path: string | null; created_at: string };
+export type DocType = { id: string; name: string; active: boolean; sort_order: number };
+export type ProjectDocument = { id: string; project_id: string; type_id: string | null; title: string; doc_date: string; recipient: string; ref_no: string; notes: string; file_path: string; file_name: string; created_at: string };
