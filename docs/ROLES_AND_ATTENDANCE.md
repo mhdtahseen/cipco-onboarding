@@ -2,6 +2,7 @@
 
 *Documentation for the role-based access (Admin / Site Engineer / Supervisor), the attendance tracker, hired-vehicle transport tracking, the activity log and day sign-off. Read this before changing who can see what, or how attendance is saved. Written 27 Oct 2026; updated the same day for roles, accountability and transport.*
 
+- **Day-to-day user guide:** [OPERATIONS_GUIDE.md](OPERATIONS_GUIDE.md) (how to run attendance, meals, transport and accommodation).
 - **Database:** `supabase/migrations/2026-10-roles-attendance.sql` (tables, functions, access rules, the 11 PM lock), then `supabase/migrations/2026-10-attendance-accountability-transport.sql` (new roles, activity log, sign-off, transport; run it second).
 - **The list of pages and who may open them:** `src/lib/nav.ts` (one list, read by the menu and the route guard) · **Route guard:** `src/middleware.ts` · **Role helper:** `src/lib/roles.ts` · **Menu and page frame:** `src/components/AppShell.tsx`.
 - **Users page:** `src/app/users/page.tsx` · **No-access page:** `src/app/no-access/page.tsx`.
@@ -254,15 +255,42 @@ The example prices mentioned when this was designed (Maruti breakfast 50, Plant 
 
 ---
 
-## 8a. Paying meal vendors and posting payments to project expenses
+## 8a. The Meals page (Admin): tracking, reports and payments
 
-**Meal payments** (Operations menu, Admin only) shows, per project, what each food vendor is owed and what has been paid.
-- **Billed** = every meal recorded on the attendance sheet for the project (whatever the person's work status) x that vendor's price on the day (Settings → Food vendors). Meals with no price are counted but not billed ("N meals unpriced"). A month selector shows each vendor's breakfasts, lunches and dinners and the cost for the month; **Billed (all)**, **Paid** and **Due** are over all time.
-- **Record payment**: vendor, amount, date, reference (UTR), note. A payment is never edited or deleted; a wrong one is **voided** and entered again.
-- **Posting to expenses is automatic.** Recording a payment creates an expense on the same project in the category **Food** (transport payments post to **Transport / freight**), dated the payment date, described like "Meals payment · Maruti · UTR123". Voiding the payment removes that expense. So a payment is entered once, in one place, and the project's expenses and cost report stay current. If a category named Food or Transport / freight does not exist it is created.
-- **On the project's Expenses tab** these rows show a **From payment** tag instead of Edit / Delete: their amount, date and category cannot be changed (void the payment instead). Their note and bill can still be edited. Hand-entered expenses are unchanged.
-- A vendor or vehicle that is not assigned to a project cannot be paid (the message says so); assign it first (Settings → Food vendors, or the Transport page).
-- Only expenses that were actually **paid** are posted. What is merely owed (billed meals, trips, errands) is shown as Due but is not an expense until it is paid.
+**Marking meals stays on the Attendance page**, because that is the only page Supervisors and Site Engineers have. Everything else about meals is on **Operations → Meals** (Admin only), per project, in tabs:
+
+| Tab | What it is for |
+| --- | --- |
+| Overview | Meals and cost this month, paid and due, a per-vendor table, cost per person per day, and alerts: past days with no meals recorded, meals with no price |
+| Daily log | One row per day: each vendor's breakfasts · lunches · dinners, total meals and cost. A "!" marks a past day with no meals. **Open** jumps to that day on the attendance sheet to correct it |
+| People | Each person's breakfasts, lunches, dinners and cost for the month |
+| Vendors & prices | The project's food vendors and prices (the same screen as Settings → Food vendors, fixed to this project) |
+| Bills | The monthly bill each vendor sends, checked against the meals recorded (see below) |
+| Payments | Record and void vendor payments |
+| Reports | A vendor statement for a month (day by day, with amounts), plus CSVs: statement, food summary, per person |
+
+- **Billed** = every meal recorded on the attendance sheet for the project (whatever the person's work status) x that vendor's price on the day. Meals with no price are counted but not billed. **Billed (all)**, **Paid** and **Due** are over all time; the counts and "This month" follow the month selector.
+- **Vendor bills.** Each month a vendor sends a bill, which may differ from what the recorded meals come to (extra meals counted, meals the Supervisor missed, a price mismatch). On the **Bills** tab, for the month chosen: each vendor row shows the **meals recorded** (amount and count), the **vendor's bill** (amount and bill number), the **difference** ("Matches", or "+₹1,600 charged more" / "−₹… charged less") and a status. **Record bill** takes the vendor, amount, optional bill number, note and a photo or PDF of the bill (5 MB). Then **Approve bill** (use the vendor's amount), **Approve meals** (use the computed amount) or **Other…** (your own amount) fixes the amount **due for that month**; the system also keeps what the meals came to at the time and who approved. **See the meals** jumps to the day-by-day vendor statement to find which days differ. A received bill can be corrected; an approved one must be **Reopened** first. **Void** cancels a bill and the computed amount is used again. There is one live bill per vendor per month, and bills are never deleted. The Overview alerts when bills are waiting for approval. In the totals, **Billed (all)** and **Due** use the approved amount for any month that has an approved bill, and the computed amount for other months. Bills do not create expenses; only payments do.
+- **Payments:** vendor, amount, date, reference (UTR), note. Never edited or deleted; a wrong one is **voided** and entered again.
+- **Posting to expenses is automatic** for meals, transport and accommodation rent: recording a payment creates an expense on the same project (**Food**, **Transport / freight**, **Accommodation**), dated the payment date and described like "Meals payment · Maruti · UTR123" or "Rent (Oct 2026) · Room 1 · Mr Sharma". Voiding the payment removes the expense. If the category does not exist it is created. A payment is therefore entered once and the project's expenses and cost report stay current.
+- **On the project's Expenses tab** these rows show a **From payment** tag instead of Edit / Delete: amount, date and category cannot be changed (void the payment instead); the note and bill can.
+- A vendor, vehicle or room not assigned to a project cannot be paid (the message says so); assign it first.
+- Only what is **paid** becomes an expense. What is merely owed is shown as Due.
+
+**Transport** has the same layout: tabs Overview (per-vehicle showed / no-show, no-show rate, cost, due, days with show-ups not recorded), Daily log (a day-by-day grid of pickup and drop for each vehicle, with Open), Vehicles & prices, Errands and Payments. Show-ups are still marked on the Attendance page.
+
+---
+
+## 8b. Accommodation (Admin)
+
+**Operations → Accommodation**, per project: the rooms rented for the people on site, whether they hold everyone, and the rent. Rent is paid a **full month in advance** (a month's rent is due on the 1st and shows as overdue after the 5th; a part month is billed in full). Tabs:
+
+- **Overview:** rooms (AC / non-AC), rent per month (and next month if it changes), this month's rent paid, outstanding rent, and **Do the rooms hold everyone?** comparing the beds with the people on the project (employees with a joining date up to today). If the rooms are short it says by how many beds and roughly how many more rooms are needed at the current beds per room, with a link to add rooms. Rooms with no bed count are flagged.
+- **Rooms:** name, type, **beds**, **landlord**, rent now with a new-rent box ("applies from" a chosen date; earlier months keep the old rent), **Vacate** (rent stops after that month) and **Reopen**. **Add rooms** adds one or several of a kind at once with a rent, beds each, landlord and the date rented, for example 4 non-AC rooms at ₹7,000 then 1 AC room at ₹13,000.
+- **Rent & payments:** per room for a chosen month: rent, paid, left and status (Paid / Part paid / Due / Overdue); **Pay all unpaid** for the month (one payment per room), **Pay** on a single room, a payment form, the payment list with **Void**, and a CSV of the month's rent.
+- **Landlord** is a free-text name per room. It is who is paid, so it appears in the payment's expense and bank-transfer reconciliation, and lets you see what is owed to each landlord if the rooms have different owners. It can be left blank.
+- Occupancy (who sleeps in which room) is deliberately not tracked: only capacity versus headcount.
+- Rent payments are never edited; a wrong one is voided (its Accommodation expense is removed) and entered again.
 
 ---
 
@@ -379,6 +407,8 @@ The migration also seeds every existing login as Admin, adds the vendors Maruti 
 | transport_runs | One row per vehicle, day and direction (pickup / drop): showed (with a server time) or no_show. Same windows and locks as attendance, only a vehicle of the same project, correction and clearing logged |
 | transport_errands | Extra jobs quoted by the operator and paid by us; Admin/Staff only; never edited or deleted, only voided; each takes its vehicle's project |
 | transport_payments | Ledger, Admin/Staff only; each payment takes its vehicle's project. Cannot be edited or deleted; can be voided once |
+| accommodation_rooms, accommodation_rents, accommodation_payments | Rooms per project (type, beds, landlord, rented from / vacated), rent history per room (a new rent applies from a date) and the rent payment ledger (Admin/Staff only; payments never edited or deleted, only voided; each takes its room's project and the month it is for) |
+| vendor_bills | The bill a vendor sends, per vendor and month (Admin/Staff only): bill amount and number, status received / approved, the approved amount, what the meals came to at approval, who approved, optional file; one live bill per vendor per month, never deleted, only voided |
 | vendor_payments | Meal payments ledger (Admin/Staff only; never edited or deleted, only voided); each takes its vendor's project |
 | project_expenses (new columns) | `source` and `source_id`: an expense posted from a payment. `post_payment_expense` creates it on payment and removes it when the payment is voided; `expense_source_guard` stops such an expense being edited (amount, date, category) or deleted by hand |
 | Realtime | `attendance`, `transport_runs` and `attendance_days` are added to Supabase's `supabase_realtime` publication (with full replica identity so a delete says which project and day); skipped if the publication does not exist |

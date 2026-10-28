@@ -15,7 +15,7 @@ const blank = (p: Person, projectId: string, date: string, status: Status | null
 export default function AttendanceSheet({ projectId, role, vendors, vehicles, names }: { projectId: string; role: string | null; vendors: Vendor[]; vehicles: Vehicle[]; names: Record<string, string> }) {
   const admin = role === "admin";
   const [runs, setRuns] = useState<Run[]>([]); const [day, setDay] = useState<DayRow | null>(null);
-  const [date, setDate] = useState(istToday()); const [people, setPeople] = useState<Person[]>([]); const [rows, setRows] = useState<Record<string, AttRow>>({});
+  const [date, setDate] = useState(() => { const d = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("d") : null; return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : istToday(); }); const [people, setPeople] = useState<Person[]>([]); const [rows, setRows] = useState<Record<string, AttRow>>({});
   const [loading, setLoading] = useState(true); const [err, setErr] = useState(""); const [msg, setMsg] = useState(""); const [bulkMeal, setBulkMeal] = useState<Meal>("lunch"); const [bulkVendor, setBulkVendor] = useState(""); const [q, setQ] = useState(""); const [onlyOpen, setOnlyOpen] = useState(false); const [qa, setQa] = useState(false); const [statusPick, setStatusPick] = useState<Status>("present"); const [scopePick, setScopePick] = useState<"open" | "all">("open"); const [qm, setQm] = useState(false); const qmRef = useRef<HTMLDivElement>(null); const wide = useMedia("(min-width: 1024px)");
   useEffect(() => {
     if (!qm) return;

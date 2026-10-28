@@ -74,6 +74,10 @@ Roles are now Admin, Site Engineer (sees attendance only) and Supervisor. Every 
 - [x] Migration `supabase/migrations/2026-10-attendance-accountability-transport.sql` (run AFTER `2026-10-roles-attendance.sql`): role rename, names on logins, rank-protected entries, activity log, day sign-off, transport vehicles / trips / passengers / payments, money visible to Admin only
 - [x] Daily sheet: "who · time" on every row, Transport card (per vehicle: Pickup and Drop, Showed / No show with a server time), day bar (Supervisor submits, Site Engineer verifies, reopen) with a review list
 - [x] Activity tab (Admin / Site Engineer), Sites today page, Transport page per project (vehicles paid per trip or monthly, no-shows, errands, payments, balance due)
+- [x] Meals page (Overview, Daily log, People, Vendors & prices, Payments, Reports) and Transport tabs; marking stays on the Attendance page
+- [x] Accommodation (rooms per project, rent in advance, capacity vs people, rent payments posting to expenses)
+- [x] Vendor bills for meals: record, compare with the meals recorded, approve; the approved amount becomes what is due for the month
+- [ ] Same bill-and-approve check for transport operators and landlords (only if wanted)
 - [x] Meal payments page (what each vendor is owed, record payments) with payments from meals and transport posted to project expenses automatically (Food, Transport / freight); voiding removes the expense
 - [x] No per-person locking on attendance or transport records (changes are stamped and logged; overrides flagged)
 - [x] Several people at once: live refresh (Realtime + timer), field-only saves, "Last change" note, Refresh banner for an Admin in Override, live Sites today
@@ -84,7 +88,7 @@ Roles are now Admin, Site Engineer (sees attendance only) and Supervisor. Every 
 - [ ] Settings → Food vendors: pick each project and add its vendors (e.g. accommodation mess, site canteen) with prices; assign any old vendors listed as "Not assigned"
 - [ ] Add the hired vehicles on the Transport page for each project, choosing per trip or monthly and the price
 - [ ] Try the Supervisor and Site Engineer logins on a phone at the site
-- [x] Update docs/ROLES_AND_ATTENDANCE.md (repo copy)
+- [x] Update docs/ROLES_AND_ATTENDANCE.md (repo copy) and write docs/OPERATIONS_GUIDE.md (user guide for attendance, meals, transport, accommodation)
 - [ ] Update the online Claude Doc to match (still shows the old three-role version)
 
 ## Platform roadmap — payroll, invoices, inventory (agreed 2026-10-27)

@@ -1,0 +1,253 @@
+# Operations guide: attendance, meals, transport and accommodation
+
+How to run a site in the CIPCO app: who does what, every screen, and the rules behind them. For the technical detail (database tables, security review, how it was tested) see [ROLES_AND_ATTENDANCE.md](ROLES_AND_ATTENDANCE.md). Written 29 Oct 2026.
+
+---
+
+## 1. The big picture
+
+Four things are tracked for every project (site), and everything that costs money ends up in the project's expenses without being typed twice.
+
+| Topic | Who records it, and where | Who reviews and pays, and where |
+| --- | --- | --- |
+| **Attendance** (work status) | Supervisor, on the **Attendance** page | Admin and Site Engineer, same page; Admin also **Monthly** and **Sites today** |
+| **Meals** (which vendor each person ate with) | Supervisor, on the **Attendance** page | Admin, on the **Meals** page |
+| **Transport** (did each hired vehicle show up) | Supervisor, on the **Attendance** page | Admin, on the **Transport** page |
+| **Accommodation** (rooms, rent) | Admin | Admin, on the **Accommodation** page |
+
+The rule of thumb: **marking happens on the Attendance page** (the only page Supervisors and Site Engineers have); **everything about money is the Admin's**, on the Operations pages.
+
+Money flow: meals and transport and rent are *owed* as they happen. You record a **payment**; the app posts the matching expense on the project (Food, Transport / freight, Accommodation). Voiding a payment removes that expense.
+
+---
+
+## 2. First-time setup (Admin)
+
+1. **Database.** In the Supabase SQL editor run, in order: the other 2026-10 migrations if not run yet, then `2026-10-roles-attendance.sql` (**once only**), then `2026-10-attendance-accountability-transport.sql` (safe to re-run any time; re-run it whenever it changes). `2026-10-project-expenses.sql` must exist before payments can post to expenses. Do **not** re-run the older migrations after the roles migration.
+2. **Users.** Create each login in Supabase (Authentication → Add user). Then open **Users** in the app: give each person a **name** (this is what stamps show), a **role** and, for a Supervisor or Site Engineer, tick their **sites**. Save.
+3. **Vendors.** **Meals → Vendors & prices** (or Settings → Food vendors): pick the project, add every place people eat (for example the accommodation mess and the site canteen) and set each meal's price. Any old vendors under "Not assigned to a project yet" need **Assign to this project**.
+4. **Vehicles.** **Transport → Vehicles & prices**: pick the project, add each hired vehicle with its operator, **Per trip** or **Monthly**, and the price. Old vehicles under "not assigned to a project yet" need **Assign to this project**.
+5. **Rooms.** **Accommodation → Rooms → Add rooms**: for example 4 non-AC rooms at ₹7,000, then 1 AC room at ₹13,000, with beds per room and the landlord.
+6. **People.** Make sure each employee has a **Project** and a **joining date**: they only appear on a site's attendance sheet from their joining date.
+
+---
+
+## 3. Roles at a glance
+
+| | Admin | Site Engineer | Supervisor |
+| --- | --- | --- | --- |
+| Pages they have | Everything | Attendance only | Attendance only |
+| Sites | All | Assigned sites | Assigned sites |
+| Mark attendance, meals, vehicle show-ups | Any day (after **Override**) | Today and the next day until 11:00 PM | Today until 11:00 PM |
+| Submit the day | Yes | Yes | Yes |
+| Verify or reopen the day | Yes | Yes | No |
+| Activity tab (who changed what) | Yes | Yes | No |
+| Clear a whole day | Yes | No | No |
+| Money (prices, bills, payments, rent, errands) | Yes | No | No |
+
+Nothing is locked per person: any role with access to the site can change an entry another role made. Every change is stamped with the person and the time and written to the Activity log, and a higher role's change over a lower role's is flagged as an **override**.
+
+---
+
+## 4. The Attendance page (Supervisor, Site Engineer, Admin)
+
+Open **Attendance**, choose the project (if you have more than one) and the **Daily sheet**.
+
+### 4.1 Work status
+Each person has four buttons: **Present**, **Absent**, **Half-day**, **Off**. A person with no mark shows an amber dot ("not marked"). Their **weekly off** day is automatic. Tap Present to override it.
+
+### 4.2 Meals (breakfast, lunch, dinner)
+Each person has three meal buttons showing the **vendor**. One tap cycles *none → vendor 1 → vendor 2 → none*; each vendor has its own colour. With more than three vendors a dropdown is used.
+- **Meals are recorded for everyone, whatever their work status.** An absent or weekly-off worker still eats, and the company still pays. The buttons are always shown.
+- Tapping a meal on someone who is not marked records the meal **without marking them present**. Presence at the job site stays a separate record.
+- The vendor is the **place** they ate (accommodation mess or site canteen), which is also who is paid.
+
+### 4.3 Vehicles: did they show up?
+The **Transport** card on the sheet lists the project's vehicles. For each vehicle and each direction (**Pickup**, **Drop**) tap **Showed** or **No show**.
+- Showed stamps the time from the server's clock. Tap the small time to correct it (for example if recorded later).
+- Tapping the chosen button again clears it. For a past day the time starts as a placeholder (07:00 pickup, 18:00 drop) to correct.
+- The card summarises "2 showed · 1 didn't show · 1 not recorded".
+- Workers' own alternative transport is not recorded, only whether the vehicle showed up.
+
+### 4.4 Quick actions and shortcuts
+- **Everyone present**: marks everyone still open as Present (skips weekly off).
+- **Quick actions**: *Copy yesterday's attendance*; *Mark as* (Present, Absent, Half-day, Off) for people still open or for everyone (asks first); *Copy yesterday's meals*; *Set a meal for everyone* (one vendor for one meal, for everyone, whatever their status).
+- With more than six people: a **search** box and **Open only** (only people still unmarked).
+- Every tap saves at once. Bulk actions save, then re-read what is stored.
+
+### 4.5 The day bar: submitting and verifying
+Above the transport card:
+1. **Day open**: anyone with access can work.
+2. **Submit day** (Supervisor, Site Engineer or Admin): "Submitted by Ravi · 18:40, waiting for the Site Engineer". If anything changes afterwards the day goes back to open and needs submitting again.
+3. **Verify day** (Site Engineer or Admin): "Verified by Meera · 19:10". The Supervisor can no longer change the day. **Reopen** (Site Engineer or Admin) undoes it.
+- **N to review** lists what to check first: people not yet marked, vehicle show-ups not recorded, vehicles that did not show.
+- **Clear day** (Admin only, red button): removes everyone's attendance and meals for that project and day and resets the sign-off, after a confirmation. Use it to start a day again from scratch. Vehicle show-ups are kept. It is logged.
+
+### 4.6 Who changed it, and last change
+Each row shows who last changed it and when ("Ravi · 08:02", India time from the server). A line under the date shows "Last change: Ravi · 14:32" with a green dot when the live connection is up.
+
+### 4.7 Time windows (enforced by the database)
+| Role | May change a day |
+| --- | --- |
+| Supervisor | That day, until **11:00 PM India time**. Not once the Site Engineer has verified it |
+| Site Engineer | That day and the **next** day, until 11:00 PM (one extra day for corrections) |
+| Admin | Any day, including future days |
+
+Nobody except an Admin can enter a future day. You can only mark people who are on the project and sites you are assigned to.
+
+### 4.8 Several people at once
+The Supervisor at the plant, the Site Engineer and the Admin can have the same day open together.
+- Other people's changes **appear by themselves** (live connection, with a check every 25 seconds as a fallback, and when you return to the tab).
+- Saves send **only the field you changed**, so two people changing different things for the same person both stay. If two people change the *same* field, the last save wins and both are in the Activity log.
+
+### 4.9 The Monthly tab
+Totals per person for a month (days worked = present + ½ per half-day, absent days, breakfasts, lunches, dinners), a calendar per person on phones, the everyone grid on computers, meals by vendor, and two CSV downloads (Totals, Daily). Meal costs are shown to Admins only.
+
+### 4.10 The Activity tab (Admin and Site Engineer)
+Every change, newest first: who, their role, what, old → new, the day it was for, and an **overrode Supervisor / Site Engineer** flag. Use **Overrides only** to see just those. The log is written by the database and cannot be edited.
+
+---
+
+## 5. Admin on the Attendance page: view-only and Override
+
+To stop an Admin changing something by accident, the daily sheet opens **view only** for an Admin: all work, meal and vehicle buttons, Everyone present, Quick actions and the day-bar actions are disabled or hidden. A bar says "View only. Tap **Override** to change anything on this day."
+- Tap **Override** to make the day editable (the bar turns amber). Your changes are stamped as Admin. Tap **Done** to go back.
+- It returns to view only whenever you change the project or the date.
+- While viewing, other people's changes appear on their own. **With Override on** the screen never shifts under you: a blue banner says "Someone else changed this day. Refresh to see it." and **Refresh** applies it. Your own changes never raise the banner.
+
+---
+
+## 6. Sites today (Admin)
+
+**Operations → Sites today**: one card per active project: marked count, how many are working, whether the day is *Not started / In progress / Submitted / Verified* (with the time), and vehicle no-shows. It updates live. Tap a card to open Attendance.
+
+---
+
+## 7. Meals (Admin)
+
+**Operations → Meals**, per project. Marking meals stays on the Attendance page. Tabs:
+
+| Tab | Use it to |
+| --- | --- |
+| **Overview** | See meals and cost this month, paid and due, a per-vendor table and cost per person per day. Alerts: past days with no meals recorded, meals with no price, bills waiting for approval |
+| **Daily log** | See each day's meals by vendor (breakfast · lunch · dinner), total and cost. A "!" marks a past day with no meals. **Open** jumps to that day on the Attendance page to correct it |
+| **People** | See each person's meals and cost for the month |
+| **Vendors & prices** | Add vendors, hide or show them, set prices (with an "applies from" date; earlier days keep the earlier price) |
+| **Bills** | Check a vendor's bill against the meals recorded (see 7.1) |
+| **Payments** | Record and void payments (see 7.2) |
+| **Reports** | A vendor statement for a month, day by day with amounts, and CSV downloads: statement, food summary, per person |
+
+**How the amount owed is worked out:** every meal recorded on the sheet (whatever the person's work status) × that vendor's price on the day. A meal with no price is counted but not billed. For a month with an approved bill, the approved amount is used instead.
+
+### 7.1 Vendor bills
+Each month a vendor sends a bill that may differ from what the recorded meals come to. On **Bills**, for the month chosen, each vendor row shows the **meals recorded**, the **vendor's bill**, the **difference** ("Matches", "+₹1,600 charged more" or "−₹… charged less") and a status.
+1. **Record bill**: vendor, amount, optional bill number, note, and a photo or PDF of the bill (up to 5 MB).
+2. Use **See the meals** to open the vendor statement and find the days that differ; check the Daily log if needed.
+3. **Approve bill** (use the vendor's amount), **Approve meals** (use the computed amount) or **Other…** (your own amount). That becomes **what is due for the month**; the app keeps what the meals came to at the time and who approved.
+4. A received bill can be corrected. An approved one must be **Reopened** first. **Void** cancels a bill and the computed amount is used again.
+- One live bill per vendor per month; bills are never deleted. Bills do not create expenses, only payments do.
+
+### 7.2 Paying vendors
+**Payments** tab: choose the vendor, amount, date, reference (UTR) and note, then **Record payment**.
+- It posts a **Food** expense on the project by itself (for example "Meals payment · Maruti · UTR123"). **Void** removes the payment's expense.
+- Payments are never edited or deleted; a wrong one is voided and entered again.
+- The Overview and Daily log show **Billed (all)**, **Paid** and **Due** (all time).
+
+---
+
+## 8. Transport (Admin)
+
+**Operations → Transport**, per project. Tabs:
+
+| Tab | Use it to |
+| --- | --- |
+| **Overview** | This month by vehicle: showed, no-show, no-show rate, cost, due; days with show-ups not recorded |
+| **Daily log** | A day-by-day grid of pickup and drop for every vehicle (✓ showed, ✗ no show, – not recorded). **Open** jumps to that day on the Attendance page |
+| **Vehicles & prices** | Add vehicles, choose **Per trip** or **Monthly**, set the price |
+| **Errands** | Record extra jobs a vehicle ran that the operator quoted separately |
+| **Payments** | Record and void payments |
+
+- **Per trip:** billed only for trips that **showed up**, at the price in force that day.
+- **Monthly:** the fixed amount is billed for each month that has records. The **No-show** column shows what to raise with the operator; nothing is deducted automatically.
+- **Prices:** the first price you set also applies to earlier days. A later change applies from the date in "New prices apply from" (earlier days keep the old price).
+- **Errands:** vehicle, date, what it was for and the quoted amount. They add to that vehicle's balance. Never edited, only voided.
+- **Payments:** vehicle, amount, date, reference, note. Posts a **Transport / freight** expense; voiding removes it. **Balance due** per vehicle = billed (trips or months, plus errands) minus paid.
+
+---
+
+## 9. Accommodation (Admin)
+
+**Operations → Accommodation**, per project: the rooms rented for the people on site, whether they hold everyone, and the rent. Rent is paid a **full month in advance**: a month's rent is due on the 1st and shows as overdue after the 5th; a part month is billed in full.
+
+| Tab | Use it to |
+| --- | --- |
+| **Overview** | Rooms (AC / non-AC), rent per month (and next month), this month's rent paid, outstanding rent, and **Do the rooms hold everyone?** |
+| **Rooms** | Add rooms, set beds, landlord and rent, vacate or reopen a room |
+| **Rent & payments** | Pay a month's rent and see the status of each room |
+
+- **Do the rooms hold everyone?** compares the total beds with the people on the project (employees with a joining date up to today). If short it says by how many beds and roughly how many more rooms are needed at the current beds per room, with a link to add rooms. Rooms with no bed count are flagged.
+- **Add rooms** adds one or several of a kind at once: how many, type, rent, beds each, landlord, date rented. Rooms are named Room 1, Room 2, … and can be renamed. Example: 4 non-AC at ₹7,000, then 1 AC at ₹13,000 gives ₹41,000 a month.
+- **Changing the rent:** type the new rent and press **Set**; it applies from the date in "A changed rent applies from" (earlier months keep the old rent). **Vacate** stops rent after the current month; **Reopen** undoes it.
+- **Landlord** is a free-text name per room: who is paid. It appears on the payment's expense and helps match bank transfers. It can be left blank.
+- **Rent & payments:** pick the month. Each room shows rent, paid, left and status (**Paid / Part paid / Due / Overdue**). **Pay** on a room, or **Pay all unpaid** for the month (one payment per room, with one reference). Each payment posts an **Accommodation** expense (for example "Rent (Oct 2026) · Room 1 · Mr Sharma"); **Void** removes it. **⬇ CSV** exports the month.
+- Who sleeps in which room is **not** tracked, only capacity against headcount.
+
+---
+
+## 10. Project expenses
+
+The project's **Expenses** tab lists everything, including expenses posted from payments. Those rows show a **From payment** tag instead of Edit and Delete: their amount, date and category cannot be changed. To fix one, **void the payment** (the expense is removed) and record it again. Their note and bill can still be edited. Hand-entered expenses work as before.
+
+Only what is **paid** becomes an expense. What is merely owed (billed meals, trips, errands, unpaid rent) shows as **Due** on its page but is not an expense until it is paid. A vendor, vehicle or room that is not assigned to a project cannot be paid until you assign it.
+
+---
+
+## 11. Routines
+
+**Every day (Supervisor)**
+1. Open Attendance; mark everyone (Everyone present, then fix exceptions).
+2. Set each person's meals (Set a meal for everyone, then fix exceptions).
+3. Mark each vehicle's Pickup and Drop as Showed or No show.
+4. Check "N to review", then **Submit day** before 11:00 PM.
+
+**Every day (Site Engineer)**
+- Review the submitted day, correct anything, then **Verify day** (until 11:00 PM the next day).
+
+**Weekly (Admin)**
+- **Sites today** for any day not submitted or verified. **Meals → Overview** and **Transport → Overview** alerts (days with nothing recorded). **Accommodation → Overview** for capacity.
+
+**Monthly (Admin)**
+1. **Meals → Bills**: record each vendor's bill, compare, approve. Then **Payments**.
+2. **Transport**: check no-shows, add errands, record payments.
+3. **Accommodation → Rent & payments**: **Pay all unpaid** for the coming month (rent is in advance).
+4. **Meals → Reports** and **Attendance → Monthly** for CSVs; the project's Expenses tab for the cost view.
+
+---
+
+## 12. Messages you may see
+
+| Message | Meaning and what to do |
+| --- | --- |
+| "Attendance for 26 Oct is locked …" | Outside your time window (section 4.7). Ask the Site Engineer (for a Supervisor) or an Admin |
+| "This day has been verified by the Site Engineer." | The Supervisor cannot change a verified day. Ask them to **Reopen** it |
+| "That person is not on this project." | The employee's Project on their record is different. Fix it on the employee, or assign them to the project |
+| "That vendor is not set up for this project." | Meals can only use the project's own vendors. Add the vendor to this project |
+| "That vehicle does not belong to this project." | Same, for vehicles |
+| "This vendor or vehicle is not assigned to a project yet." | Assign it to a project first (Meals → Vendors & prices, Transport → Vehicles & prices) |
+| "This expense comes from a payment …" | Void the payment instead of editing the expense |
+| "There is already a bill for … this month." | One live bill per vendor per month. Void it first, or correct it |
+| "Only an Admin can clear a day." | Clear day is for Admins |
+| No vehicles / vendors listed on the sheet | The Admin has not added any for that project yet |
+
+If a Supervisor sees "No project has been assigned to you yet", tick their site on the Users page. If someone sees "No access yet", give them a role there.
+
+---
+
+## 13. Good to know
+
+- **Time** is India time and comes from the database's clock, not the phone.
+- **Money is hidden** from Supervisors and Site Engineers: they never see prices, bills, payments, rent or errands.
+- **Weekly off** is worked out from the employee's weekly-off day; changing it later changes how past unsaved days look.
+- **One row per person per day**: someone who moves projects mid-day is recorded on one project only.
+- **Live updates** need the three attendance tables switched on for Realtime (the migration does it). If the green dot never appears, check Supabase → Database → Replication; the screens still refresh every 25 seconds.
+- **Not built:** overtime, leave types, late arrival, per-person alternate transport, room occupancy, vendor-bill checks for transport operators and landlords, offline mode.

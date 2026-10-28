@@ -19,7 +19,8 @@ export default function AttendancePage() {
     const sb = supabase(); const [p, v, r, tv, up] = await Promise.all([sb.from("projects").select("*").order("name"), sb.from("food_vendors").select("*").order("sort_order"), sb.from("meal_rates").select("*"), sb.from("transport_vehicles").select("*").order("sort_order"), sb.from("user_profiles").select("user_id, full_name")]);   // vehicles / names: empty until the accountability migration is run
     if (p.error || v.error) { setErr((p.error || v.error)!.message + " — has the roles & attendance SQL migration been run?"); setLoading(false); return; }
     const list = ((p.data || []) as Project[]).sort((a, b) => (a.status === b.status ? a.name.localeCompare(b.name) : a.status === "active" ? -1 : 1));
-    setProjects(list); setPid((cur) => cur || list[0]?.id || ""); setVendors((v.data || []) as Vendor[]); setRates((r.data || []) as MealRate[]); setVehicles((tv.data || []) as Vehicle[]); setNames(Object.fromEntries(((up.data || []) as { user_id: string; full_name: string }[]).filter((x) => x.full_name).map((x) => [x.user_id, x.full_name]))); setLoading(false);
+    // ?p= and ?d= let the Meals and other admin pages open a particular site and day
+    const want = new URLSearchParams(window.location.search).get("p"); setProjects(list); setPid((cur) => cur || (list.some((x) => x.id === want) ? want! : list[0]?.id) || "");  setVendors((v.data || []) as Vendor[]); setRates((r.data || []) as MealRate[]); setVehicles((tv.data || []) as Vehicle[]); setNames(Object.fromEntries(((up.data || []) as { user_id: string; full_name: string }[]).filter((x) => x.full_name).map((x) => [x.user_id, x.full_name]))); setLoading(false);
   })(); }, []);
   const proj = projects.find((x) => x.id === pid);
   return (
