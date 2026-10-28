@@ -1,6 +1,6 @@
 -- Attendance accountability + trip-based transport.
 --   * roles: Supervisor and Site Engineer (the old "attendance clerk" becomes Supervisor); Staff is no longer offered
---   * higher roles overrule lower ones, and a lower role cannot change what a higher role set (Supervisor < Site Engineer < Admin)
+--   * nothing is locked per person: anyone with access may change an entry within their time window; the change is stamped and logged (an override by a higher role is flagged)
 --   * every change is written to an append-only log with the user, their role and the old / new value
 --   * names for logins, so stamps read "Ravi", not an email
 --   * transport (project based): locally hired vehicles paid per trip or monthly, a daily showed-up / no-show record per vehicle and direction, errand charges and a payment ledger (admin only)
@@ -142,7 +142,7 @@ end $$;
 revoke all on function public.check_write(uuid, date) from public, anon, authenticated;
 
 -- ---------- 7. attendance: ranks, windows, and the log ----------
-alter table public.attendance add column if not exists rank smallint not null default 1;     -- rank of whoever last set this entry
+alter table public.attendance add column if not exists rank smallint not null default 1;     -- the highest role that has set this entry (used to flag overrides in the log; it does not lock anything)
 alter table public.attendance add column if not exists set_by_role text;
 
 create or replace function public.attendance_guard() returns trigger language plpgsql security definer set search_path = public as $$
@@ -153,9 +153,6 @@ begin
   if tg_op in ('INSERT','UPDATE') then perform public.check_write(new.project_id, new.work_date); end if;
   if tg_op in ('INSERT','UPDATE') and r <> 'admin' and not exists (select 1 from public.employees e where e.id = new.employee_id and e.project_id = new.project_id) then
     raise exception 'That person is not on this project.';
-  end if;
-  if tg_op in ('UPDATE','DELETE') and old.rank > rk then   -- a higher role's entry is protected
-    raise exception 'This entry was set by the % and can''t be changed by a %.', public.rank_name(old.rank), public.rank_name(rk);
   end if;
   if tg_op = 'DELETE' then return old; end if;
   if (new.breakfast_vendor_id is not null and (tg_op = 'INSERT' or new.breakfast_vendor_id is distinct from old.breakfast_vendor_id) and not exists (select 1 from public.food_vendors f where f.id = new.breakfast_vendor_id and f.project_id = new.project_id))
@@ -269,6 +266,10 @@ create table if not exists public.transport_payments (
   created_at timestamptz not null default now()
 );
 
+-- a payments table left by an earlier run of this file has no project column: add it, and fill it from each payment's vehicle
+alter table public.transport_payments add column if not exists project_id uuid references public.projects(id);
+update public.transport_payments p set project_id = v.project_id from public.transport_vehicles v where v.id = p.vehicle_id and p.project_id is null;
+
 alter table public.transport_vehicles enable row level security;
 alter table public.transport_rates enable row level security;
 alter table public.transport_runs enable row level security;
@@ -294,7 +295,6 @@ declare rk int := public.role_rank(public.app_role());
 begin
   if public.app_role() is null then raise exception 'You do not have access to attendance.'; end if;
   if tg_op in ('UPDATE','DELETE') then perform public.check_write(old.project_id, old.work_date); end if;
-  if tg_op in ('UPDATE','DELETE') and old.rank > rk then raise exception 'This was set by the % and can''t be changed by a %.', public.rank_name(old.rank), public.rank_name(rk); end if;   -- the Site Engineer can overrule the Supervisor, not the other way round
   if tg_op = 'DELETE' then return old; end if;
   perform public.check_write(new.project_id, new.work_date);
   if not exists (select 1 from public.transport_vehicles v where v.id = new.vehicle_id and v.project_id = new.project_id) then raise exception 'That vehicle does not belong to this project.'; end if;
@@ -334,13 +334,83 @@ begin
     if new.voided_at is not null then new.voided_by := auth.uid(); end if;
     return new;
   end if;
-  select v.project_id into new.project_id from public.transport_vehicles v where v.id = new.vehicle_id;
+  if tg_table_name = 'vendor_payments' then select f.project_id into new.project_id from public.food_vendors f where f.id = new.vendor_id;
+  else select v.project_id into new.project_id from public.transport_vehicles v where v.id = new.vehicle_id; end if;
+  if new.project_id is null then raise exception 'This vendor or vehicle is not assigned to a project yet. Assign it to a project first.'; end if;
   new.created_by := auth.uid(); new.voided_at := null; new.voided_by := null; return new;
 end $$;
 drop trigger if exists transport_payment_guard_trg on public.transport_payments;
 create trigger transport_payment_guard_trg before insert or update or delete on public.transport_payments for each row execute function public.transport_money_guard();
 drop trigger if exists transport_errand_guard_trg on public.transport_errands;
 create trigger transport_errand_guard_trg before insert or update or delete on public.transport_errands for each row execute function public.transport_money_guard();
+
+-- ---------- 8b. meal (food vendor) payments, and posting payments to project expenses ----------
+-- A payment is recorded once, here; it creates the Food / Transport expense on the project by itself, and voiding the payment removes that expense.
+create table if not exists public.vendor_payments (
+  id uuid primary key default gen_random_uuid(),
+  vendor_id uuid not null references public.food_vendors(id),
+  project_id uuid references public.projects(id),         -- taken from the vendor's project
+  paid_on date not null default current_date,
+  amount numeric(12,2) not null check (amount > 0),
+  reference text not null default '',
+  note text not null default '',
+  voided_at timestamptz, voided_by uuid,
+  created_by uuid default auth.uid(),
+  created_at timestamptz not null default now()
+);
+alter table public.vendor_payments enable row level security;
+drop policy if exists "staff vendor payments" on public.vendor_payments;
+create policy "staff vendor payments" on public.vendor_payments for all to authenticated using (public.is_staff()) with check (public.is_staff());
+drop trigger if exists vendor_payment_guard_trg on public.vendor_payments;
+create trigger vendor_payment_guard_trg before insert or update or delete on public.vendor_payments for each row execute function public.transport_money_guard();
+
+do $$ begin
+  if to_regclass('public.project_expenses') is not null then
+    alter table public.project_expenses add column if not exists source text;        -- 'vendor_payment' or 'transport_payment' when the expense was posted from a payment
+    alter table public.project_expenses add column if not exists source_id uuid;
+    create unique index if not exists project_expenses_source_uq on public.project_expenses (source, source_id) where source is not null;
+  else raise notice 'project_expenses does not exist yet: payments will not be posted to expenses until 2026-10-project-expenses.sql is run and this file is run again'; end if;
+end $$;
+
+create or replace function public.post_payment_expense() returns trigger language plpgsql security definer set search_path = public as $$
+declare cat uuid; kind text := case tg_table_name when 'vendor_payments' then 'vendor_payment' else 'transport_payment' end; cname text; who text;
+begin
+  if to_regclass('public.project_expenses') is null then return new; end if;
+  if tg_op = 'UPDATE' then
+    if new.voided_at is not null and old.voided_at is null then   -- voiding a payment removes the expense it posted
+      perform set_config('app.posting', '1', true); delete from public.project_expenses where source = kind and source_id = new.id; perform set_config('app.posting', '', true);
+    end if;
+    return new;
+  end if;
+  cname := case kind when 'vendor_payment' then 'Food' else 'Transport / freight' end;
+  select id into cat from public.expense_categories where lower(btrim(name)) = lower(cname) limit 1;
+  if cat is null then insert into public.expense_categories (name) values (cname) returning id into cat; end if;
+  if kind = 'vendor_payment' then select name into who from public.food_vendors where id = new.vendor_id; else select name into who from public.transport_vehicles where id = new.vehicle_id; end if;   -- (separate statements: the other table's column does not exist on this row)
+  insert into public.project_expenses (project_id, category_id, expense_date, amount, description, source, source_id, created_by)
+  values (new.project_id, cat, new.paid_on, new.amount, case kind when 'vendor_payment' then 'Meals' else 'Transport' end || ' payment · ' || coalesce(who, '') || coalesce(' · ' || nullif(btrim(new.reference), ''), ''), kind, new.id, auth.uid());
+  return new;
+end $$;
+drop trigger if exists vendor_payment_post_trg on public.vendor_payments;
+create trigger vendor_payment_post_trg after insert or update on public.vendor_payments for each row execute function public.post_payment_expense();
+drop trigger if exists transport_payment_post_trg on public.transport_payments;
+create trigger transport_payment_post_trg after insert or update on public.transport_payments for each row execute function public.post_payment_expense();
+
+-- an expense that came from a payment is changed by voiding the payment, not by editing or deleting the expense
+create or replace function public.expense_source_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if old.source is null or current_setting('app.posting', true) = '1' then if tg_op = 'DELETE' then return old; else return new; end if; end if;
+  if tg_op = 'DELETE' then raise exception 'This expense comes from a payment. Void the payment to remove it.'; end if;
+  if new.amount <> old.amount or new.expense_date <> old.expense_date or new.project_id <> old.project_id or new.category_id <> old.category_id or new.source is distinct from old.source or new.source_id is distinct from old.source_id then
+    raise exception 'This expense comes from a payment, so its amount, date and category cannot be changed. Void the payment and record it again.';
+  end if;
+  return new;
+end $$;
+do $$ begin
+  if to_regclass('public.project_expenses') is not null then
+    drop trigger if exists expense_source_guard_trg on public.project_expenses;
+    create trigger expense_source_guard_trg before update or delete on public.project_expenses for each row execute function public.expense_source_guard();
+  end if;
+end $$;
 
 -- ---------- 9. day sign-off: Supervisor submits, Site Engineer verifies ----------
 create or replace function public.day_submit(p_project uuid, p_date date) returns void language plpgsql security definer set search_path = public as $$

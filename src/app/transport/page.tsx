@@ -48,6 +48,7 @@ export default function TransportPage() {
   const setRate = async (id: string) => { const price = parseFloat(rateIn[id] || ""); if (!(price >= 0)) return; if (await run(sb().from("transport_rates").upsert({ vehicle_id: id, price, effective_from: rateFrom || istToday() }, { onConflict: "vehicle_id,effective_from" }))) setRateIn((s) => ({ ...s, [id]: "" })); };
   const addPay = async () => { const amount = parseFloat(pf.amount); if (!pf.vehicle_id || !(amount > 0)) { setErr("Choose the vehicle and enter the amount."); return; } if (await run(sb().from("transport_payments").insert({ vehicle_id: pf.vehicle_id, amount, paid_on: pf.paid_on, reference: pf.reference.trim(), note: pf.note.trim() }))) setPf({ ...pf, amount: "", reference: "", note: "" }); };
   const addErrand = async () => { const amount = parseFloat(ef.amount); if (!ef.vehicle_id || !(amount > 0) || !ef.description.trim()) { setErr("Choose the vehicle, describe the errand and enter the quoted amount."); return; } if (await run(sb().from("transport_errands").insert({ vehicle_id: ef.vehicle_id, amount, work_date: ef.work_date, description: ef.description.trim() }))) setEf({ ...ef, amount: "", description: "" }); };
+  const assign = async (v: Vehicle) => { await run(sb().from("transport_vehicles").update({ project_id: pid }).eq("id", v.id)); };
   const voidIt = (table: "transport_payments" | "transport_errands", x: Money, what: string) => { if (confirm(`Void this ₹${inr(x.amount)} ${what} for ${vName(x.vehicle_id)}? It stays in the list, marked void.`)) run(sb().from(table).update({ voided_at: new Date().toISOString() }).eq("id", x.id)); };
 
   return (
@@ -73,6 +74,9 @@ export default function TransportPage() {
           <p className="text-xs text-slate-400">Per-trip vehicles are billed only for trips that showed up. Monthly vehicles are billed the fixed amount for each month with records; the no-show column shows what to raise with the operator. The first price you set also applies to earlier days. A later change applies from the date below; earlier days keep the price in force.</p>
           <label className="text-xs text-slate-500 flex items-center gap-2">New prices apply from<input type="date" className="inp !w-40" value={rateFrom} onChange={(e) => setRateFrom(e.target.value)} aria-label="Prices apply from" /></label></section>
 
+        {allVehicles.some((v) => !v.project_id) && <section className="card space-y-2 !p-3"><h3 className="font-semibold text-sm">Vehicles not assigned to a project yet</h3><p className="text-xs text-slate-500">These were added before vehicles belonged to a project, so they don't appear above. Assign each to the project it serves (the one selected at the top) to use it for show-ups, errands and payments.</p>
+          {allVehicles.filter((v) => !v.project_id).map((v) => <div key={v.id} className="flex items-center gap-2 text-sm"><span>{v.name}{v.operator ? <span className="text-xs text-slate-400"> · {v.operator}</span> : null}</span><button className="btn !py-1 ml-auto" onClick={() => assign(v)}>Assign to this project</button></div>)}</section>}
+
         <section className="card space-y-3"><h2 className="font-medium">Errands</h2><p className="text-xs text-slate-400">Extra jobs a vehicle ran that the operator quoted separately. They add to that vehicle's balance.</p>
           <div className="flex flex-wrap gap-2 items-end">
             <select className="inp !w-44" aria-label="Errand vehicle" value={ef.vehicle_id} onChange={(e) => setEf({ ...ef, vehicle_id: e.target.value })}><option value="">Vehicle…</option>{vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
@@ -83,7 +87,7 @@ export default function TransportPage() {
           <ul className="divide-y divide-slate-100 text-sm" data-errands>{errands.map((x) => <li key={x.id} className={`py-2 flex flex-wrap items-center gap-x-3 ${x.voided_at ? "text-slate-400 line-through" : ""}`}><span className="tabular-nums w-24">{x.work_date}</span><span className="w-32 truncate">{vName(x.vehicle_id)}</span><span className="tabular-nums w-28">₹{inr(x.amount)}</span><span className="text-xs text-slate-500 flex-1 truncate">{x.description}</span>{x.voided_at ? <span className="text-xs">void</span> : <button className="text-xs text-red-700 underline" onClick={() => voidIt("transport_errands", x, "errand")}>Void</button>}</li>)}</ul>
           {!errands.length && <p className="text-sm text-slate-400">No errands recorded.</p>}</section>
 
-        <section className="card space-y-3"><h2 className="font-medium">Payments</h2>
+        <section className="card space-y-3"><h2 className="font-medium">Payments</h2><p className="text-xs text-slate-400">Each payment also posts a Transport / freight expense on the project by itself; voiding a payment removes that expense.</p>
           <div className="flex flex-wrap gap-2 items-end">
             <select className="inp !w-44" aria-label="Vehicle" value={pf.vehicle_id} onChange={(e) => setPf({ ...pf, vehicle_id: e.target.value })}><option value="">Vehicle…</option>{vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
             <input className="inp !w-32" inputMode="decimal" placeholder="Amount ₹" aria-label="Amount" value={pf.amount} onChange={(e) => setPf({ ...pf, amount: e.target.value })} />

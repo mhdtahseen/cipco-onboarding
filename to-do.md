@@ -63,7 +63,7 @@ Supervisor sees only the Attendance page for their assigned project(s). Work (pr
 - [ ] Create the supervisor's login in Supabase (Authentication → Add user), give them the Supervisor role and a project on the Users page, and try it from their account
 - [ ] Try it on a phone at the site
 - [ ] Overtime hours, leave types, late arrival (not built; say if needed)
-- [ ] Post monthly meal cost into project Food expenses (confirm-and-post)
+- [x] Post meal payments into project Food expenses (done as automatic posting of each payment)
 - [ ] Use actual days worked (not 26) for daily-wage cost and pay
 - [ ] Attendance tab on the project page and headcount per day on the project report
 
@@ -74,6 +74,8 @@ Roles are now Admin, Site Engineer (sees attendance only) and Supervisor. Every 
 - [x] Migration `supabase/migrations/2026-10-attendance-accountability-transport.sql` (run AFTER `2026-10-roles-attendance.sql`): role rename, names on logins, rank-protected entries, activity log, day sign-off, transport vehicles / trips / passengers / payments, money visible to Admin only
 - [x] Daily sheet: "who · time" on every row, Transport card (per vehicle: Pickup and Drop, Showed / No show with a server time), day bar (Supervisor submits, Site Engineer verifies, reopen) with a review list
 - [x] Activity tab (Admin / Site Engineer), Sites today page, Transport page per project (vehicles paid per trip or monthly, no-shows, errands, payments, balance due)
+- [x] Meal payments page (what each vendor is owed, record payments) with payments from meals and transport posted to project expenses automatically (Food, Transport / freight); voiding removes the expense
+- [x] No per-person locking on attendance or transport records (changes are stamped and logged; overrides flagged)
 - [x] Several people at once: live refresh (Realtime + timer), field-only saves, "Last change" note, Refresh banner for an Admin in Override, live Sites today
 - [x] Admin view-only by default on the daily sheet; an Override button makes it editable (protects against accidental changes)
 - [x] Admin "Clear day" button (wipes a day's attendance, meals and sign-off so the Supervisor can redo it)

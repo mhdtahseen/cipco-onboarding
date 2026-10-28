@@ -25,7 +25,7 @@ Short answers:
 
 ## 2. Roles at a glance
 
-Every login has exactly one role. Higher roles can overrule lower ones; a lower role cannot change what a higher role set (Supervisor < Site Engineer < Admin).
+Every login has exactly one role. Nothing is locked per person: anyone with access to a site may change an entry for it within their time window, whoever set it. Every change is stamped and logged, and a change by a higher role over a lower role's entry is flagged as an override in the activity log.
 
 | Capability | Admin | Site Engineer | Supervisor | No role |
 | --- | --- | --- | --- | --- |
@@ -36,9 +36,7 @@ Every login has exactly one role. Higher roles can overrule lower ones; a lower 
 | Attendance page, Monthly view, CSV downloads | Yes, all projects | Assigned sites | Assigned sites | No |
 | Meal prices and meal cost | Yes | No | No | No |
 | Mark attendance, meals and transport show-ups (Showed / No show) | Any day | Today and yesterday until 11:00 PM | Today until 11:00 PM | No |
-| Change an entry the Supervisor set (attendance, meals or transport) | Yes (stamped) | Yes (stamped) | Yes | No |
-| Change an entry the Site Engineer set | Yes | Yes | No | No |
-| Change an entry the Admin set | Yes | No | No | No |
+| Change an entry another role set (attendance, meals or transport) | Yes (logged) | Yes (logged) | Yes (logged) | No |
 | Submit the day | Yes | Yes | Yes | No |
 | Verify or reopen the day | Yes | Yes | No | No |
 | Edit a verified day | Yes | Yes | No, until reopened | No |
@@ -209,7 +207,7 @@ Workers are ferried from their accommodation to the job site and back by autos, 
 
 - **Transport is project based.** A vehicle is set up under one project; the Supervisor and Site Engineer see only their own site's vehicles. A vehicle used on two sites is added once per site.
 - **Per vehicle, per direction.** Each vehicle has a **Pickup** and a **Drop**, each marked **Showed** or **No show**. Marking Showed stamps the time from the server's clock (tap the small time to correct it, for example if recorded later). Tapping the chosen button again clears it. For a past day the time starts as a placeholder (07:00 pickup, 18:00 drop) to correct. The card summarises "2 showed · 1 didn't show · 1 not recorded". No passenger list is kept.
-- **The Site Engineer has the same transport access as the Supervisor on the daily sheet**: mark Showed / No show and correct times. Neither can set up vehicles, prices, errands or payments; that is the Admin's. **The Site Engineer can overrule the Supervisor's transport record** (stamped, flagged "overrode Supervisor" in the activity log, no reason needed); the Supervisor cannot change a record the Site Engineer or Admin set. Each leg shows who recorded it.
+- **The Site Engineer has the same transport access as the Supervisor on the daily sheet**: mark Showed / No show and correct times. Neither can set up vehicles, prices, errands or payments; that is the Admin's. **Nothing is locked on a record**: the Site Engineer can change the Supervisor's transport record and the Supervisor can change the Site Engineer's; each change is stamped, and a higher role's change over a lower role's is flagged "overrode Supervisor" in the activity log. Each leg shows who recorded it.
 - **Windows and locks** are the same as attendance: Supervisor that day until 11:00 PM, Site Engineer that day and the next, Admin always; nothing for the future; nothing for the Supervisor once the day is verified. Every record, switch, time correction and clearing is stamped with who and when, and appears in the activity log ("Pickup · Auto 1 · showed up 07:02").
 - **How vehicles are paid.** Set per vehicle on the **Transport** page (Admin): **per trip** or **monthly**, with a price (per trip, or per month). The first price set for a vehicle also applies to any earlier days; a later change applies from the chosen date (today by default) and earlier days keep the price in force.
     - *Per trip:* billed only for trips that showed up, at the price in force on that day.
@@ -230,7 +228,7 @@ The **day bar** above the transport card shows the state of the day:
 
 **Admin view-only and Override.** To stop an Admin changing something by accident, the daily sheet opens **view only** for an Admin: the work, meal and transport buttons, Everyone present, Quick actions and the day bar actions (Submit, Verify, Reopen, Clear day) are all disabled or hidden. A bar at the top says "View only. Tap Override to change anything on this day." Tap **Override** to make the day editable (the bar turns amber: "Override is on. Your changes are stamped as Admin…"), and **Done** to go back to view only. It switches back to view only whenever the project or date changes. Supervisors and Site Engineers are not affected; the Monthly and Activity tabs are read-only anyway.
 
-**Clear day (Admin only).** An Admin's own entries are protected from the Supervisor, so a day marked by the Admin cannot be edited by the Supervisor afterwards. The red **Clear day** button in the day bar (visible to Admins only) removes everyone's attendance and meals for that project and day and resets the sign-off, after a confirmation, so the Supervisor can fill it in fresh. Transport records are kept. It is stamped in the activity log ("cleared the day: 8 people").
+**Clear day (Admin only).** Because nothing is locked per person, Clear day is not needed to hand a day back to the Supervisor, but it is useful to start a day again from scratch. The red **Clear day** button in the day bar (visible to Admins only) removes everyone's attendance and meals for that project and day and resets the sign-off, after a confirmation, so the Supervisor can fill it in fresh. Transport records are kept. It is stamped in the activity log ("cleared the day: 8 people").
 
 The "N to review" link lists exceptions before signing off: people not yet marked, transport not recorded (a vehicle direction with no Showed / No show) and vehicles that did not show. These are prompts, not blocks; the day can still be submitted. Submit, verify and reopen are stamped and appear in the activity log.
 
@@ -256,7 +254,19 @@ The example prices mentioned when this was designed (Maruti breakfast 50, Plant 
 
 ---
 
-## 9. The rules, windows and who can overrule whom
+## 8a. Paying meal vendors and posting payments to project expenses
+
+**Meal payments** (Operations menu, Admin only) shows, per project, what each food vendor is owed and what has been paid.
+- **Billed** = every meal recorded on the attendance sheet for the project (whatever the person's work status) x that vendor's price on the day (Settings → Food vendors). Meals with no price are counted but not billed ("N meals unpriced"). A month selector shows each vendor's breakfasts, lunches and dinners and the cost for the month; **Billed (all)**, **Paid** and **Due** are over all time.
+- **Record payment**: vendor, amount, date, reference (UTR), note. A payment is never edited or deleted; a wrong one is **voided** and entered again.
+- **Posting to expenses is automatic.** Recording a payment creates an expense on the same project in the category **Food** (transport payments post to **Transport / freight**), dated the payment date, described like "Meals payment · Maruti · UTR123". Voiding the payment removes that expense. So a payment is entered once, in one place, and the project's expenses and cost report stay current. If a category named Food or Transport / freight does not exist it is created.
+- **On the project's Expenses tab** these rows show a **From payment** tag instead of Edit / Delete: their amount, date and category cannot be changed (void the payment instead). Their note and bill can still be edited. Hand-entered expenses are unchanged.
+- A vendor or vehicle that is not assigned to a project cannot be paid (the message says so); assign it first (Settings → Food vendors, or the Transport page).
+- Only expenses that were actually **paid** are posted. What is merely owed (billed meals, trips, errands) is shown as Due but is not an expense until it is paid.
+
+---
+
+## 9. The rules, windows and overrides
 
 Rules live in the database, not just on the screen, so a phone with a wrong clock or a tampered page cannot get around them. Time is India time from the database's clock.
 
@@ -270,13 +280,12 @@ Rules live in the database, not just on the screen, so a phone with a wrong cloc
 
 Nobody except Admin can enter a future day. The lock applies to new entries as well as edits and to transport records. A person must currently be on the project (not checked for Admin). Supervisors and Site Engineers must be assigned to the site.
 
-**Ranks.** Each attendance entry remembers the rank of whoever last set it (Supervisor 1, Site Engineer 2, Admin 3). A role can change entries at its own rank or lower; it cannot change a higher one. When a higher role changes a lower role's entry, the entry takes the higher rank, so the Supervisor cannot silently undo the correction, and the log marks it as an override. No reason is required.
+**No per-person locking.** Earlier versions locked a person's row against the Supervisor once an Admin or Site Engineer had touched it. That was removed: it also locked fields nobody had changed and blocked normal work. Each entry still remembers the highest role that has set it, only to flag overrides in the activity log. What still applies: the time windows above, the verified-day lock for the Supervisor, no future days, and being assigned to the site.
 
 **Messages from the database**, shown in red if a change is refused:
 
 - "Attendance for 26 Oct is locked (it locks at 11:00 PM that day). Ask the Site Engineer or an Admin to change it." (Site Engineer: "…the next day. Ask an Admin…")
 - "This day has been verified by the Site Engineer. Ask them to reopen it."
-- "This entry was set by the Site Engineer and can't be changed by a Supervisor."
 - "Attendance cannot be entered for a future date."
 - "You are not assigned to this project." / "That person is not on this project." / "You do not have access to attendance."
 - "Only the Site Engineer or an Admin can verify a day."
@@ -370,6 +379,8 @@ The migration also seeds every existing login as Admin, adds the vendors Maruti 
 | transport_runs | One row per vehicle, day and direction (pickup / drop): showed (with a server time) or no_show. Same windows and locks as attendance, only a vehicle of the same project, correction and clearing logged |
 | transport_errands | Extra jobs quoted by the operator and paid by us; Admin/Staff only; never edited or deleted, only voided; each takes its vehicle's project |
 | transport_payments | Ledger, Admin/Staff only; each payment takes its vehicle's project. Cannot be edited or deleted; can be voided once |
+| vendor_payments | Meal payments ledger (Admin/Staff only; never edited or deleted, only voided); each takes its vendor's project |
+| project_expenses (new columns) | `source` and `source_id`: an expense posted from a payment. `post_payment_expense` creates it on payment and removes it when the payment is voided; `expense_source_guard` stops such an expense being edited (amount, date, category) or deleted by hand |
 | Realtime | `attendance`, `transport_runs` and `attendance_days` are added to Supabase's `supabase_realtime` publication (with full replica identity so a delete says which project and day); skipped if the publication does not exist |
 | Functions | `check_write`, `write_window_end`, `log_change`, `touch_day`, `day_submit`, `day_verify`, `day_reopen`, `day_clear` (Admin only: deletes a project day's attendance and sign-off and logs it) |
 

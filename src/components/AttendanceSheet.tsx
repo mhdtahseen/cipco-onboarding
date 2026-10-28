@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useMedia } from "@/lib/useMedia";
 import { Icon } from "./NavIcons";
-import { roleRank } from "@/lib/roles";
 import TransportCard from "./TransportCard";
 import DayBar from "./DayBar";
 import { MEALS, STATUS_LABEL, addDays, canWriteDay, dayName, effectiveStatus, fmtTime, isFuture, isLocked, isSupervisorRole, isWeeklyOff, istToday, type AttRow, type DayRow, type Meal, type Person, type Run, type Status, type Vehicle, type Vendor } from "@/lib/attendance";
@@ -14,7 +13,7 @@ const blank = (p: Person, projectId: string, date: string, status: Status | null
 
 // The daily sheet: one card per person on the project — work status and, for each meal, which vendor (or none). Saves on every tap.
 export default function AttendanceSheet({ projectId, role, vendors, vehicles, names }: { projectId: string; role: string | null; vendors: Vendor[]; vehicles: Vehicle[]; names: Record<string, string> }) {
-  const admin = role === "admin"; const myRank = roleRank(role);
+  const admin = role === "admin";
   const [runs, setRuns] = useState<Run[]>([]); const [day, setDay] = useState<DayRow | null>(null);
   const [date, setDate] = useState(istToday()); const [people, setPeople] = useState<Person[]>([]); const [rows, setRows] = useState<Record<string, AttRow>>({});
   const [loading, setLoading] = useState(true); const [err, setErr] = useState(""); const [msg, setMsg] = useState(""); const [bulkMeal, setBulkMeal] = useState<Meal>("lunch"); const [bulkVendor, setBulkVendor] = useState(""); const [q, setQ] = useState(""); const [onlyOpen, setOnlyOpen] = useState(false); const [qa, setQa] = useState(false); const [statusPick, setStatusPick] = useState<Status>("present"); const [scopePick, setScopePick] = useState<"open" | "all">("open"); const [qm, setQm] = useState(false); const qmRef = useRef<HTMLDivElement>(null); const wide = useMedia("(min-width: 1024px)");
@@ -77,7 +76,6 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
   const rec = (u: Upd) => ({ ...u, project_id: projectId, work_date: date });
   async function save(p: Person, patch: Partial<AttRow>) {
     if (locked) return; const cur = rows[p.employee_id];
-    if (cur?.rank && cur.rank > myRank) { setErr(`${p.full_name} was set by the ${cur.rank === 3 ? "Admin" : "Site Engineer"}; you can't change it.`); return; }
     const next: AttRow = { ...(cur ?? blank(p, projectId, date, null)), ...patch };   // a meal can be recorded for anyone (absent, off, not marked): meals are ours to pay for whatever their work status
     setRows((r) => ({ ...r, [p.employee_id]: next })); setErr(""); inflight.current++;
     const { data, error } = await sb().from("attendance").upsert(rec({ employee_id: p.employee_id, ...patch }), { onConflict: "employee_id,work_date" }).select().single(); inflight.current--;
@@ -86,7 +84,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
   }
   // Bulk actions: save, then re-read what is really stored, so the screen can never disagree with the database.
   async function bulk(updates: Upd[], done: string, nothing = "Nothing to change.") {
-    if (locked) return; updates = updates.filter((u) => !(rows[u.employee_id]?.rank && rows[u.employee_id].rank! > myRank));
+    if (locked) return; 
     if (!updates.length) { setMsg(nothing); setTimeout(() => setMsg(""), 4000); return; }
     setErr(""); setMsg("Saving…");
     inflight.current++; const { error } = await sb().from("attendance").upsert(updates.map(rec), { onConflict: "employee_id,work_date" }); inflight.current--;
@@ -144,7 +142,6 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
     return { c, meals };
   }, [people, rows, date]);
   const stamp = (r?: AttRow) => (r?.updated_by && r.updated_at ? `${names[r.updated_by] ?? "someone"} · ${fmtTime(r.updated_at)}` : "");
-  const prot = (r?: AttRow) => !!r?.rank && r.rank > myRank;   // set by someone senior: shown, not editable
   const lastChange = useMemo(() => { const c: { at: string; by: string | null }[] = []; Object.values(rows).forEach((r) => r.updated_at && c.push({ at: r.updated_at, by: r.updated_by ?? null })); runs.forEach((r) => r.updated_at && c.push({ at: r.updated_at, by: r.updated_by ?? null })); if (day?.verified_at) c.push({ at: day.verified_at, by: day.verified_by }); if (day?.submitted_at) c.push({ at: day.submitted_at, by: day.submitted_by }); return c.sort((a, b) => b.at.localeCompare(a.at))[0]; }, [rows, runs, day]);
   const liveNote = !loading && people.length > 0 && <p className="text-[11px] text-slate-400 flex items-center justify-center sm:justify-start gap-1.5" data-live><span className={`h-1.5 w-1.5 rounded-full ${live ? "bg-emerald-500" : "bg-slate-300"}`} title={live ? "Live: changes appear as they happen" : `Checking for changes every ${Math.round(POLL_MS / 1000)} seconds`} />{lastChange ? `Last change: ${lastChange.by ? names[lastChange.by] ?? "someone" : "someone"} · ${fmtTime(lastChange.at)}` : "No changes yet today"}</p>;
   const staleBar = stale && <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2" data-stale><span className="text-sm text-blue-900 min-w-0 flex-1">Someone else changed this day. Refresh to see it. Your own edits are already saved.</span><button type="button" className="btn btn-primary" onClick={() => { if (pendingRef.current) apply(pendingRef.current); pendingRef.current = null; setStale(false); }}>Refresh</button></div>;
@@ -153,7 +150,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
       <span className={`text-sm min-w-0 flex-1 ${override ? "text-amber-900" : "text-slate-600"}`}>{override ? "Override is on. Your changes are stamped as Admin and replace what the Supervisor or Site Engineer entered." : "View only. Tap Override to change anything on this day."}</span>
       <button type="button" onClick={() => setOverride(!override)} aria-pressed={override} className={`btn ${override ? "" : "btn-primary"}`}>{override ? "Done" : "Override"}</button>
     </div>);
-  const extras = !loading && people.length > 0 && <div className="space-y-3"><DayBar projectId={projectId} date={date} role={role} day={day} names={names} people={people} rows={rows} vehicles={vehicles} runs={runs} canWrite={!viewOnly && (!future || admin)} reload={() => load(true)} /><TransportCard projectId={projectId} date={date} vehicles={vehicles} runs={runs} canWrite={!locked} today={date === istToday()} myRank={myRank} names={names} reload={() => load(true)} /></div>;
+  const extras = !loading && people.length > 0 && <div className="space-y-3"><DayBar projectId={projectId} date={date} role={role} day={day} names={names} people={people} rows={rows} vehicles={vehicles} runs={runs} canWrite={!viewOnly && (!future || admin)} reload={() => load(true)} /><TransportCard projectId={projectId} date={date} vehicles={vehicles} runs={runs} canWrite={!locked} today={date === istToday()} names={names} reload={() => load(true)} /></div>;
   const vName = (id: string) => vendors.find((v) => v.id === id)?.name ?? "?";
   const shownVendors = (cur: string | null) => vendors.filter((v) => v.active || v.id === cur);
 
@@ -223,12 +220,12 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
               <div className="min-w-0"><div className="text-[15px] font-medium text-slate-900 truncate">{p.full_name}</div><div className="text-xs text-slate-400 truncate">{[p.emp_no, p.designation].filter(Boolean).join(" · ") || "—"}{virtualOff ? " · weekly off" : ""}</div></div>
               {stamp(r) && <div className="ml-auto text-right text-[11px] leading-tight text-slate-400 shrink-0" data-stamp>{stamp(r)}</div>}</div>
             <div role="group" aria-label={`Work – ${p.full_name}`} className="grid grid-cols-4 gap-0.5 rounded-xl bg-slate-100 p-1">
-              {WORK.map((w) => <button key={w.s} type="button" disabled={locked || prot(r)} aria-pressed={st === w.s} onClick={() => save(p, { status: w.s })} className={`h-11 rounded-lg text-[13px] font-medium touch-manipulation transition-colors disabled:opacity-60 ${st === w.s ? `bg-white shadow-sm ${SEG[w.s]}` : "text-slate-500"}`}>{w.label}</button>)}</div>
+              {WORK.map((w) => <button key={w.s} type="button" disabled={locked} aria-pressed={st === w.s} onClick={() => save(p, { status: w.s })} className={`h-11 rounded-lg text-[13px] font-medium touch-manipulation transition-colors disabled:opacity-60 ${st === w.s ? `bg-white shadow-sm ${SEG[w.s]}` : "text-slate-500"}`}>{w.label}</button>)}</div>
             {showMeals && <div className="grid grid-cols-3 gap-2">
               {MEALS.map((m) => { const cur = r?.[m.col] ?? null; const list = shownVendors(cur); const many = list.length > 3; return (
                 <div key={m.key} className="min-w-0"><div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1 pl-1">{m.label}</div>
-                  {many ? <select className="inp !px-2" disabled={locked || prot(r)} aria-label={`${m.label} – ${p.full_name}`} value={cur ?? ""} onChange={(e) => save(p, { [m.col]: e.target.value || null })}><option value="">–</option>{list.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
-                    : <button type="button" disabled={locked || prot(r)} aria-label={`${m.label}: ${cur ? vName(cur) : "none"}. Tap to change.`} onClick={() => save(p, { [m.col]: nextVendor(cur, list) })} className={`h-11 w-full rounded-xl border text-[13px] flex items-center justify-center gap-1.5 px-1 touch-manipulation disabled:opacity-60 ${cur ? "bg-white border-slate-200 text-slate-700" : "bg-slate-50 border-transparent text-slate-300"}`}>{cur && <span className={`h-2 w-2 shrink-0 rounded-full ${vDot(cur)}`} />}<span className="truncate">{cur ? vName(cur) : "–"}</span></button>}</div>); })}
+                  {many ? <select className="inp !px-2" disabled={locked} aria-label={`${m.label} – ${p.full_name}`} value={cur ?? ""} onChange={(e) => save(p, { [m.col]: e.target.value || null })}><option value="">–</option>{list.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
+                    : <button type="button" disabled={locked} aria-label={`${m.label}: ${cur ? vName(cur) : "none"}. Tap to change.`} onClick={() => save(p, { [m.col]: nextVendor(cur, list) })} className={`h-11 w-full rounded-xl border text-[13px] flex items-center justify-center gap-1.5 px-1 touch-manipulation disabled:opacity-60 ${cur ? "bg-white border-slate-200 text-slate-700" : "bg-slate-50 border-transparent text-slate-300"}`}>{cur && <span className={`h-2 w-2 shrink-0 rounded-full ${vDot(cur)}`} />}<span className="truncate">{cur ? vName(cur) : "–"}</span></button>}</div>); })}
             </div>}
           </div>); })}
       </div>
@@ -294,11 +291,11 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
                 <td className="pl-4 pr-2 py-1.5"><div className="flex items-center gap-2.5 min-w-0"><span className={`h-2 w-2 shrink-0 rounded-full ${st ? "bg-transparent" : "bg-amber-400"}`} title={st ? undefined : "Not marked yet"} />
                   <div className="min-w-0"><div className="font-medium truncate">{p.full_name}</div><div className="text-xs text-slate-500 truncate">{[p.emp_no, p.designation].filter(Boolean).join(" · ") || "—"}{virtualOff ? " · weekly off" : ""}</div></div></div></td>
                 <td className="px-2 py-1.5"><div role="group" aria-label={`Work – ${p.full_name}`} className="inline-flex rounded-lg border border-slate-300 overflow-hidden divide-x divide-slate-300 bg-white">
-                  {WORK.map((w) => <button key={w.s} type="button" disabled={locked || prot(r)} onClick={() => save(p, { status: w.s })} aria-pressed={st === w.s} className={`h-8 px-3 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60 ${st === w.s ? TINT[w.s] : "text-slate-600 hover:bg-slate-50"}`}>{w.label}</button>)}</div></td>
+                  {WORK.map((w) => <button key={w.s} type="button" disabled={locked} onClick={() => save(p, { status: w.s })} aria-pressed={st === w.s} className={`h-8 px-3 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60 ${st === w.s ? TINT[w.s] : "text-slate-600 hover:bg-slate-50"}`}>{w.label}</button>)}</div></td>
                 {MEALS.map((m) => { const cur = r?.[m.col] ?? null; const list = shownVendors(cur); const many = list.length > 3; return (
                   <td key={m.key} className="px-2 py-1.5">{many
-                    ? <select className="h-8 w-full rounded-lg border border-slate-300 bg-white px-1.5 text-xs disabled:opacity-60" disabled={locked || prot(r)} aria-label={`${m.label} – ${p.full_name}`} value={cur ?? ""} onChange={(e) => save(p, { [m.col]: e.target.value || null })}><option value="">–</option>{list.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
-                    : <button type="button" disabled={locked || prot(r)} title="Click to change" aria-label={`${m.label} – ${p.full_name}: ${cur ? vName(cur) : "none"}. Click to change.`} onClick={() => save(p, { [m.col]: nextVendor(cur, list) })} className={`h-8 w-full rounded-lg border px-2 text-xs font-medium truncate disabled:cursor-not-allowed disabled:opacity-60 ${cur ? vTint(cur) : "border-dashed border-slate-300 text-slate-400 hover:bg-slate-50"}`}>{cur ? vName(cur) : "–"}</button>}</td>); })}
+                    ? <select className="h-8 w-full rounded-lg border border-slate-300 bg-white px-1.5 text-xs disabled:opacity-60" disabled={locked} aria-label={`${m.label} – ${p.full_name}`} value={cur ?? ""} onChange={(e) => save(p, { [m.col]: e.target.value || null })}><option value="">–</option>{list.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
+                    : <button type="button" disabled={locked} title="Click to change" aria-label={`${m.label} – ${p.full_name}: ${cur ? vName(cur) : "none"}. Click to change.`} onClick={() => save(p, { [m.col]: nextVendor(cur, list) })} className={`h-8 w-full rounded-lg border px-2 text-xs font-medium truncate disabled:cursor-not-allowed disabled:opacity-60 ${cur ? vTint(cur) : "border-dashed border-slate-300 text-slate-400 hover:bg-slate-50"}`}>{cur ? vName(cur) : "–"}</button>}</td>); })}
                 <td className="px-2 py-1.5 text-[11px] leading-tight text-slate-400" data-stamp>{stamp(r)}</td>
               </tr>); })}
           </tbody>

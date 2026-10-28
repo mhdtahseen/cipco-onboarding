@@ -56,7 +56,7 @@ export default function ProjectExpenses({ project, cats, setCats, expenses, peop
 
   return (
     <div className="card space-y-4" id="expense-form">
-      <div className="flex items-center gap-3"><h3 className="font-semibold">Expenses</h3>{!open && <button className="btn btn-primary ml-auto" onClick={() => setOpen(true)}>+ Add expense</button>}{!open && msg && <span className="text-sm text-green-700">{msg}</span>}</div>
+      <div className="flex items-center gap-3"><h3 className="font-semibold">Expenses</h3><span className="hidden sm:inline text-xs text-slate-400">Meal and transport payments post here by themselves: <a className="underline" href="/vendors">meal payments</a> · <a className="underline" href="/transport">transport</a></span>{!open && <button className="btn btn-primary ml-auto" onClick={() => setOpen(true)}>+ Add expense</button>}{!open && msg && <span className="text-sm text-green-700">{msg}</span>}</div>
       {open && <div className="rounded-xl border border-slate-200 p-3 space-y-3">
         <div className="text-sm font-medium">{editId ? "Edit expense" : "Add an expense"}</div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -83,7 +83,7 @@ export default function ProjectExpenses({ project, cats, setCats, expenses, peop
               <td className="py-2 pr-3 whitespace-nowrap">{fmt(e.expense_date)}</td><td className="pr-3 whitespace-nowrap">{catName(e.category_id)}</td>
               <td className="pr-3">{e.description || <span className="text-slate-400">—</span>}{personName(e.employee_id) && <div className="text-xs text-slate-500">for {personName(e.employee_id)}</div>}</td>
               <td className="pr-3 text-right whitespace-nowrap font-medium">₹{inr(Number(e.amount))}</td>
-              <td className="py-1 whitespace-nowrap text-right">{e.bill_path && <a className="btn !py-0.5 !px-2 !text-xs" href={`/api/docs/view?path=${encodeURIComponent(e.bill_path)}`} target="_blank">Bill</a>} <button className="btn !py-0.5 !px-2 !text-xs" onClick={() => edit(e)}>Edit</button> <button className="btn btn-danger !py-0.5 !px-2 !text-xs" onClick={() => del(e)} aria-label="Delete expense">✕</button></td>
+              <td className="py-1 whitespace-nowrap text-right">{e.bill_path && <a className="btn !py-0.5 !px-2 !text-xs" href={`/api/docs/view?path=${encodeURIComponent(e.bill_path)}`} target="_blank">Bill</a>} {e.source ? <a className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 hover:bg-slate-200" href={e.source === "vendor_payment" ? "/vendors" : "/transport"} title="This expense came from a payment. Void the payment to remove it.">From payment</a> : <><button className="btn !py-0.5 !px-2 !text-xs" onClick={() => edit(e)}>Edit</button> <button className="btn btn-danger !py-0.5 !px-2 !text-xs" onClick={() => del(e)} aria-label="Delete expense">✕</button></>}</td>
             </tr>))}
             {!shown.length && <tr><td colSpan={5} className="py-6 text-center text-slate-500">{expenses.length ? "Nothing matches the filters." : "No expenses recorded for this project yet."}</td></tr>}</tbody></table>
       </div>
