@@ -16,6 +16,7 @@ export default function DayBar({ projectId, date, role, day, names, people, rows
     if (todo.length) out.push({ label: "Transport not recorded", names: todo }); if (missed.length) out.push({ label: "Vehicle didn't show", names: missed });
     return out;
   }, [people, rows, vehicles, runs, date]);
+  async function clearDay() { if (!confirm(`Clear everyone's attendance and meals for ${date} on this project and reset its sign-off? The Supervisor can then fill it in again. Transport records are kept.`)) return; setBusy(true); setErr(""); const { error } = await supabase().rpc("day_clear", { p_project: projectId, p_date: date }); setBusy(false); if (error) { setErr(error.message); return; } reload(); }
   async function run(fn: "day_submit" | "day_verify" | "day_reopen") { setBusy(true); setErr(""); const { error } = await supabase().rpc(fn, { p_project: projectId, p_date: date }); setBusy(false); if (error) { setErr(error.message); return; } reload(); }
   const count = issues.reduce((n, i) => n + i.names.length, 0);
 
@@ -29,6 +30,7 @@ export default function DayBar({ projectId, date, role, day, names, people, rows
         <div className="ml-auto flex gap-2">
           {canWrite && !verified && !submitted && isSupervisorRole(role) && <button className="btn btn-primary !min-h-9" disabled={busy} onClick={() => run("day_submit")}>Submit day</button>}
           {canWrite && verifier && !verified && <button className="btn btn-primary !min-h-9" disabled={busy} onClick={() => run("day_verify")}>Verify day</button>}
+          {role === "admin" && canWrite && <button className="btn btn-danger !min-h-9" disabled={busy} onClick={clearDay}>Clear day</button>}
           {canWrite && verifier && (verified || submitted) && <button className="btn !min-h-9" disabled={busy} onClick={() => run("day_reopen")}>Reopen</button>}
         </div>
       </div>

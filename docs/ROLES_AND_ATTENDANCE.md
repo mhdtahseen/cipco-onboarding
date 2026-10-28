@@ -42,6 +42,7 @@ Every login has exactly one role. Higher roles can overrule lower ones; a lower 
 | Submit the day | Yes | Yes | Yes | No |
 | Verify or reopen the day | Yes | Yes | No | No |
 | Edit a verified day | Yes | Yes | No, until reopened | No |
+| Clear a whole day (attendance, meals, sign-off) | Yes | No | No | No |
 | Activity tab (who changed what, for their sites) | Yes | Yes | No | No |
 | Enter a future day | Yes | No | No | No |
 
@@ -220,6 +221,10 @@ The **day bar** above the transport card shows the state of the day:
 2. **Submitted** by the Supervisor ("Submitted by Ravi · 18:40 — waiting for the Site Engineer"). If anything changes afterwards (a status, meal or transport record) the day returns to open and needs submitting again.
 3. **Verified** by the Site Engineer or Admin ("Verified by Meera · 19:10"). The Supervisor can no longer change the day; the Site Engineer or Admin can, or can **Reopen** it.
 
+**Admin view-only and Override.** To stop an Admin changing something by accident, the daily sheet opens **view only** for an Admin: the work, meal and transport buttons, Everyone present, Quick actions and the day bar actions (Submit, Verify, Reopen, Clear day) are all disabled or hidden. A bar at the top says "View only. Tap Override to change anything on this day." Tap **Override** to make the day editable (the bar turns amber: "Override is on. Your changes are stamped as Admin…"), and **Done** to go back to view only. It switches back to view only whenever the project or date changes. Supervisors and Site Engineers are not affected; the Monthly and Activity tabs are read-only anyway.
+
+**Clear day (Admin only).** An Admin's own entries are protected from the Supervisor, so a day marked by the Admin cannot be edited by the Supervisor afterwards. The red **Clear day** button in the day bar (visible to Admins only) removes everyone's attendance and meals for that project and day and resets the sign-off, after a confirmation, so the Supervisor can fill it in fresh. Transport records are kept. It is stamped in the activity log ("cleared the day: 8 people").
+
 The "N to review" link lists exceptions before signing off: people not yet marked, transport not recorded (a vehicle direction with no Showed / No show) and vehicles that did not show. These are prompts, not blocks; the day can still be submitted. Submit, verify and reopen are stamped and appear in the activity log.
 
 ---
@@ -358,7 +363,7 @@ The migration also seeds every existing login as Admin, adds the vendors Maruti 
 | transport_runs | One row per vehicle, day and direction (pickup / drop): showed (with a server time) or no_show. Same windows and locks as attendance, only a vehicle of the same project, correction and clearing logged |
 | transport_errands | Extra jobs quoted by the operator and paid by us; Admin/Staff only; never edited or deleted, only voided; each takes its vehicle's project |
 | transport_payments | Ledger, Admin/Staff only; each payment takes its vehicle's project. Cannot be edited or deleted; can be voided once |
-| Functions | `check_write`, `write_window_end`, `log_change`, `touch_day`, `day_submit`, `day_verify`, `day_reopen` |
+| Functions | `check_write`, `write_window_end`, `log_change`, `touch_day`, `day_submit`, `day_verify`, `day_reopen`, `day_clear` (Admin only: deletes a project day's attendance and sign-off and logs it) |
 
 ---
 

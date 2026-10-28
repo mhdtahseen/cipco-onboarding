@@ -366,5 +366,18 @@ begin
   perform public.log_change(p_project, p_date, null, 'day', null, 'reopened', 'reopen');
 end $$;
 
-revoke all on function public.admin_list_users(), public.day_submit(uuid, date), public.day_verify(uuid, date), public.day_reopen(uuid, date), public.app_rank(), public.user_label(uuid) from public, anon;
-grant execute on function public.admin_list_users(), public.day_submit(uuid, date), public.day_verify(uuid, date), public.day_reopen(uuid, date), public.app_rank(), public.user_label(uuid) to authenticated;
+-- Admin only: wipe a day's attendance and meals for a project and reset its sign-off, so the Supervisor can fill it in fresh
+-- (an Admin's own entries are otherwise protected from the Supervisor). Transport records are left alone. Logged.
+create or replace function public.day_clear(p_project uuid, p_date date) returns integer language plpgsql security definer set search_path = public as $$
+declare n integer;
+begin
+  if public.app_role() <> 'admin' then raise exception 'Only an Admin can clear a day.'; end if;
+  delete from public.attendance where project_id = p_project and work_date = p_date;
+  get diagnostics n = row_count;
+  delete from public.attendance_days where project_id = p_project and work_date = p_date;
+  perform public.log_change(p_project, p_date, null, 'day', null, 'cleared (' || n || ' people)', 'clear');
+  return n;
+end $$;
+
+revoke all on function public.admin_list_users(), public.day_submit(uuid, date), public.day_verify(uuid, date), public.day_reopen(uuid, date), public.day_clear(uuid, date), public.app_rank(), public.user_label(uuid) from public, anon;
+grant execute on function public.admin_list_users(), public.day_submit(uuid, date), public.day_verify(uuid, date), public.day_reopen(uuid, date), public.day_clear(uuid, date), public.app_rank(), public.user_label(uuid) to authenticated;

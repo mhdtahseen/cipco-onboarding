@@ -15,6 +15,7 @@ export default function ActivityFeed({ projectId }: { projectId: string }) {
   const line = (r: Log) => {
     const who = r.employee_name ? <b className="font-medium text-slate-900">{r.employee_name}</b> : null;
     if (r.action === "submit" || r.action === "verify" || r.action === "reopen") return <>{r.action === "submit" ? "submitted" : r.action === "verify" ? "verified" : "reopened"} the day</>;
+    if (r.action === "clear") return <>cleared the day: {r.new_value}</>;
     if (r.field === "pickup" || r.field === "drop") return r.action === "delete" ? <>cleared {r.field}: {r.old_value}</> : r.action === "create" ? <>{r.field}: {r.new_value}</> : <>{r.field}: {r.old_value} → {r.new_value}</>;
     if (r.action === "create") return <>{FIELD[r.field] ?? r.field}: {who} → {r.new_value || "—"}</>;
     if (r.action === "delete") return <>removed {FIELD[r.field] ?? r.field}: {who} (was {r.old_value || "—"})</>;

@@ -22,7 +22,9 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
     const down = (e: MouseEvent) => { if (!qmRef.current?.contains(e.target as Node)) setQm(false); }; const key = (e: KeyboardEvent) => { if (e.key === "Escape") setQm(false); };
     document.addEventListener("mousedown", down); document.addEventListener("keydown", key); return () => { document.removeEventListener("mousedown", down); document.removeEventListener("keydown", key); };
   }, [qm]);
-  const future = isFuture(date), verifiedLock = isSupervisorRole(role) && !!day?.verified_at, locked = !canWriteDay(role, date) || verifiedLock;
+  const [override, setOverride] = useState(false); useEffect(() => setOverride(false), [projectId, date]);   // an Admin sees a day view-only until they choose Override, so nothing is changed by accident
+  const viewOnly = admin && !override;
+  const future = isFuture(date), verifiedLock = isSupervisorRole(role) && !!day?.verified_at, lockedByRules = !canWriteDay(role, date) || verifiedLock, locked = lockedByRules || viewOnly;
   const sb = () => supabase();
 
   async function load(quiet = false) {
@@ -108,7 +110,12 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
   }, [people, rows, date]);
   const stamp = (r?: AttRow) => (r?.updated_by && r.updated_at ? `${names[r.updated_by] ?? "someone"} · ${fmtTime(r.updated_at)}` : "");
   const prot = (r?: AttRow) => !!r?.rank && r.rank > myRank;   // set by someone senior: shown, not editable
-  const extras = !loading && people.length > 0 && <div className="space-y-3"><DayBar projectId={projectId} date={date} role={role} day={day} names={names} people={people} rows={rows} vehicles={vehicles} runs={runs} canWrite={!future || admin} reload={() => load(true)} /><TransportCard projectId={projectId} date={date} vehicles={vehicles} runs={runs} canWrite={!locked} today={date === istToday()} myRank={myRank} names={names} reload={() => load(true)} /></div>;
+  const overrideBar = admin && !loading && people.length > 0 && (
+    <div className={`rounded-2xl border px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 ${override ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-200"}`} data-override>
+      <span className={`text-sm min-w-0 flex-1 ${override ? "text-amber-900" : "text-slate-600"}`}>{override ? "Override is on. Your changes are stamped as Admin and replace what the Supervisor or Site Engineer entered." : "View only. Tap Override to change anything on this day."}</span>
+      <button type="button" onClick={() => setOverride(!override)} aria-pressed={override} className={`btn ${override ? "" : "btn-primary"}`}>{override ? "Done" : "Override"}</button>
+    </div>);
+  const extras = !loading && people.length > 0 && <div className="space-y-3"><DayBar projectId={projectId} date={date} role={role} day={day} names={names} people={people} rows={rows} vehicles={vehicles} runs={runs} canWrite={!viewOnly && (!future || admin)} reload={() => load(true)} /><TransportCard projectId={projectId} date={date} vehicles={vehicles} runs={runs} canWrite={!locked} today={date === istToday()} myRank={myRank} names={names} reload={() => load(true)} /></div>;
   const vName = (id: string) => vendors.find((v) => v.id === id)?.name ?? "?";
   const shownVendors = (cur: string | null) => vendors.filter((v) => v.active || v.id === cur);
 
@@ -136,15 +143,16 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
           <button type="button" onClick={() => setDate(addDays(date, 1))} aria-label="Next day" className="h-11 w-11 grid place-items-center rounded-full text-slate-500 active:bg-slate-100 touch-manipulation"><Icon name="chevron-right" /></button>
         </div>
         <div className="mt-1 flex justify-center">
-          {future && !admin ? <p className="text-xs text-amber-800 bg-amber-50 rounded-full px-3 py-1">Future days can't be marked</p>
+          {viewOnly ? null : future && !admin ? <p className="text-xs text-amber-800 bg-amber-50 rounded-full px-3 py-1">Future days can't be marked</p>
             : verifiedLock ? <p className="text-xs text-blue-800 bg-blue-50 rounded-full px-3 py-1">Verified by the Site Engineer · view only</p>
-            : locked ? <p className="text-xs text-amber-800 bg-amber-50 rounded-full px-3 py-1">Locked at 11:00 PM · view only</p>
+            : lockedByRules ? <p className="text-xs text-amber-800 bg-amber-50 rounded-full px-3 py-1">Locked at 11:00 PM · view only</p>
             : admin && isLocked(date) ? <p className="text-xs text-blue-800 bg-blue-50 rounded-full px-3 py-1">Locked for others · editing as Admin</p>
             : <p className="text-[11px] text-slate-400">Open until 11:00 PM · saves as you tap</p>}
         </div>
         {date !== istToday() && <div className="mt-1 text-center"><button className="text-xs text-blue-700 underline" onClick={() => setDate(istToday())}>Go to today</button></div>}
       </div>
       {err && <p className="text-sm text-red-700 bg-red-50 rounded-xl px-3 py-2">{err}</p>}
+      {overrideBar}
 
       {!loading && people.length > 0 && <>
         <div className="rounded-2xl bg-white border border-slate-200/80 p-4 space-y-3">
@@ -224,9 +232,10 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
       </div>
 
       {extras}
-      {future && !admin ? <p className="warn !text-sm">Attendance can't be entered for a future date.</p>
+      {overrideBar}
+      {viewOnly ? null : future && !admin ? <p className="warn !text-sm">Attendance can't be entered for a future date.</p>
         : verifiedLock ? <p className="text-sm bg-blue-50 border border-blue-200 text-blue-900 rounded-lg px-3 py-2">Verified by the Site Engineer — view only until they reopen the day.</p>
-        : locked ? <p className="text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2">🔒 Locked at 11:00 PM. You can view this day, but only an Admin can change it.</p>
+        : lockedByRules ? <p className="text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2">🔒 Locked at 11:00 PM. You can view this day, but only an Admin can change it.</p>
         : admin && isLocked(date) ? <p className="text-sm bg-blue-50 border border-blue-200 text-blue-900 rounded-lg px-3 py-2">Locked for others — you're editing as an Admin.</p> : null}
       {err && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</p>}
       {msg && <p className="text-sm text-green-700">{msg}</p>}
