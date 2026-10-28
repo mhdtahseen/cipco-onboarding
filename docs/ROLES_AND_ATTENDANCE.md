@@ -42,7 +42,7 @@ Every login has exactly one role. Higher roles can overrule lower ones; a lower 
 | Submit the day | Yes | Yes | Yes | No |
 | Verify or reopen the day | Yes | Yes | No | No |
 | Edit a verified day | Yes | Yes | No, until reopened | No |
-| Activity tab (who changed what) | Yes | Yes | No | No |
+| Activity tab (who changed what, for their sites) | Yes | Yes | No | No |
 | Enter a future day | Yes | No | No | No |
 
 (The Site Engineer's "yesterday" window runs until 11:00 PM the next day. Staff are treated as Site Engineers with access to everything except Users.)
@@ -136,8 +136,8 @@ A Supervisor or Site Engineer signs in, lands on Attendance, and has no other pa
 | --- | --- | --- | --- |
 | Admin | Employees list | Employees, Attendance, Sites today, Transport, Projects, Quotations, Clause library, Mail templates, Quotation wording, Settings, Users | Every project; Daily sheet, Monthly, Activity |
 | Staff (old role) | Employees list | The same, without Users | Every project |
-| Site Engineer | Attendance | Attendance only (no sidebar or bottom bar), plus Sign out in the account menu | Assigned sites; Daily sheet, Monthly, Activity |
-| Supervisor | Attendance | Attendance only | Assigned sites; Daily sheet and Monthly only |
+| Site Engineer | Attendance | Attendance only (no sidebar or bottom bar), plus Sign out in the account menu | Assigned sites; Daily sheet and Monthly only |
+| Supervisor | Attendance | Attendance only | Assigned sites; Daily sheet, Monthly, Activity |
 | No role | "No access yet" page | None; Sign out in the account menu | Not reachable |
 
 **What a Supervisor or Site Engineer sees in detail**
@@ -277,7 +277,7 @@ Nobody except Admin can enter a future day. The lock applies to new entries as w
 
 Every change is written to `attendance_log` by the database itself (triggers), so it cannot be skipped from the app and nothing can edit or delete a line. Each line holds: time, user name and role, site, the day it was for, person, what changed (work, breakfast, lunch, dinner, pickup, drop, trip, trip time, trip vehicle, day), old value, new value, the action (create, change, delete, submit, verify, reopen) and, for overrides, the role that was overruled. Changes made in one bulk action share a transaction number.
 
-The **Activity** tab (Admin and Site Engineer) shows the newest first, with an **Overrides only** filter and "Show more". Example: "Meera (Site Engineer) work: Ajay Mahto absent → present · for 2026-10-26 · overrode Supervisor". Names come from the Users page; if none is set the email is used.
+The **Activity** tab (Admin and Site Engineer; the Site Engineer sees only their assigned sites; the Supervisor never sees it) shows the newest first, with an **Overrides only** filter and "Show more". Example: "Meera (Site Engineer) work: Ajay Mahto absent → present · for 2026-10-26 · overrode Supervisor". Names come from the Users page; if none is set the email is used.
 
 ---
 
@@ -352,7 +352,7 @@ The migration also seeds every existing login as Admin, adds the vendors Maruti 
 | food_vendors | New `project_id`: vendors belong to a project (name unique within a project); readable only for the user's own projects; existing vendors go to the project that uses them most |
 | attendance.status | May now be empty, so a meal can be recorded for someone not marked (the status default is removed). A meal's vendor must belong to the row's project |
 | attendance_days | Per site and day: submitted by/at, verified by/at. Written only by `day_submit`, `day_verify`, `day_reopen` |
-| attendance_log | Append-only log, written by triggers; readable by Admin, Staff and Site Engineer for assigned sites; no insert, update or delete policy |
+| attendance_log | Append-only log, written by triggers; readable by Admin, Staff and Site Engineer (the Site Engineer for assigned sites); no insert, update or delete policy |
 | attendance | New columns `rank`, `set_by_role`; `attendance_guard` enforces windows, ranks and the verified-day lock; `attendance_audit` writes the log and returns a submitted day to open |
 | transport_vehicles, transport_rates | Vehicles belong to a project (`project_id`; a name is unique within a project) paid per trip or monthly (`billing`), with a price and effective date. Vehicles readable by Admin/Staff and by assigned Supervisors and Site Engineers for their own project only, written by Admin/Staff; rates Admin/Staff only |
 | transport_runs | One row per vehicle, day and direction (pickup / drop): showed (with a server time) or no_show. Same windows and locks as attendance, only a vehicle of the same project, correction and clearing logged |

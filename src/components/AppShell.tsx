@@ -40,7 +40,7 @@ function NavList({ items, path, showLabels, collapsed, onNavigate }: { items: Na
   );
 }
 
-function Account({ email, role }: { email: string; role: string | null }) {
+function Account({ email, name, role }: { email: string; name: string; role: string | null }) {
   const [open, setOpen] = useState(false); const ref = useRef<HTMLDivElement>(null); const router = useRouter();
   useEffect(() => {
     if (!open) return;
@@ -54,12 +54,12 @@ function Account({ email, role }: { email: string; role: string | null }) {
   return (
     <div ref={ref} className="relative">
       <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label="Account menu" onClick={() => setOpen(!open)} className="flex items-center gap-2 rounded-full p-1 md:pr-2 hover:bg-slate-100 touch-manipulation min-h-11">
-        <span className="h-9 w-9 rounded-full bg-[#1e4fa3] text-white grid place-items-center text-sm font-semibold">{(email || "?")[0].toUpperCase()}</span>
-        <span className="hidden md:block text-left leading-tight"><span className="block text-xs text-slate-700 max-w-40 truncate">{email || "…"}</span><span className="block text-[11px] text-slate-400">{who}</span></span>
+        <span className="h-9 w-9 rounded-full bg-[#1e4fa3] text-white grid place-items-center text-sm font-semibold">{(name || email || "?")[0].toUpperCase()}</span>
+        <span className="hidden md:block text-left leading-tight"><span className="block text-xs text-slate-700 max-w-40 truncate">{name || email || "…"}</span><span className="block text-[11px] text-slate-400">{who}</span></span>
         <Icon name="chevron-down" className="hidden md:block h-4 w-4 text-slate-400" />
       </button>
       {open && <div role="menu" className="absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50">
-        <div className="px-3 py-2 border-b border-slate-100"><div className="text-sm font-medium break-all">{email}</div><div className="text-xs text-slate-500">{who}</div></div>
+        <div className="px-3 py-2 border-b border-slate-100"><div className="text-sm font-medium break-all">{name || email}</div>{name && <div className="text-xs text-slate-500 break-all">{email}</div>}<div className="text-xs text-slate-500">{who}</div></div>
         <button type="button" role="menuitem" onClick={signOut} className="w-full flex items-center gap-2 px-3 min-h-11 mt-1 rounded-lg text-sm text-left hover:bg-slate-100"><Icon name="logout" className="h-4 w-4" />Sign out</button>
       </div>}
     </div>
@@ -67,13 +67,14 @@ function Account({ email, role }: { email: string; role: string | null }) {
 }
 
 function Shell({ path, children }: { path: string; children: React.ReactNode }) {
-  const router = useRouter(); const { role } = useRole(); const [email, setEmail] = useState(""); const [collapsed, setCollapsed] = useState(false); const [drawer, setDrawer] = useState(false); const [hint, setHint] = useState<"min" | "full">("full");
+  const router = useRouter(); const { role } = useRole(); const [email, setEmail] = useState(""); const [name, setName] = useState(""); const [collapsed, setCollapsed] = useState(false); const [drawer, setDrawer] = useState(false); const [hint, setHint] = useState<"min" | "full">("full");
   const closeRef = useRef<HTMLButtonElement>(null);
   const items = visibleItems(role);
   const minimal = role ? items.length <= 1 : hint === "min";   // a single-purpose login gets no sidebar or bottom bar
   const item = itemFor(path); const title = path === "/no-access" ? "No access" : item?.label ?? "CIPCO Operations";
 
-  useEffect(() => { supabase().auth.getUser().then(({ data }) => setEmail(data.user?.email || "")); }, []);
+  // the name comes from the Users page; the email shows until one is set
+  useEffect(() => { (async () => { const sb = supabase(); const { data } = await sb.auth.getUser(); setEmail(data.user?.email || ""); if (data.user) { const { data: p } = await sb.from("user_profiles").select("full_name").eq("user_id", data.user.id).maybeSingle(); setName(((p?.full_name as string) || "").trim()); } })(); }, []);
   useEffect(() => { try { setCollapsed(localStorage.getItem("cipco_nav_collapsed") === "1"); if (localStorage.getItem("cipco_nav_min") === "1") setHint("min"); } catch { /* storage unavailable */ } }, []);
   useEffect(() => { if (role) try { localStorage.setItem("cipco_nav_min", items.length <= 1 ? "1" : "0"); } catch { /* ignore */ } }, [role, items.length]);
   useEffect(() => { setDrawer(false); }, [path]);
@@ -108,7 +109,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
           {!minimal && <button type="button" onClick={() => setDrawer(true)} aria-label="Open menu" className="md:hidden h-11 w-11 -ml-1 grid place-items-center rounded-lg text-slate-600 hover:bg-slate-100 touch-manipulation"><Icon name="menu" /></button>}
           <Link href="/" aria-label="CIPCO home" className={`shrink-0 items-center gap-2 ${minimal ? "flex" : "hidden"}`}><img src="/branding/logo.png" alt="CIPCO" className="h-7 w-auto" /></Link>
           <div className="min-w-0 flex-1 truncate text-sm">{crumb}</div>
-          <Account email={email} role={role} />
+          <Account email={email} name={name} role={role} />
         </header>
         <main id="main" className="max-w-6xl mx-auto px-4 py-4 sm:py-6">{children}</main>
         {!minimal && <div className="md:hidden h-[var(--bottom-nav-h,0px)]" aria-hidden />}
@@ -128,7 +129,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
           <div className="h-14 shrink-0 px-4 flex items-center gap-2 border-b border-slate-100"><img src="/branding/logo.png" alt="CIPCO" className="h-7 w-auto" /><span className="text-sm font-semibold text-slate-500">Operations</span>
             <button ref={closeRef} type="button" onClick={() => setDrawer(false)} aria-label="Close menu" className="ml-auto h-11 w-11 -mr-2 grid place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><Icon name="x" /></button></div>
           <div className="flex-1 overflow-y-auto p-3"><NavList items={items} path={path} showLabels="always" onNavigate={() => setDrawer(false)} /></div>
-          <div className="border-t border-slate-100 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><div className="px-3 pb-2"><div className="text-sm font-medium break-all">{email}</div><div className="text-xs text-slate-500">{role ? ROLE_LABEL[role] : ""}</div></div><button type="button" onClick={signOut} className="w-full flex items-center gap-3 px-3 min-h-11 rounded-lg text-sm text-slate-600 hover:bg-slate-100"><Icon name="logout" />Sign out</button></div>
+          <div className="border-t border-slate-100 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><div className="px-3 pb-2"><div className="text-sm font-medium break-all">{name || email}</div>{name && <div className="text-xs text-slate-500 break-all">{email}</div>}<div className="text-xs text-slate-500">{role ? ROLE_LABEL[role] : ""}</div></div><button type="button" onClick={signOut} className="w-full flex items-center gap-3 px-3 min-h-11 rounded-lg text-sm text-slate-600 hover:bg-slate-100"><Icon name="logout" />Sign out</button></div>
         </div>
       </div>}
     </div>
