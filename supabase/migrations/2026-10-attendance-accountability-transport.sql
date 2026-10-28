@@ -568,5 +568,320 @@ do $$ declare t text; begin
   end if;
 end $$;
 
+-- ---------- 11. payroll ----------
+-- Calendar-month payroll for a project, calculated on the last day of the month and credited between the 1st and 4th of the next month.
+-- Someone who joined on or before the 20th is paid for the month; someone who joined after the 20th is paid in the next run (full month plus the
+-- days from joining to the previous month end). The calculation is done in the app (Admin only); the database keeps what was calculated, locks it
+-- when approved, never edits or deletes money records, and posts salary payments to the project's expenses.
+alter table public.employees add column if not exists left_on date;                       -- last day of work; pay stops after it
+alter table public.employees add column if not exists pay_mode text not null default 'bank';
+alter table public.employees add column if not exists upi_id text;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'employees_pay_mode_check') then
+    alter table public.employees add constraint employees_pay_mode_check check (pay_mode in ('bank','upi','cash'));
+  end if;
+end $$;
+
+-- the attendance roster no longer lists someone after their last day (unless they have attendance recorded in the range)
+create or replace function public.attendance_roster(p_project uuid, p_from date, p_to date)
+returns table (employee_id uuid, emp_no text, full_name text, designation text, week_off text, join_date date)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.can_attend(p_project) then raise exception 'Not allowed'; end if;
+  return query
+    select e.id, e.emp_no, e.full_name, e.designation, e.week_off, e.join_date from public.employees e
+    where (e.project_id = p_project and e.outcome <> 'rejected' and e.join_date is not null and e.join_date <= p_to and (e.left_on is null or e.left_on >= p_from))
+       or e.id in (select a.employee_id from public.attendance a where a.project_id = p_project and a.work_date between p_from and p_to)
+    order by e.full_name;
+end $$;
+
+-- salary revisions: the structure in force on a date (the employee's current salary stays on the employee record too)
+create table if not exists public.salary_history (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid not null references public.employees(id) on delete cascade,
+  effective_from date not null,
+  salary jsonb not null,
+  monthly_ctc numeric(12,2),
+  note text not null default '',
+  created_by uuid default auth.uid(),
+  created_at timestamptz not null default now(),
+  unique (employee_id, effective_from)
+);
+
+create table if not exists public.payroll_runs (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id),
+  pay_month date not null,                                -- the first day of the month being paid
+  status text not null default 'draft' check (status in ('draft','approved')),
+  note text not null default '',
+  approved_by uuid, approved_at timestamptz,
+  created_by uuid default auth.uid(),
+  created_at timestamptz not null default now(),
+  unique (project_id, pay_month)
+);
+create table if not exists public.payroll_lines (
+  id uuid primary key default gen_random_uuid(),
+  run_id uuid not null references public.payroll_runs(id) on delete cascade,
+  employee_id uuid not null references public.employees(id),
+  project_id uuid not null references public.projects(id),
+  kind text not null default 'salaried' check (kind in ('salaried','daily')),
+  days_in_month int not null default 30,
+  paid_days numeric(6,2) not null default 0,
+  lop_days numeric(6,2) not null default 0,
+  gross numeric(12,2) not null default 0,                 -- earnings for the month (including arrears and additions)
+  deductions numeric(12,2) not null default 0,
+  net numeric(12,2) not null default 0,
+  pf_emp numeric(12,2) not null default 0, pf_er numeric(12,2) not null default 0, pf_admin numeric(12,2) not null default 0,
+  esi_emp numeric(12,2) not null default 0, esi_er numeric(12,2) not null default 0, pt numeric(12,2) not null default 0,
+  er_total numeric(12,2) not null default 0,              -- employer contributions: PF, admin / EDLI and ESI
+  pay_mode text not null default 'bank',
+  items jsonb not null default '[]',                      -- every earning and deduction line, as shown on the slip
+  snapshot jsonb not null default '{}',                   -- the employee details, salary and attendance counts used
+  held boolean not null default false, hold_reason text not null default '',
+  created_at timestamptz not null default now(),
+  unique (run_id, employee_id)
+);
+create table if not exists public.payroll_adjustments (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id),
+  employee_id uuid not null references public.employees(id),
+  pay_month date not null,
+  kind text not null check (kind in ('earning','deduction','lop_waiver')),
+  label text not null check (btrim(label) <> ''),
+  amount numeric(12,2) not null default 0 check (amount >= 0),
+  days numeric(5,2) check (days > 0),                     -- for a LOP waiver: days made paid
+  reason text not null default '',
+  voided_at timestamptz, voided_by uuid,
+  created_by uuid default auth.uid(),
+  created_at timestamptz not null default now()
+);
+create table if not exists public.employee_advances (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid not null references public.employees(id),
+  project_id uuid not null references public.projects(id),
+  amount numeric(12,2) not null check (amount > 0),
+  given_on date not null default current_date,
+  instalment numeric(12,2) not null check (instalment > 0),
+  note text not null default '',
+  voided_at timestamptz, voided_by uuid,
+  created_by uuid default auth.uid(),
+  created_at timestamptz not null default now()
+);
+create table if not exists public.advance_recoveries (    -- written only by payroll approval
+  id uuid primary key default gen_random_uuid(),
+  advance_id uuid not null references public.employee_advances(id),
+  run_id uuid not null references public.payroll_runs(id) on delete cascade,
+  employee_id uuid not null,
+  amount numeric(12,2) not null check (amount > 0),
+  created_at timestamptz not null default now(),
+  unique (advance_id, run_id)
+);
+create table if not exists public.payroll_payments (
+  id uuid primary key default gen_random_uuid(),
+  line_id uuid not null references public.payroll_lines(id),
+  run_id uuid not null references public.payroll_runs(id),
+  employee_id uuid not null,
+  project_id uuid not null,
+  amount numeric(12,2) not null check (amount > 0),
+  mode text not null default 'bank' check (mode in ('bank','upi','cash')),
+  paid_on date not null default current_date,
+  reference text not null default '',
+  voided_at timestamptz, voided_by uuid,
+  created_by uuid default auth.uid(),
+  created_at timestamptz not null default now()
+);
+create table if not exists public.statutory_payments (    -- PF / ESI / PT / TDS remitted to the authorities
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id),
+  pay_month date not null,                                -- the payroll month it is for
+  kind text not null check (kind in ('pf','esi','pt','tds','other')),
+  amount numeric(12,2) not null check (amount > 0),
+  paid_on date not null default current_date,
+  challan_no text not null default '',
+  note text not null default '',
+  voided_at timestamptz, voided_by uuid,
+  created_by uuid default auth.uid(),
+  created_at timestamptz not null default now()
+);
+do $$ declare t text; begin
+  foreach t in array array['salary_history','payroll_runs','payroll_lines','payroll_adjustments','employee_advances','advance_recoveries','payroll_payments','statutory_payments'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists "staff all" on public.%I', t); execute format('drop policy if exists "admin all" on public.%I', t);
+    if t = 'advance_recoveries' then execute format('create policy "admin all" on public.%I for select to authenticated using (public.is_admin())', t);   -- written only by the approve function
+    elsif t = 'salary_history' then execute format('create policy "staff all" on public.%I for all to authenticated using (public.is_staff()) with check (public.is_staff())', t);   -- same people who may see an employee's salary
+    else execute format('create policy "admin all" on public.%I for all to authenticated using (public.is_admin()) with check (public.is_admin())', t); end if;   -- payroll is Admin only
+  end loop;
+end $$;
+
+-- runs: draft until approved; approving and reopening go through the functions below
+create or replace function public.payroll_run_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'DELETE' then if old.status <> 'draft' then raise exception 'An approved payroll cannot be deleted. Reopen it first.'; end if; return old; end if;
+  if tg_op = 'INSERT' then new.pay_month := date_trunc('month', new.pay_month)::date; new.status := 'draft'; new.approved_by := null; new.approved_at := null; new.created_by := auth.uid(); return new; end if;
+  if new.project_id <> old.project_id or new.pay_month <> old.pay_month then raise exception 'A payroll''s project and month cannot be changed.'; end if;
+  if new.status <> old.status and coalesce(current_setting('app.payroll', true), '') <> '1' then raise exception 'Use Approve or Reopen.'; end if;
+  return new;
+end $$;
+drop trigger if exists payroll_run_guard_trg on public.payroll_runs;
+create trigger payroll_run_guard_trg before insert or update or delete on public.payroll_runs for each row execute function public.payroll_run_guard();
+
+-- lines: editable only while the run is a draft (holding someone's pay is allowed any time)
+create or replace function public.payroll_line_guard() returns trigger language plpgsql security definer set search_path = public as $$
+declare st text;
+begin
+  select status into st from public.payroll_runs where id = coalesce(new.run_id, old.run_id);
+  if tg_op = 'UPDATE' and st = 'approved' then
+    if to_jsonb(new) - 'held' - 'hold_reason' is distinct from to_jsonb(old) - 'held' - 'hold_reason' then raise exception 'This payroll is approved. Reopen it to change the figures.'; end if;
+    return new;
+  end if;
+  if st = 'approved' then raise exception 'This payroll is approved. Reopen it to change it.'; end if;
+  if tg_op = 'DELETE' then return old; end if;
+  new.project_id := (select project_id from public.payroll_runs where id = new.run_id); return new;
+end $$;
+drop trigger if exists payroll_line_guard_trg on public.payroll_lines;
+create trigger payroll_line_guard_trg before insert or update or delete on public.payroll_lines for each row execute function public.payroll_line_guard();
+
+-- adjustments and advances: never edited or deleted, only voided; adjustments are closed once the month is approved
+create or replace function public.payroll_adjustment_guard() returns trigger language plpgsql security definer set search_path = public as $$
+declare approved boolean;
+begin
+  if tg_op = 'DELETE' then raise exception 'This is never deleted. Void it instead.'; end if;
+  select exists (select 1 from public.payroll_runs r where r.project_id = coalesce(new.project_id, old.project_id) and r.pay_month = date_trunc('month', coalesce(new.pay_month, old.pay_month))::date and r.status = 'approved') into approved;
+  if approved then raise exception 'That month''s payroll is approved. Reopen it to change adjustments.'; end if;
+  if tg_op = 'UPDATE' then
+    if to_jsonb(new) - 'voided_at' - 'voided_by' is distinct from to_jsonb(old) - 'voided_at' - 'voided_by' then raise exception 'This cannot be edited. Void it and enter it again.'; end if;
+    if old.voided_at is not null then raise exception 'This is already voided.'; end if;
+    if new.voided_at is not null then new.voided_by := auth.uid(); end if; return new;
+  end if;
+  new.pay_month := date_trunc('month', new.pay_month)::date; new.created_by := auth.uid(); new.voided_at := null; new.voided_by := null;
+  if new.kind = 'lop_waiver' and new.days is null then raise exception 'Enter the number of days to waive.'; end if;
+  if new.kind <> 'lop_waiver' and new.amount <= 0 then raise exception 'Enter the amount.'; end if;
+  return new;
+end $$;
+drop trigger if exists payroll_adjustment_guard_trg on public.payroll_adjustments;
+create trigger payroll_adjustment_guard_trg before insert or update or delete on public.payroll_adjustments for each row execute function public.payroll_adjustment_guard();
+
+create or replace function public.advance_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'DELETE' then raise exception 'An advance is never deleted. Void it instead.'; end if;
+  if tg_op = 'UPDATE' then
+    if new.amount <> old.amount or new.employee_id <> old.employee_id or new.project_id <> old.project_id or new.given_on <> old.given_on then raise exception 'An advance''s amount, person, project and date cannot be changed. Void it and enter it again.'; end if;
+    if old.voided_at is not null then raise exception 'This is already voided.'; end if;
+    if new.voided_at is not null then
+      if exists (select 1 from public.advance_recoveries where advance_id = old.id) then raise exception 'Part of this advance has already been recovered in a payroll, so it cannot be voided.'; end if;
+      new.voided_by := auth.uid();
+    end if; return new;
+  end if;
+  new.created_by := auth.uid(); new.voided_at := null; new.voided_by := null; return new;
+end $$;
+drop trigger if exists advance_guard_trg on public.employee_advances;
+create trigger advance_guard_trg before insert or update or delete on public.employee_advances for each row execute function public.advance_guard();
+
+-- approve / reopen
+create or replace function public.payroll_approve(p_run uuid) returns void language plpgsql security definer set search_path = public as $$
+declare r public.payroll_runs%rowtype; it jsonb; l record; owed numeric;
+begin
+  if not public.is_admin() then raise exception 'Only an Admin can approve payroll.'; end if;
+  select * into r from public.payroll_runs where id = p_run for update; if not found then raise exception 'Payroll not found.'; end if;
+  if r.status = 'approved' then raise exception 'This payroll is already approved.'; end if;
+  if not exists (select 1 from public.payroll_lines where run_id = p_run) then raise exception 'There is nobody in this payroll yet.'; end if;
+  if exists (select 1 from public.payroll_lines where run_id = p_run and net < 0) then raise exception 'Someone''s net pay is negative. Fix their deductions before approving.'; end if;
+  for l in select * from public.payroll_lines where run_id = p_run loop
+    for it in select * from jsonb_array_elements(l.items) loop
+      if it ->> 'advance_id' is not null then
+        select a.amount - coalesce((select sum(x.amount) from public.advance_recoveries x where x.advance_id = a.id), 0) into owed from public.employee_advances a where a.id = (it ->> 'advance_id')::uuid and a.voided_at is null;
+        if owed is null or (it ->> 'amount')::numeric > owed then raise exception 'An advance recovery is larger than what is still owed. Recalculate the payroll.'; end if;
+        insert into public.advance_recoveries (advance_id, run_id, employee_id, amount) values ((it ->> 'advance_id')::uuid, p_run, l.employee_id, (it ->> 'amount')::numeric);
+      end if;
+    end loop;
+  end loop;
+  perform set_config('app.payroll', '1', true); update public.payroll_runs set status = 'approved', approved_by = auth.uid(), approved_at = now() where id = p_run; perform set_config('app.payroll', '', true);
+end $$;
+create or replace function public.payroll_reopen(p_run uuid) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'Only an Admin can reopen payroll.'; end if;
+  if not exists (select 1 from public.payroll_runs where id = p_run and status = 'approved') then raise exception 'This payroll is not approved.'; end if;
+  if exists (select 1 from public.payroll_payments where run_id = p_run and voided_at is null) then raise exception 'Salary payments have been recorded for this payroll. Void them first.'; end if;
+  delete from public.advance_recoveries where run_id = p_run;
+  perform set_config('app.payroll', '1', true); update public.payroll_runs set status = 'draft', approved_by = null, approved_at = null where id = p_run; perform set_config('app.payroll', '', true);
+end $$;
+
+-- salary payments: only against an approved payroll, never more than the net, never edited or deleted
+create or replace function public.payroll_payment_guard() returns trigger language plpgsql security definer set search_path = public as $$
+declare l public.payroll_lines%rowtype; paid numeric; st text;
+begin
+  if tg_op = 'DELETE' then raise exception 'A payment is never deleted. Void it and enter the right one.'; end if;
+  if tg_op = 'UPDATE' then
+    if to_jsonb(new) - 'voided_at' - 'voided_by' is distinct from to_jsonb(old) - 'voided_at' - 'voided_by' then raise exception 'A payment cannot be edited. Void it and enter the right one.'; end if;
+    if old.voided_at is not null then raise exception 'This payment is already voided.'; end if;
+    if new.voided_at is not null then new.voided_by := auth.uid(); end if; return new;
+  end if;
+  select * into l from public.payroll_lines where id = new.line_id; if not found then raise exception 'Payroll line not found.'; end if;
+  select status into st from public.payroll_runs where id = l.run_id; if st <> 'approved' then raise exception 'Approve the payroll before recording payments.'; end if;
+  if l.held then raise exception 'This person''s pay is on hold: %', coalesce(nullif(l.hold_reason, ''), 'no reason given'); end if;
+  select coalesce(sum(amount), 0) into paid from public.payroll_payments where line_id = l.id and voided_at is null;
+  if paid + new.amount > l.net then raise exception 'That is more than the net pay (₹% of ₹% already paid).', paid, l.net; end if;
+  new.run_id := l.run_id; new.employee_id := l.employee_id; new.project_id := l.project_id; new.created_by := auth.uid(); new.voided_at := null; new.voided_by := null; return new;
+end $$;
+drop trigger if exists payroll_payment_guard_trg on public.payroll_payments;
+create trigger payroll_payment_guard_trg before insert or update or delete on public.payroll_payments for each row execute function public.payroll_payment_guard();
+
+-- the project's Salaries & wages expense for a payroll run: one row, kept equal to what has been paid
+create or replace function public.sync_payroll_expense(p_run uuid) returns void language plpgsql security definer set search_path = public as $$
+declare total numeric; n int; last_paid date; cat uuid; r public.payroll_runs%rowtype;
+begin
+  if to_regclass('public.project_expenses') is null then return; end if;
+  select * into r from public.payroll_runs where id = p_run;
+  select coalesce(sum(amount), 0), count(distinct employee_id), max(paid_on) into total, n, last_paid from public.payroll_payments where run_id = p_run and voided_at is null;
+  perform set_config('app.posting', '1', true);
+  if total <= 0 then delete from public.project_expenses where source = 'payroll' and source_id = p_run;
+  else
+    select id into cat from public.expense_categories where lower(btrim(name)) = 'salaries & wages' limit 1;
+    if cat is null then insert into public.expense_categories (name) values ('Salaries & wages') returning id into cat; end if;
+    insert into public.project_expenses (project_id, category_id, expense_date, amount, description, source, source_id, created_by)
+    values (r.project_id, cat, last_paid, total, 'Salaries · ' || to_char(r.pay_month, 'Mon YYYY') || ' · ' || n || ' ' || case when n = 1 then 'person' else 'people' end || ' paid', 'payroll', p_run, auth.uid())
+    on conflict (source, source_id) where source is not null do update set amount = excluded.amount, expense_date = excluded.expense_date, description = excluded.description, category_id = excluded.category_id;
+  end if;
+  perform set_config('app.posting', '', true);
+end $$;
+create or replace function public.payroll_payment_post() returns trigger language plpgsql security definer set search_path = public as $$
+begin perform public.sync_payroll_expense(new.run_id); return new; end $$;
+drop trigger if exists payroll_payment_post_trg on public.payroll_payments;
+create trigger payroll_payment_post_trg after insert or update on public.payroll_payments for each row execute function public.payroll_payment_post();
+
+-- statutory remittances: one Statutory / compliance expense each; never edited or deleted, only voided
+create or replace function public.statutory_payment_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'DELETE' then raise exception 'A payment is never deleted. Void it and enter the right one.'; end if;
+  if tg_op = 'UPDATE' then
+    if to_jsonb(new) - 'voided_at' - 'voided_by' is distinct from to_jsonb(old) - 'voided_at' - 'voided_by' then raise exception 'A payment cannot be edited. Void it and enter the right one.'; end if;
+    if old.voided_at is not null then raise exception 'This payment is already voided.'; end if;
+    if new.voided_at is not null then new.voided_by := auth.uid(); end if; return new;
+  end if;
+  new.pay_month := date_trunc('month', new.pay_month)::date; new.created_by := auth.uid(); new.voided_at := null; new.voided_by := null; return new;
+end $$;
+drop trigger if exists statutory_payment_guard_trg on public.statutory_payments;
+create trigger statutory_payment_guard_trg before insert or update or delete on public.statutory_payments for each row execute function public.statutory_payment_guard();
+create or replace function public.statutory_payment_post() returns trigger language plpgsql security definer set search_path = public as $$
+declare cat uuid;
+begin
+  if to_regclass('public.project_expenses') is null then return new; end if;
+  if tg_op = 'UPDATE' then
+    if new.voided_at is not null and old.voided_at is null then perform set_config('app.posting', '1', true); delete from public.project_expenses where source = 'statutory_payment' and source_id = new.id; perform set_config('app.posting', '', true); end if;
+    return new;
+  end if;
+  select id into cat from public.expense_categories where lower(btrim(name)) = 'statutory / compliance' limit 1;
+  if cat is null then insert into public.expense_categories (name) values ('Statutory / compliance') returning id into cat; end if;
+  insert into public.project_expenses (project_id, category_id, expense_date, amount, description, source, source_id, created_by)
+  values (new.project_id, cat, new.paid_on, new.amount, upper(new.kind) || ' payment · ' || to_char(new.pay_month, 'Mon YYYY') || coalesce(' · ' || nullif(btrim(new.challan_no), ''), ''), 'statutory_payment', new.id, auth.uid());
+  return new;
+end $$;
+drop trigger if exists statutory_payment_post_trg on public.statutory_payments;
+create trigger statutory_payment_post_trg after insert or update on public.statutory_payments for each row execute function public.statutory_payment_post();
+
+grant execute on function public.payroll_approve(uuid), public.payroll_reopen(uuid) to authenticated;
+revoke all on function public.payroll_approve(uuid), public.payroll_reopen(uuid) from public, anon;
+grant execute on function public.payroll_approve(uuid), public.payroll_reopen(uuid) to authenticated;
+
 revoke all on function public.admin_list_users(), public.day_submit(uuid, date), public.day_verify(uuid, date), public.day_reopen(uuid, date), public.day_clear(uuid, date), public.app_rank(), public.user_label(uuid) from public, anon;
 grant execute on function public.admin_list_users(), public.day_submit(uuid, date), public.day_verify(uuid, date), public.day_reopen(uuid, date), public.day_clear(uuid, date), public.app_rank(), public.user_label(uuid) to authenticated;

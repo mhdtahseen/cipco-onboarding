@@ -2,7 +2,7 @@
 // so adding a module (Payroll, Invoices, Inventory…) means adding an entry here and nothing else.
 // Pure data + helpers (no React), so the server-side route guard can import it too.
 export type NavRole = "admin" | "staff" | "site_engineer" | "supervisor" | "attendance";   // "attendance" = the old name for Supervisor, kept so the app still works before the migration renames it
-export type IconName = "users" | "clipboard" | "folder" | "file" | "book" | "mail" | "list" | "sliders" | "shield" | "building" | "truck" | "utensils" | "bed";
+export type IconName = "users" | "clipboard" | "folder" | "file" | "book" | "mail" | "list" | "sliders" | "shield" | "building" | "truck" | "utensils" | "bed" | "wallet";
 export type NavItem = {
   href: string;            // where the link goes
   label: string;
@@ -17,6 +17,7 @@ export const NAV_SECTIONS = ["People", "Operations", "Sales", "Templates", "Admi
 
 export const NAV: NavItem[] = [
   { href: "/", label: "Employees", icon: "users", section: "People", roles: ["admin", "staff"], paths: ["/", "/employees"], bar: true },
+  { href: "/payroll", label: "Payroll", icon: "wallet", section: "People", roles: ["admin"], paths: ["/payroll"] },
   { href: "/attendance", label: "Attendance", icon: "clipboard", section: "People", roles: ["admin", "staff", "site_engineer", "supervisor", "attendance"], paths: ["/attendance"], bar: true },
   { href: "/projects", label: "Projects", icon: "folder", section: "Operations", roles: ["admin", "staff"], paths: ["/projects"], bar: true },
   { href: "/sites", label: "Sites today", icon: "building", section: "Operations", roles: ["admin"], paths: ["/sites"] },

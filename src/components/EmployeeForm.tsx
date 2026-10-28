@@ -4,7 +4,7 @@ import Link from "next/link";
 import { stageLabel } from "@/lib/pipeline";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import { EMPTY, FIELD_GROUPS, validate } from "@/lib/fields";
+import { EMPTY, FIELD_GROUPS, PAYROLL_GROUP, validate } from "@/lib/fields";
 import SalaryEditor from "./SalaryEditor";
 import { calcSalary } from "@/lib/salary";
 import type { Department, Project } from "@/lib/types";
@@ -25,7 +25,7 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
     setProjects((p.data || []) as Project[]); setDepts((d.data || []) as Department[]);   // empty until the projects migration has been run
   })(); }, []);
   const warn = validate(v); const isNew = !initial;
-  const groups = isNew ? [{ title: "Candidate", fields: FIELD_GROUPS.flatMap((g) => g.fields).filter((f) => ["full_name", "phone", "email", "designation", "department"].includes(f.key)) }] : FIELD_GROUPS;
+  const groups = isNew ? [{ title: "Candidate", fields: FIELD_GROUPS.flatMap((g) => g.fields).filter((f) => ["full_name", "phone", "email", "designation", "department"].includes(f.key)) }] : [...FIELD_GROUPS, ...(initial && "pay_mode" in (initial as object) ? [PAYROLL_GROUP] : [])];   // the payroll group appears once the payroll migration has added its columns
   const need: Record<string, string> = { Employment: "needed for offer", "Personal & family": "needed for joining forms", Address: "needed for joining forms", "Statutory & bank": "needed for joining forms", "Nominee & emergency contact": "needed for joining forms" };
   const set = (k: string, val: any) => setV((p) => ({ ...p, [k]: val }));
   async function addDept() {
@@ -58,7 +58,8 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
     if (!v.full_name) { setMsg("Full name is required"); return; }
     setBusy(true); setMsg("");
     const clean: Record<string, any> = {};
-    FIELD_GROUPS.flatMap((g) => g.fields).forEach((f) => { const x = v[f.key]; clean[f.key] = x === "" || x === undefined ? null : f.type === "number" && x !== null ? Number(x) : x; });
+    [...FIELD_GROUPS, ...(!isNew && "pay_mode" in (initial as object) ? [PAYROLL_GROUP] : [])].flatMap((g) => g.fields).forEach((f) => { const x = v[f.key]; clean[f.key] = x === "" || x === undefined ? null : f.type === "number" && x !== null ? Number(x) : x; });
+    if ("pay_mode" in clean && !clean.pay_mode) clean.pay_mode = "bank";
     if (clean.aadhaar) clean.aadhaar = String(clean.aadhaar).replace(/\s/g, "");
     if (clean.pan) clean.pan = String(clean.pan).toUpperCase(); if (clean.ifsc) clean.ifsc = String(clean.ifsc).toUpperCase();
     if (v.project_id !== undefined) clean.project_id = v.project_id;   // only once the projects migration exists
@@ -82,7 +83,21 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
       const { data: same } = await q;
       if (same?.length && !confirm(`Someone named “${same[0].full_name}” already exists. Save anyway as a separate person?`)) { setBusy(false); return; }
     }
+    // A salary change is recorded with the date it takes effect, so payroll for earlier months keeps the old salary (needs the payroll migration)
+    const sal = (x: any) => JSON.stringify(x ?? {}); let effective: string | null = null;
+    const hasPay = !!v.id && !!initial && "pay_mode" in (initial as object); const amt = Number((v.salary as any)?.amount) > 0;
+    if (hasPay && amt && sal(v.salary) !== sal(initial?.salary)) {
+      const had = Number((initial?.salary as any)?.amount) > 0; const ans = had ? prompt("The salary has changed. From which date does the new salary apply? (YYYY-MM-DD; earlier payroll months keep the old salary)", new Date().toISOString().slice(0, 10)) : (initial?.join_date ?? new Date().toISOString().slice(0, 10));
+      if (ans === null) { setBusy(false); setMsg("Not saved: choose the date the new salary applies from."); return; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(ans)) { setBusy(false); setMsg("Enter the date as YYYY-MM-DD."); return; } effective = ans;
+    }
     const res = v.id ? await sb.from("employees").update(clean).eq("id", v.id).select().single() : await sb.from("employees").insert(clean).select().single();
+    if (!res.error && effective && v.id) {
+      const { data: hist } = await sb.from("salary_history").select("id").eq("employee_id", v.id).limit(1); const rows: Record<string, any>[] = [];
+      if (!hist?.length && Number((initial?.salary as any)?.amount) > 0) rows.push({ employee_id: v.id, effective_from: initial?.join_date || "2000-01-01", salary: initial?.salary, monthly_ctc: initial?.monthly_ctc ?? null, note: "Salary before the first revision" });
+      rows.push({ employee_id: v.id, effective_from: effective, salary: clean.salary, monthly_ctc: clean.monthly_ctc, note: "Revised in the employee form" });
+      await sb.from("salary_history").upsert(rows, { onConflict: "employee_id,effective_from" });
+    }
     setBusy(false);
     if (res.error) { setMsg(/duplicate key|unique/i.test(res.error.message) ? "A record with the same phone, email, Aadhaar or PAN already exists." : res.error.message); return; }
     setMsg("Saved ✓"); onSaved?.(res.data);

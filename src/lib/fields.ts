@@ -31,6 +31,12 @@ export const FIELD_GROUPS: { title: string; fields: FieldDef[] }[] = [
     { key: "emergency_name", label: "Emergency contact person" }, { key: "emergency_phone", label: "Emergency phone" },
   ] },
 ];
+/** Payroll details, shown only on the internal employee form (never on the candidate self-fill link). Needs the payroll migration. */
+export const PAYROLL_GROUP: { title: string; fields: FieldDef[] } = { title: "Payroll", fields: [
+  { key: "left_on", label: "Last working day (when they leave)", type: "date", hint: "Pay and the attendance sheet stop after this date. Leave blank while they are working." },
+  { key: "pay_mode", label: "Paid by", type: "select", options: ["bank", "upi", "cash"] },
+  { key: "upi_id", label: "UPI ID (if paid by UPI)" },
+] };
 export const EMPTY: Record<string, any> = { father_spouse_type: "Father", base_location: "Pune, Maharashtra", employment_type: "Employee", probation_months: 6, week_off: "Sunday", status: "onboarding" };
 
 export function validate(e: Record<string, any>): Record<string, string> {

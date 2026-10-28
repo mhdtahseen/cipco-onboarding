@@ -6,7 +6,7 @@ How to run a site in the CIPCO app: who does what, every screen, and the rules b
 
 ## 1. The big picture
 
-Four things are tracked for every project (site), and everything that costs money ends up in the project's expenses without being typed twice.
+Five things are tracked for every project (site), and everything that costs money ends up in the project's expenses without being typed twice.
 
 | Topic | Who records it, and where | Who reviews and pays, and where |
 | --- | --- | --- |
@@ -14,6 +14,7 @@ Four things are tracked for every project (site), and everything that costs mone
 | **Meals** (which vendor each person ate with) | Supervisor, on the **Attendance** page | Admin, on the **Meals** page |
 | **Transport** (did each hired vehicle show up) | Supervisor, on the **Attendance** page | Admin, on the **Transport** page |
 | **Accommodation** (rooms, rent) | Admin | Admin, on the **Accommodation** page |
+| **Payroll** (who is paid what) | Admin | Admin, on the **Payroll** page (People menu) |
 
 The rule of thumb: **marking happens on the Attendance page** (the only page Supervisors and Site Engineers have); **everything about money is the Admin's**, on the Operations pages.
 
@@ -113,6 +114,7 @@ Every change, newest first: who, their role, what, old → new, the day it was f
 To stop an Admin changing something by accident, the daily sheet opens **view only** for an Admin: all work, meal and vehicle buttons, Everyone present, Quick actions and the day-bar actions are disabled or hidden. A bar says "View only. Tap **Override** to change anything on this day."
 - Tap **Override** to make the day editable (the bar turns amber). Your changes are stamped as Admin. Tap **Done** to go back.
 - It returns to view only whenever you change the project or the date.
+- **Clear one person's day (Override on):** a person who has a record for the day shows a small red **Clear** link. It removes their attendance and meals for that day on this project (after a confirmation), for example someone marked on the wrong project. If they have no other days on the project they also drop off its monthly view and its payroll. Use **Clear day** (section 4.5) to clear everyone.
 - While viewing, other people's changes appear on their own. **With Override on** the screen never shifts under you: a blue banner says "Someone else changed this day. Refresh to see it." and **Refresh** applies it. Your own changes never raise the banner.
 
 ---
@@ -194,6 +196,38 @@ Each month a vendor sends a bill that may differ from what the recorded meals co
 
 ---
 
+## 9b. Payroll (Admin)
+
+**People → Payroll**, per project and month. Everything it does, with worked examples, limits and suggestions: [PAYROLL.md](PAYROLL.md). Design and edge cases: [PAYROLL_PLAN.md](PAYROLL_PLAN.md).
+
+**The rules**
+- Salary is for the **calendar month**, calculated on the **last day** of the month on actual attendance, and credited between the **1st and 4th** of the next month.
+- Anyone who joined **on or before the 20th** is paid for the month (from their joining date). Anyone who joined **after the 20th** is not in that month's run; the next run pays the **full following month plus the days from joining to the previous month end** (an "Arrears" line).
+- **Salaried:** gross × paid days ÷ calendar days (30 or 31). A weekly off is paid; absent and half-days are LOP (a half-day is half a day). **Daily wage:** rate × days worked (a half-day counts half; weekly off unpaid). PF, ESI and Professional Tax follow each person's salary structure, on the actual earnings.
+- **Unmarked days block payroll**, so every day of the month must be marked first.
+
+**Set up each person once** (Employees → the person)
+1. **Date of joining** and **Project** (they appear on the project's payroll).
+2. **Salary** (as for the offer letter: CTC, in-hand, gross or daily wage). Changing it later asks **from which date the new salary applies**, so earlier months keep the old one.
+3. **Payroll group:** **Paid by** (bank, UPI or cash), **UPI ID** if UPI, and **Last working day** when they leave (pay and the attendance sheet stop after it).
+4. Bank name, account number and IFSC (Statutory & bank group), plus PAN and UAN for the slip.
+
+**Each month**
+1. Open **Payroll**, choose the project and month. The **readiness check** lists anything blocking the month: unmarked days (with a link to the attendance day), a missing joining date or salary. Warnings (bank account or UPI ID missing) do not block. People who joined after the 20th are listed as "paid in the next run".
+2. **Calculate draft.** Everyone appears with days (present / half / absent / off), LOP, gross, deductions, net and how they are paid; ⚑ flags anything unusual (many LOP days, arrears, joined or leaving this month, salary revised, advance recovery). Tap a person to see every earning and deduction.
+3. **Adjust** a person if needed (tap the row): a bonus or other earning, a deduction or fine, or **Waive LOP days** with a reason. After any change the draft shows **out of date**; **Recalculate draft** before approving.
+4. **Approve payroll.** It locks the figures, stamps who and when, and records advance recoveries. **Reopen** undoes it (not allowed while salary payments exist; void them first).
+5. **Pay tab:** the list of whom to pay: pay by, bank or UPI details, net, paid, left, status (Unpaid / Part paid / Paid / On hold). **⬇ Bank transfer CSV** for a bulk upload; **⬇ UPI list CSV**; per person **Pay** (amount, date, reference), **UPI app** (opens your UPI app pre-filled), **Hold** / **Release** (with a reason), **Slip**. **Mark all bank paid** and **Mark all UPI paid** record a batch with one reference. A banner flags people still unpaid after the 4th.
+6. **Salary slips:** on the run tab, **Salary slip (PDF)** per person or **All salary slips (PDF)** (one page each). They show the locked figures: attendance, earnings, deductions, net pay in words and employer contributions.
+
+**Money and expenses**
+- Each salary payment adds to **one Salaries & wages expense** for that month on the project (for example "Salaries · Oct 2026 · 24 people paid"); voiding a payment lowers it. The expense is the **net** paid.
+- **Statutory tab:** what is to be remitted for the month from the approved payroll (PF: employee + employer + admin / EDLI; ESI: employee + employer; Professional Tax), with due dates (PF and ESI by the 15th of the next month, PT by month end), what has been remitted and what is left. **Record** each remittance (challan number); it posts a **Statutory / compliance** expense. Together the two give the true cost of the people with nothing counted twice.
+- **Advances tab:** record an advance (amount, monthly instalment). It is recovered through payroll each month, never more than what is owed or than the net pay available; an advance already recovered from cannot be voided.
+- **Project overview → Salary cost:** salaried **CTC** per month and a year, the estimated monthly cost of daily-wage workers, the total cost to the company, by department, and where the latest payroll stands.
+
+---
+
 ## 10. Project expenses
 
 The project's **Expenses** tab lists everything, including expenses posted from payments. Those rows show a **From payment** tag instead of Edit and Delete: their amount, date and category cannot be changed. To fix one, **void the payment** (the expense is removed) and record it again. Their note and bill can still be edited. Hand-entered expenses work as before.
@@ -217,6 +251,7 @@ Only what is **paid** becomes an expense. What is merely owed (billed meals, tri
 - **Sites today** for any day not submitted or verified. **Meals → Overview** and **Transport → Overview** alerts (days with nothing recorded). **Accommodation → Overview** for capacity.
 
 **Monthly (Admin)**
+0. **Payroll:** from the last day of the month, calculate, adjust, approve; pay between the 1st and 4th; record PF / ESI / PT remittances.
 1. **Meals → Bills**: record each vendor's bill, compare, approve. Then **Payments**.
 2. **Transport**: check no-shows, add errands, record payments.
 3. **Accommodation → Rent & payments**: **Pay all unpaid** for the coming month (rent is in advance).
@@ -250,4 +285,4 @@ If a Supervisor sees "No project has been assigned to you yet", tick their site 
 - **Weekly off** is worked out from the employee's weekly-off day; changing it later changes how past unsaved days look.
 - **One row per person per day**: someone who moves projects mid-day is recorded on one project only.
 - **Live updates** need the three attendance tables switched on for Realtime (the migration does it). If the green dot never appears, check Supabase → Database → Replication; the screens still refresh every 25 seconds.
-- **Not built:** overtime, leave types, late arrival, per-person alternate transport, room occupancy, vendor-bill checks for transport operators and landlords, offline mode.
+- **Not built:** overtime, leave types, late arrival, per-person alternate transport, room occupancy, vendor-bill checks for transport operators and landlords, offline mode. For payroll, see section 13 of the payroll plan (two-project employees, back-dated revisions, holidays, final settlement).

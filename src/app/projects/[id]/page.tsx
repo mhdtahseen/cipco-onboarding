@@ -9,6 +9,7 @@ import { todayISO } from "@/lib/format";
 import { fmtD, useProjectData } from "@/lib/projectData";
 import ProjectExpenses from "@/components/ProjectExpenses";
 import ProjectDocuments from "@/components/ProjectDocuments";
+import SalaryCost from "@/components/SalaryCost";
 
 type Tab = "overview" | "people" | "expenses" | "documents";
 
@@ -63,6 +64,7 @@ export default function ProjectPage() {
           {card("Documents", d.docErr ? "—" : String(pdocs.length), "letters, JSAs, POs…", () => setTab("documents"))}
           {card("First joining", r.first ? fmtD(r.first) : "—", r.last && r.last !== r.first ? `latest ${fmtD(r.last)}` : undefined, () => setTab("people"))}
         </div>
+        <SalaryCost projectId={id} people={r.live} />
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="card space-y-2">
             <div className="flex items-center gap-2"><h3 className="font-semibold">Recent expenses</h3><button className="btn !py-1 ml-auto" onClick={goExpense} disabled={!!d.expErr}>+ Add expense</button></div>

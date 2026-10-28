@@ -91,6 +91,17 @@ Roles are now Admin, Site Engineer (sees attendance only) and Supervisor. Every 
 - [x] Update docs/ROLES_AND_ATTENDANCE.md (repo copy) and write docs/OPERATIONS_GUIDE.md (user guide for attendance, meals, transport, accommodation)
 - [ ] Update the online Claude Doc to match (still shows the old three-role version)
 
+## Payroll (built 30 Oct 2026; plan and edge cases in docs/PAYROLL_PLAN.md)
+
+- [x] Calendar-month payroll: calculated on the last day, credited 1st to 4th; joined after the 20th paid in the next run with arrears; daily wage and salaried; unmarked days block
+- [x] Employee: left-on date, pay mode (bank / UPI / cash), UPI ID, salary history with effective dates
+- [x] Payroll run (readiness, draft, adjustments, LOP waiver, approve, reopen), Pay tab (bank CSV, UPI list and links, hold, payments), Statutory tab, Advances tab
+- [x] Salary slip PDFs (one, or all in one PDF); project overview Salary cost panel
+- [x] Salary payments post one Salaries & wages expense per run; PF / ESI / PT remittances post Statutory / compliance
+- [ ] Re-run `2026-10-attendance-accountability-transport.sql`, then set each employee's joining date, salary, pay mode and bank / UPI details
+- [ ] Try one real month end to end (October 2026) and compare with your own calculation
+- [ ] Refinements listed in docs/PAYROLL_PLAN.md section 13 (two-project employees, back-dated revisions, holidays, final settlement, bank file templates)
+
 ## Platform roadmap — payroll, invoices, inventory (agreed 2026-10-27)
 
 The app is growing from onboarding into an operations platform. Do these in order; each step makes the next one cheaper.

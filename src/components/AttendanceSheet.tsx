@@ -94,6 +94,13 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
     if (missing) { setMsg(""); setErr(`Only ${updates.length - missing} of ${updates.length} were saved. Please refresh and try again.`); return; }
     setMsg(`${done} (${updates.length})`); setTimeout(() => setMsg(""), 4000);
   }
+  // Admin, with Override on: remove one person's record for this day (attendance and meals), e.g. someone marked on the wrong project, so they drop off this project's sheet and monthly view
+  async function clearPerson(p: Person) {
+    if (!confirm(`Clear ${p.full_name}'s attendance and meals for ${date} on this project? They go back to "not marked". If they have no other days here, they also disappear from this project's monthly view.`)) return;
+    setErr(""); inflight.current++; const { error } = await sb().from("attendance").delete().eq("employee_id", p.employee_id).eq("work_date", date).eq("project_id", projectId); inflight.current--;
+    if (error) { setErr(error.message); return; } setMsg(`Cleared ${p.full_name} ✓`); setTimeout(() => setMsg(""), 4000); load(true);
+  }
+  const clearBtn = (p: Person) => admin && override && rows[p.employee_id] ? <button type="button" className="text-[11px] text-red-700 underline" onClick={() => clearPerson(p)} data-clear-person>Clear</button> : null;
   const everyonePresent = () => {
     const todo = people.filter((p) => !rows[p.employee_id] && !isWeeklyOff(p, date));
     const why = people.every((p) => isWeeklyOff(p, date) && !rows[p.employee_id]) ? `Everyone is on their weekly off (${dayName(date)}). Tap Present on a person to override.` : "Everyone is already marked.";
@@ -218,7 +225,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
           <div key={p.employee_id} data-person className="rounded-2xl bg-white border border-slate-200/80 p-3.5 space-y-3">
             <div className="flex items-center gap-2.5 min-w-0"><span className={`h-2 w-2 shrink-0 rounded-full ${st ? "bg-transparent" : "bg-amber-400"}`} title={st ? undefined : "Not marked yet"} />
               <div className="min-w-0"><div className="text-[15px] font-medium text-slate-900 truncate">{p.full_name}</div><div className="text-xs text-slate-400 truncate">{[p.emp_no, p.designation].filter(Boolean).join(" · ") || "—"}{virtualOff ? " · weekly off" : ""}</div></div>
-              {stamp(r) && <div className="ml-auto text-right text-[11px] leading-tight text-slate-400 shrink-0" data-stamp>{stamp(r)}</div>}</div>
+              {(stamp(r) || clearBtn(p)) && <div className="ml-auto text-right text-[11px] leading-tight text-slate-400 shrink-0" data-stamp>{stamp(r)}{clearBtn(p) && <div>{clearBtn(p)}</div>}</div>}</div>
             <div role="group" aria-label={`Work – ${p.full_name}`} className="grid grid-cols-4 gap-0.5 rounded-xl bg-slate-100 p-1">
               {WORK.map((w) => <button key={w.s} type="button" disabled={locked} aria-pressed={st === w.s} onClick={() => save(p, { status: w.s })} className={`h-11 rounded-lg text-[13px] font-medium touch-manipulation transition-colors disabled:opacity-60 ${st === w.s ? `bg-white shadow-sm ${SEG[w.s]}` : "text-slate-500"}`}>{w.label}</button>)}</div>
             {showMeals && <div className="grid grid-cols-3 gap-2">
@@ -296,7 +303,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
                   <td key={m.key} className="px-2 py-1.5">{many
                     ? <select className="h-8 w-full rounded-lg border border-slate-300 bg-white px-1.5 text-xs disabled:opacity-60" disabled={locked} aria-label={`${m.label} – ${p.full_name}`} value={cur ?? ""} onChange={(e) => save(p, { [m.col]: e.target.value || null })}><option value="">–</option>{list.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
                     : <button type="button" disabled={locked} title="Click to change" aria-label={`${m.label} – ${p.full_name}: ${cur ? vName(cur) : "none"}. Click to change.`} onClick={() => save(p, { [m.col]: nextVendor(cur, list) })} className={`h-8 w-full rounded-lg border px-2 text-xs font-medium truncate disabled:cursor-not-allowed disabled:opacity-60 ${cur ? vTint(cur) : "border-dashed border-slate-300 text-slate-400 hover:bg-slate-50"}`}>{cur ? vName(cur) : "–"}</button>}</td>); })}
-                <td className="px-2 py-1.5 text-[11px] leading-tight text-slate-400" data-stamp>{stamp(r)}</td>
+                <td className="px-2 py-1.5 text-[11px] leading-tight text-slate-400" data-stamp>{stamp(r)}{clearBtn(p) && <div>{clearBtn(p)}</div>}</td>
               </tr>); })}
           </tbody>
         </table>
