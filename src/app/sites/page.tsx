@@ -5,20 +5,28 @@ import { supabase } from "@/lib/supabase/client";
 import { fmtTime, istToday, type DayRow } from "@/lib/attendance";
 import type { Project } from "@/lib/types";
 
+const POLL_MS = Number(process.env.NEXT_PUBLIC_ATT_POLL_MS) || 30000;
 type Row = { p: Project; people: number; marked: number; present: number; noShows: number; day: DayRow | null };
 
 // Admin overview: every active site today — how many are marked, whether the day was submitted / verified, and transport stamped.
 export default function SitesToday() {
   const today = istToday(); const [rows, setRows] = useState<Row[]>([]); const [loading, setLoading] = useState(true); const [err, setErr] = useState("");
-  useEffect(() => { (async () => {
+  async function loadAll() {
     const sb = supabase(); const { data: ps, error } = await sb.from("projects").select("*").eq("status", "active").order("name"); if (error) { setErr(error.message); setLoading(false); return; }
     const out: Row[] = await Promise.all(((ps || []) as Project[]).map(async (p) => {
       const { data: roster } = await sb.rpc("attendance_roster", { p_project: p.id, p_from: today, p_to: today }); const ids = ((roster || []) as { employee_id: string }[]).map((x) => x.employee_id);
       const [a, t, d] = await Promise.all([ids.length ? sb.from("attendance").select("status").eq("work_date", today).in("employee_id", ids) : Promise.resolve({ data: [] as { status: string }[] }), sb.from("transport_runs").select("status").eq("project_id", p.id).eq("work_date", today), sb.from("attendance_days").select("*").eq("project_id", p.id).eq("work_date", today).maybeSingle()]);
-      const att = (a.data || []) as { status: string }[]; return { p, people: ids.length, marked: att.length, present: att.filter((x) => x.status === "present" || x.status === "half").length, noShows: ((t.data || []) as { status: string }[]).filter((x) => x.status === "no_show").length, day: (d.data as DayRow) ?? null };
+      const att = (a.data || []) as { status: string }[]; return { p, people: ids.length, marked: att.filter((x) => x.status).length, present: att.filter((x) => x.status === "present" || x.status === "half").length, noShows: ((t.data || []) as { status: string }[]).filter((x) => x.status === "no_show").length, day: (d.data as DayRow) ?? null };
     }));
     setRows(out); setLoading(false);
-  })(); }, [today]);
+  }
+  // Live: another person's change (a Supervisor marking attendance, a vehicle not showing up) updates this page, with a timer as a fallback.
+  useEffect(() => {
+    loadAll(); const sb = supabase(); let t: ReturnType<typeof setTimeout> | undefined; const nudge = () => { clearTimeout(t); t = setTimeout(loadAll, 600); };
+    const ch = sb.channel("sites-today"); ["attendance", "transport_runs", "attendance_days"].forEach((table) => ch.on("postgres_changes" as any, { event: "*", schema: "public", table }, nudge)); ch.subscribe();
+    const timer = setInterval(() => { if (!document.hidden) loadAll(); }, POLL_MS);
+    return () => { clearTimeout(t); clearInterval(timer); sb.removeChannel(ch); };
+  }, [today]);
   return (
     <div className="space-y-4">
       <div><h1 className="text-xl font-semibold">Sites today</h1><p className="text-sm text-slate-500">{new Date(today + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p></div>

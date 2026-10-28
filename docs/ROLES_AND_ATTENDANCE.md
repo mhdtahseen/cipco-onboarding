@@ -186,6 +186,13 @@ A person with no saved row shows "not marked". The weekly off is automatic: if t
     - **Meals:** **Copy yesterday's meals** repeats yesterday's vendors for everyone who had a meal recorded yesterday, whatever their work status, and **Set a meal for everyone** applies one vendor (or no meal) to one meal for everyone on the sheet, including people who are absent, on a weekly off or not marked.
 - With more than six people, a search box and an **Open only** button appear, so the last few unmarked names are easy to find.
 
+**Several people at once.** The Supervisor at the plant, the Site Engineer and the Admin can have the same day open together.
+- **Changes arrive by themselves.** Supabase Realtime pushes a nudge when anyone changes attendance, meals, transport or the sign-off for the project and day on screen, and the sheet refreshes. A timer also checks every 25 seconds (and when the tab is shown again) in case the live connection drops on weak site internet. A small line under the date says "Last change: Ravi · 14:32" and has a green dot when the live connection is up.
+- **Admin in view-only mode** sees other people's changes appear as they happen.
+- **Admin with Override on** is not interrupted: a blue banner says "Someone else changed this day. Refresh to see it." and **Refresh** applies it. Your own edits are saved already and never raise the banner.
+- **Saves send only the field you changed**, never the whole row. If the Supervisor sets someone's lunch while the Site Engineer sets the same person's work status, both changes stay; the earlier version could overwrite one with the other from a stale screen. If two people change the *same* field, the last save wins, and the rank rule still applies (a Supervisor cannot overwrite a Site Engineer's or Admin's entry). Every change is in the activity log.
+- **Sites today** also updates live (marked count, sign-off state, vehicle no-shows).
+
 **How saving behaves.** One row is kept per person per day. A single tap updates the screen at once and reverts with a red message if the database refuses it, for example because the day is locked. Bulk actions save, then re-read what is stored and compare, so the screen cannot disagree with the database; if fewer rows saved than expected it says "Only X of Y were saved". When a bulk action has nothing to do, it says why, for example "Everyone is on their weekly off (Sunday)".
 
 **On a phone.** A calm layout with colour used sparingly. The date is a large centred label with previous and next arrows; tapping it opens the date picker. Each person is a white card with a name, role and a soft segmented control for Present, Absent, Half-day and Off (the chosen one is a white pill with a coloured label). A small amber dot beside a name means not yet marked. The three meal buttons are shown on every card, whatever the person's status, each showing the vendor with a small coloured dot. All tap targets are at least 44 px, text in fields is 16 px so iPhones do not zoom in, and a bar pinned at the bottom shows how many are still open with the **Everyone present** button.
@@ -363,6 +370,7 @@ The migration also seeds every existing login as Admin, adds the vendors Maruti 
 | transport_runs | One row per vehicle, day and direction (pickup / drop): showed (with a server time) or no_show. Same windows and locks as attendance, only a vehicle of the same project, correction and clearing logged |
 | transport_errands | Extra jobs quoted by the operator and paid by us; Admin/Staff only; never edited or deleted, only voided; each takes its vehicle's project |
 | transport_payments | Ledger, Admin/Staff only; each payment takes its vehicle's project. Cannot be edited or deleted; can be voided once |
+| Realtime | `attendance`, `transport_runs` and `attendance_days` are added to Supabase's `supabase_realtime` publication (with full replica identity so a delete says which project and day); skipped if the publication does not exist |
 | Functions | `check_write`, `write_window_end`, `log_change`, `touch_day`, `day_submit`, `day_verify`, `day_reopen`, `day_clear` (Admin only: deletes a project day's attendance and sign-off and logs it) |
 
 ---

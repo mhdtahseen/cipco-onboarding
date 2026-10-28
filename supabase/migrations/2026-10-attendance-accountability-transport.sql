@@ -379,5 +379,20 @@ begin
   return n;
 end $$;
 
+-- ---------- 10. live updates: other people's changes reach open screens ----------
+-- The attendance page and Sites today listen to these tables through Supabase Realtime. Full row identity lets a delete say which project and day it was.
+alter table public.attendance replica identity full;
+alter table public.transport_runs replica identity full;
+alter table public.attendance_days replica identity full;
+do $$ declare t text; begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    foreach t in array array['attendance','transport_runs','attendance_days'] loop
+      if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
+        execute format('alter publication supabase_realtime add table public.%I', t);
+      end if;
+    end loop;
+  end if;
+end $$;
+
 revoke all on function public.admin_list_users(), public.day_submit(uuid, date), public.day_verify(uuid, date), public.day_reopen(uuid, date), public.day_clear(uuid, date), public.app_rank(), public.user_label(uuid) from public, anon;
 grant execute on function public.admin_list_users(), public.day_submit(uuid, date), public.day_verify(uuid, date), public.day_reopen(uuid, date), public.day_clear(uuid, date), public.app_rank(), public.user_label(uuid) to authenticated;

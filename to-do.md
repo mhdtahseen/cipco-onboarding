@@ -74,8 +74,10 @@ Roles are now Admin, Site Engineer (sees attendance only) and Supervisor. Every 
 - [x] Migration `supabase/migrations/2026-10-attendance-accountability-transport.sql` (run AFTER `2026-10-roles-attendance.sql`): role rename, names on logins, rank-protected entries, activity log, day sign-off, transport vehicles / trips / passengers / payments, money visible to Admin only
 - [x] Daily sheet: "who · time" on every row, Transport card (per vehicle: Pickup and Drop, Showed / No show with a server time), day bar (Supervisor submits, Site Engineer verifies, reopen) with a review list
 - [x] Activity tab (Admin / Site Engineer), Sites today page, Transport page per project (vehicles paid per trip or monthly, no-shows, errands, payments, balance due)
+- [x] Several people at once: live refresh (Realtime + timer), field-only saves, "Last change" note, Refresh banner for an Admin in Override, live Sites today
 - [x] Admin view-only by default on the daily sheet; an Override button makes it editable (protects against accidental changes)
 - [x] Admin "Clear day" button (wipes a day's attendance, meals and sign-off so the Supervisor can redo it)
+- [ ] After re-running the migration, check Supabase → Database → Replication lists attendance, transport_runs and attendance_days (live updates); without it the screens still refresh every 25 seconds
 - [ ] Run the migration in Supabase, then give each person a name and role on the Users page
 - [ ] Settings → Food vendors: pick each project and add its vendors (e.g. accommodation mess, site canteen) with prices; assign any old vendors listed as "Not assigned"
 - [ ] Add the hired vehicles on the Transport page for each project, choosing per trip or monthly and the price
