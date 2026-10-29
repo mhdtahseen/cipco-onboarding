@@ -1,5 +1,5 @@
 import { rgb, type PDFPage, type PDFFont } from "pdf-lib";
-import { drawStamp, embedFonts, newDoc, wrapPlain } from "./common";
+import { embedFonts, newDoc, wrapPlain } from "./common";
 import { COMPANY } from "../company";
 import { inr, rupeesWords } from "../salary";
 
@@ -12,7 +12,7 @@ const monthLabel = (iso: string) => new Date(iso.slice(0, 7) + "-01T00:00:00").t
 const dmy = (iso?: string | null) => (iso ? new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 const num = (n: unknown) => { const v = Number(n); return Number.isInteger(v) ? String(v) : v.toFixed(1); };
 
-/** One salary slip per page, in the style of the letters: company header, employee and attendance details, earnings and deductions, net pay in words, seal and signature (employer contributions are deliberately left off). */
+/** One salary slip per page, in the style of the letters: company header, employee and attendance details, earnings and deductions, net pay in words (no seal or signature, and employer contributions are deliberately left off). */
 export async function buildPayslips(slips: SlipInput[]): Promise<Uint8Array> {
   const doc = await newDoc(); const f = await embedFonts(doc);
   for (const s of slips) await slipPage(doc.addPage([W, H]), doc, f, s);
@@ -38,19 +38,18 @@ async function slipPage(page: PDFPage, doc: Awaited<ReturnType<typeof newDoc>>, 
   y -= 24; if (sn.arrears) { text(`Arrears: ${dmy(sn.arrears.from)} to ${dmy(sn.arrears.to)} (${sn.arrears.days} days)`, M + 6, 8, f.ital, mute); y -= 12; }
   rule(y); y -= 18;
   // earnings | deductions
-  const earn = s.line.items.filter((i) => i.kind === "earning"), ded = s.line.items.filter((i) => i.kind === "deduction"); const colW = (W - 2 * M - 20) / 2, x2 = M + colW + 20;
+  const earn = s.line.items.filter((i) => i.kind === "earning"), ded = s.line.items.filter((i) => i.kind === "deduction"); const showDed = ded.length > 0 || s.line.kind !== "daily";   // a daily-wage slip with nothing deducted has no Deductions column
+  const colW = showDed ? (W - 2 * M - 20) / 2 : W - 2 * M, x2 = M + colW + 20;
   const head = (t: string, x: number) => { page.drawRectangle({ x, y: y - 4, width: colW, height: 16, color: blue }); page.drawText(t, { x: x + 6, y: y + 0.5, size: 8.5, font: f.bold, color: rgb(1, 1, 1) }); page.drawText("Amount", { x: x + colW - 6 - f.bold.widthOfTextAtSize("Amount", 8.5), y: y + 0.5, size: 8.5, font: f.bold, color: rgb(1, 1, 1) }); };
-  head("Earnings", M); head("Deductions", x2); y -= 20;
+  head("Earnings", M); if (showDed) head("Deductions", x2); y -= 20;
   const rows = Math.max(earn.length, ded.length, 1); let yy = y; const drawCol = (items: typeof earn, x: number) => { let ly = y; items.forEach((it) => { const lines = wrapPlain(f.reg, it.label, 9, colW - 80); lines.forEach((ln, k) => { page.drawText(ln, { x: x + 6, y: ly, size: 9, font: f.reg, color: ink }); if (k === 0) { const a = inr(it.amount); page.drawText(a, { x: x + colW - 6 - f.reg.widthOfTextAtSize(a, 9), y: ly, size: 9, font: f.reg, color: ink }); } ly -= 12; }); }); yy = Math.min(yy, ly); };
-  drawCol(earn, M); drawCol(ded, x2); y = Math.min(yy, y - rows * 12) - 2; rule(y + 8, M, M + colW); rule(y + 8, x2, x2 + colW); y -= 4;
+  drawCol(earn, M); if (showDed) drawCol(ded, x2); y = Math.min(yy, y - rows * 12) - 2; rule(y + 8, M, M + colW); if (showDed) rule(y + 8, x2, x2 + colW); y -= 4;
   const tot = (t: string, v: number, x: number) => { page.drawText(t, { x: x + 6, y, size: 9, font: f.bold, color: ink }); const a = inr(v); page.drawText(a, { x: x + colW - 6 - f.bold.widthOfTextAtSize(a, 9), y, size: 9, font: f.bold, color: ink }); };
-  tot("Gross earnings", s.line.gross, M); tot("Total deductions", s.line.deductions, x2); y -= 22;
+  tot("Gross earnings", s.line.gross, M); if (showDed) tot("Total deductions", s.line.deductions, x2); y -= 22;
   // net pay
   page.drawRectangle({ x: M, y: y - 26, width: W - 2 * M, height: 38, color: soft, borderColor: line, borderWidth: 0.6 });
   page.drawText("NET PAY", { x: M + 10, y: y - 2, size: 9, font: f.bold, color: mute }); const nv = inr(s.line.net); page.drawText(nv, { x: W - M - 10 - f.bold.widthOfTextAtSize(nv, 16), y: y - 5, size: 16, font: f.bold, color: blue });
   page.drawText(rupeesWords(Math.max(0, Math.round(s.line.net))), { x: M + 10, y: y - 19, size: 8.5, font: f.ital, color: ink }); y -= 50;
   // footer
   page.drawText("This is a computer-generated salary slip.", { x: M, y: 70, size: 8, font: f.ital, color: mute });
-  await drawStamp(doc, page, { x: W - M - 150, top: H - 150, signW: 70, signMaxH: 34, sealW: 48 });
-  page.drawText(COMPANY.signatoryLabel, { x: W - M - 150, y: 96, size: 8, font: f.reg, color: mute });
 }

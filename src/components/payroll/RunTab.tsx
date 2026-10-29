@@ -88,7 +88,7 @@ export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: 
               {approved && <a className="btn inline-flex" href={`/api/payslips/${(x.line as Line).id}`} target="_blank" onClick={(e) => e.stopPropagation()}>Salary slip (PDF)</a>}</div></div></td></tr>}
         </>); })}</tbody></table>
         {!shown.length && <p className="p-6 text-center text-sm text-slate-500">{d.emps.length ? "Nobody is in this month's payroll yet. Calculate the draft once the month's attendance is complete." : "Nobody is on this project."}</p>}</div>
-      <p className="text-xs text-slate-400">Salaried: gross × paid days ÷ calendar days (weekly off paid; absent and unmarked days are LOP). Daily wage: rate × days worked (weekly off unpaid). Everyone who joined on or before the 20th is paid from their joining date; later joiners are paid in the next run with arrears. PF, ESI and Professional Tax follow each salaried person's salary structure; daily-wage workers have ESI only.</p>
+      <p className="text-xs text-slate-400">Salaried: gross × paid days ÷ calendar days (weekly off paid; absent and unmarked days are LOP). Daily wage: rate × days worked (weekly off unpaid). Everyone who joined on or before the 20th is paid from their joining date; later joiners are paid in the next run with arrears. PF, ESI and Professional Tax follow each salaried person's salary structure; daily-wage workers have no deductions (the company pays their ESI as an added cost).</p>
     </div>
   );
 }

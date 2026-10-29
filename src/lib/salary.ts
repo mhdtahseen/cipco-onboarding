@@ -75,16 +75,16 @@ function calcDaily(cfg: SalaryCfg, gender?: string | null): Calc | null {
   const rate = Number(cfg.amount); if (!rate || rate <= 0) return null;
   const days = Number(cfg.days_per_month) > 0 ? Number(cfg.days_per_month) : DAILY_DEFAULT_DAYS;
   const R = Math.round, gross = R(rate * days);
-  // Daily wage: ESI is the only deduction (when earnings are within the ESI ceiling); no PF, EDLI or Professional Tax.
-  const pf = 0, pt = 0, esi = gross <= ESI_CEILING ? Math.ceil(gross * ESI_EE) : 0;
+  // Daily wage: nothing is deducted. ESI (when earnings are within the ESI ceiling) is paid by the company, both the 0.75% employee share and the 3.25% employer share; no PF, EDLI or Professional Tax.
+  const pf = 0, pt = 0, esi = 0, eligible = gross <= ESI_CEILING;
   const erPF = 0, erAdmin = 0;
-  const erESI = cfg.employer_in_ctc && gross <= ESI_CEILING ? Math.ceil(gross * ESI_ER) : 0, erTotal = erPF + erAdmin + erESI, ded = pf + esi + pt;
+  const erESI = (eligible ? Math.ceil(gross * ESI_EE) : 0) + (cfg.employer_in_ctc && eligible ? Math.ceil(gross * ESI_ER) : 0), erTotal = erPF + erAdmin + erESI, ded = pf + esi + pt;
   const m: Month = { basic: gross, hra: 0, special: 0, gross, pf, esi, pt, ded, net: gross - ded, erPF, erAdmin, erESI, erTotal, ctc: gross + erTotal };
   const ptA = m.pt === 0 ? 0 : ptYear(m.pt), A = (k: keyof Month) => m[k] * 12;
   const annual: Month = { basic: A("basic"), hra: 0, special: 0, gross: A("gross"), pf: A("pf"), esi: A("esi"), pt: ptA, ded: 0, net: 0, erPF: A("erPF"), erAdmin: A("erAdmin"), erESI: A("erESI"), erTotal: A("erTotal"), ctc: 0 };
   annual.ded = annual.pf + annual.esi + annual.pt; annual.net = annual.gross - annual.ded; annual.ctc = annual.gross + annual.erTotal;
   const warnings = [`Estimate: ₹${rate.toLocaleString("en-IN")} per day × ${days} working days. Actual pay follows days worked (${DAILY_DAYS_PER_WEEK}-day week, one weekly off).`];
-  if (gross <= ESI_CEILING) warnings.push("Estimated monthly earnings are ₹21,000 or below, so ESI (0.75% employee, 3.25% employer) is applied automatically.");
+  if (gross <= ESI_CEILING) warnings.push("Estimated monthly earnings are ₹21,000 or below, so ESI applies (0.75% employee + 3.25% employer). The company pays both shares; nothing is deducted from wages.");
   return { cfg, monthly: m, annual, ptAnnual: ptA, exact: true, diff: 0, warnings, daily: { rate, days },
     labels: { basic: `Daily Wages (₹${rate.toLocaleString("en-IN")} × ${days} days)`, hra: "", special: "", pf: `Employee PF Contribution (12% of wages${cfg.pf_cap && gross > PF_WAGE_CEILING ? ", capped at ₹15k statutory ceiling" : ""})`, esi: "Employee ESI Contribution (Gross > ₹21,000 = nil)", pt: "Professional Tax (PT - Maharashtra Standard)" } };
 }
@@ -167,12 +167,9 @@ function dailyRows(c: Calc): AnnexureRow[] {
   const rows: AnnexureRow[] = [{ label: "A. Wages", monthly: "", annual: "", kind: "head" },
     info("Daily Wage Rate (per day worked)", inr(d.rate)), info("Working days per week", `${DAILY_DAYS_PER_WEEK} (one weekly off)`), info("Estimated working days per month", String(d.days)),
     r("Estimated Monthly Wages (A)", m.gross, a.gross, "total"),
-    { label: "B. Employee Deductions", monthly: "", annual: "", kind: "head" },
-    ...(c.cfg.pf_applicable ? [r(L.pf, m.pf, a.pf)] : []), r(L.esi, m.esi, a.esi), r(L.pt, m.pt, a.pt),
-    r("Total Deductions (B)", m.ded, a.ded, "total"), r("C. Estimated Net In-Hand (A - B)", m.net, a.net, "total")];
-  if (c.cfg.employer_in_ctc) rows.push({ label: "D. Employer Contributions", monthly: "", annual: "", kind: "head" },
-    ...(c.cfg.pf_applicable ? [r("Employer PF Contribution (12% of wages)", m.erPF, a.erPF), r("PF Admin & EDLI Charges (~1% of PF wage)", m.erAdmin, a.erAdmin)] : []),
-    r("Employer ESI Contribution", m.erESI, a.erESI), r("Total Employer Contributions (D)", m.erTotal, a.erTotal, "total"), r("Estimated Monthly Cost to Company (A + D)", m.ctc, a.ctc, "grand"));
+    r("Estimated Net In-Hand (no deductions)", m.net, a.net, "total")];
+  if (m.erTotal > 0) rows.push({ label: "B. Paid by the Company (not deducted from wages)", monthly: "", annual: "", kind: "head" },
+    r("ESI Contribution (employee and employer share)", m.erESI, a.erESI), r("Total Paid by the Company (B)", m.erTotal, a.erTotal, "total"), r("Estimated Monthly Cost to Company (A + B)", m.ctc, a.ctc, "grand"));
   return rows;
 }
 export function annexureNotes(c: Calc, tfa = true): string[] {

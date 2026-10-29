@@ -13,7 +13,7 @@ export default function SlipTemplate() {
       <h2 className="font-medium pt-2">Salaried</h2>
       <SalarySlip projectName="Sample Project" payMonth={istToday()} line={SAMPLE_SLIP} />
       <h2 className="font-medium pt-2">Daily wage</h2>
-      <p className="text-xs text-slate-500">No basic / HRA split: one wage line (rate × days worked), then ESI as the only deduction (no PF or Professional Tax for daily wage).</p>
+      <p className="text-xs text-slate-500">No basic / HRA split: one wage line (rate × days worked), and no Deductions section. The company pays their ESI as an added cost, so net pay equals gross.</p>
       <SalarySlip projectName="Sample Project" payMonth={istToday()} line={SAMPLE_DAILY_SLIP} />
     </div>
   );

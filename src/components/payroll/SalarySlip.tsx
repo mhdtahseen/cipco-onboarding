@@ -40,12 +40,12 @@ export default function SalarySlip({ projectName, payMonth, line, draft }: { pro
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 rounded-lg bg-slate-50 p-3 text-sm">{info.map(([k, v]) => <div key={k} className="flex gap-2"><dt className="w-28 shrink-0 text-xs text-slate-500 pt-0.5">{k}</dt><dd className="font-semibold min-w-0 break-words">{v}</dd></div>)}</dl>
       <div className={`grid grid-cols-3 gap-2 border-b border-slate-200 pb-3 ${att.length === 6 ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>{att.map(([k, v]) => <div key={k}><div className="text-[10px] sm:text-[11px] text-slate-500">{k}</div><div className="text-base font-bold tabular-nums">{v}</div></div>)}</div>
       {sn.arrears && <p className="text-xs italic text-slate-500">Arrears: {dmy(sn.arrears.from)} to {dmy(sn.arrears.to)} ({sn.arrears.days} days)</p>}
-      <div className="flex flex-col sm:flex-row gap-4">{col("Earnings", earn, line.gross, "Gross earnings")}{col("Deductions", ded, line.deductions, "Total deductions")}</div>
+      <div className="flex flex-col sm:flex-row gap-4">{col("Earnings", earn, line.gross, "Gross earnings")}{(ded.length > 0 || line.kind !== "daily") && col("Deductions", ded, line.deductions, "Total deductions")}</div>
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div className="flex items-baseline justify-between gap-2"><span className="text-xs font-bold text-slate-500">NET PAY</span><span className="text-xl font-bold text-[#1e4fa3] tabular-nums">{inr(line.net)}</span></div>
         <div className="text-xs italic">{rupeesWords(Math.max(0, Math.round(line.net)))}</div>
       </div>
-      <footer className="flex flex-wrap items-end justify-between gap-2 pt-1 text-xs text-slate-500"><span className="italic">This is a computer-generated salary slip.</span><span>{COMPANY.signatoryLabel}</span></footer>
+      <footer className="pt-1 text-xs italic text-slate-500">This is a computer-generated salary slip.</footer>
     </article>
   );
 }
@@ -60,12 +60,11 @@ export const SAMPLE_SLIP: SlipData = {
   snapshot: { name: "Sample Employee", emp_no: "CIPCO-0000", designation: "Site Supervisor", department: "Operations", join_date: "2026-01-12", pan: "ABCDE1234F", uan: "100000000000", pay_mode: "bank", bank_name: "Sample Bank", account_no: "000000001234", counts: { present: 24, half: 0, absent: 2, off: 5 } },
 };
 
-/** A daily-wage worker: one wage line (no basic / HRA split) and ESI as the only deduction. Made-up figures. */
+/** A daily-wage worker: one wage line (no basic / HRA split) and no deductions section; the company pays ESI as an added cost. Made-up figures. */
 export const SAMPLE_DAILY_SLIP: SlipData = {
-  kind: "daily", days_in_month: 31, paid_days: 26, lop_days: 0, gross: 16900, deductions: 127, net: 16773, pf_er: 0, pf_admin: 0, esi_er: 549, er_total: 549, pay_mode: "upi",
+  kind: "daily", days_in_month: 31, paid_days: 26, lop_days: 0, gross: 16900, deductions: 0, net: 16900, pf_er: 0, pf_admin: 0, esi_er: 550, er_total: 677, pay_mode: "upi",
   items: [
     { kind: "earning", label: "Daily wages (₹650 × 26 days)", amount: 16900 },
-    { kind: "deduction", label: "ESI (employee)", amount: 127 },
   ],
   snapshot: { name: "Sample Worker", emp_no: "CIPCO-0001", designation: "Helper", department: "Operations", join_date: "2026-03-02", pan: "—", uan: "100000000001", pay_mode: "upi", upi_id: "sample@upi", counts: { present: 22, half: 8, absent: 0, off: 1 } },
 };

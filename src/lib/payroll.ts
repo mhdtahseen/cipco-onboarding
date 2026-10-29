@@ -115,10 +115,11 @@ export function computeLine(e: PayEmp, ym: string, att: Record<string, DayStatus
     else if (a.kind === "lop_waiver") { const amt = R(perDay * (a.days || 0)); items.push({ kind: "earning", label: `${a.label || "LOP waived"} (${a.days} day${(a.days || 0) === 1 ? "" : "s"})`, amount: amt, note: a.reason }); additions += amt; waived += Number(a.days) || 0; }
     else { items.push({ kind: "deduction", label: a.label, amount: a.amount, note: a.reason }); otherDed += a.amount; }
   }
-  if (pf) items.push({ kind: "deduction", label: "Provident fund (employee)", amount: pf }); if (esi) items.push({ kind: "deduction", label: "ESI (employee)", amount: esi }); if (pt) items.push({ kind: "deduction", label: "Professional tax", amount: pt });
-  let available = earnings + additions - pf - esi - pt - otherDed, recovery = 0;
+  if (pf) items.push({ kind: "deduction", label: "Provident fund (employee)", amount: pf }); if (esi && kind !== "daily") items.push({ kind: "deduction", label: "ESI (employee)", amount: esi }); if (pt) items.push({ kind: "deduction", label: "Professional tax", amount: pt });
+  const esiDed = kind === "daily" ? 0 : esi;   // daily wage: the company pays the employee's ESI share too, so nothing comes off their pay
+  let available = earnings + additions - pf - esiDed - pt - otherDed, recovery = 0;
   for (const adv of advances) { const amt = Math.max(0, Math.min(adv.instalment, adv.owed, available)); if (amt > 0) { items.push({ kind: "deduction", label: `Advance recovery${adv.note ? ` (${adv.note})` : ""}`, amount: amt, advance_id: adv.id }); available -= amt; recovery += amt; } }
-  const gross = earnings + additions, deductions = pf + esi + pt + otherDed + recovery, net = gross - deductions;
+  const gross = earnings + additions, deductions = pf + esiDed + pt + otherDed + recovery, net = gross - deductions;
   const worked = counts.present + counts.half * 0.5;
   if (kind === "salaried" && part.lop >= 10) out.flags.push(`${part.lop} LOP days`); if (kind === "daily" && worked < 10 && counts.days >= 20) out.flags.push(`only ${worked} days worked`);
   if (arr) out.flags.push("arrears (joined after the 20th last month)"); if (e.join_date! >= monthStart(ym)) out.flags.push("joined this month"); if (e.left_on && e.left_on <= monthEnd(ym)) out.flags.push("leaves this month");
@@ -126,7 +127,7 @@ export function computeLine(e: PayEmp, ym: string, att: Record<string, DayStatus
   // a waived LOP day is paid, so the day counts shown on the slip follow it (never below zero LOP)
   const waivedDays = kind === "salaried" ? Math.min(waived, part.lop) : 0;
   if (kind === "salaried" && waived > part.lop) out.warnings.push(`${e.full_name}: ${waived} LOP days waived but only ${part.lop} were lost, so the waiver pays for ${waived - part.lop} extra`);
-  out.line = { kind, days_in_month: part.n, paid_days: part.paid + waivedDays, lop_days: part.lop - waivedDays, gross, deductions, net, pf_emp: pf, pf_er: erPF, pf_admin: erAdmin, esi_emp: esi, esi_er: erESI, pt, er_total: erPF + erAdmin + erESI, pay_mode: mode, items,
+  out.line = { kind, days_in_month: part.n, paid_days: part.paid + waivedDays, lop_days: part.lop - waivedDays, gross, deductions, net, pf_emp: pf, pf_er: erPF, pf_admin: erAdmin, esi_emp: esi, esi_er: erESI, pt, er_total: erPF + erAdmin + erESI + (kind === "daily" ? esi : 0), pay_mode: mode, items,
     snapshot: { name: e.full_name, emp_no: e.emp_no, designation: e.designation, department: e.department, join_date: e.join_date, left_on: e.left_on, pan: e.pan, uan: e.uan, bank_name: e.bank_name, account_no: e.account_no, ifsc: e.ifsc, upi_id: e.upi_id, pay_mode: mode, window: { from, to }, counts: { days: counts.days, present: counts.present, half: counts.half, absent: counts.absent, off: counts.off }, arrears: aw && aCounts ? { ...aw, days: aCounts.days, present: aCounts.present, half: aCounts.half, absent: aCounts.absent } : null, rate: kind === "daily" ? part.rateOrGross : null, monthly_gross: kind === "salaried" ? part.rateOrGross : null, month: ym } };
   return out;
 }
