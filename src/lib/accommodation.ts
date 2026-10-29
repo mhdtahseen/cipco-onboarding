@@ -1,7 +1,7 @@
 // Accommodation: rooms rented for a project, rent paid a full month in advance, capacity in beds.
 export type Room = { id: string; project_id: string; name: string; room_type: "ac" | "non_ac"; capacity: number; landlord: string; rented_from: string; vacated_on: string | null; notes: string; sort_order: number };
 export type Rent = { id: string; room_id: string; rent: number; effective_from: string };
-export type RoomPayment = { id: string; room_id: string; project_id: string | null; for_month: string | null; paid_on: string; amount: number; reference: string; note: string; voided_at: string | null };
+export type RoomPayment = { id: string; batch_id?: string | null; bill_path?: string | null; room_id: string; project_id: string | null; for_month: string | null; paid_on: string; amount: number; reference: string; note: string; voided_at: string | null };
 export const ROOM_TYPE: Record<Room["room_type"], string> = { ac: "AC", non_ac: "Non-AC" };
 /** Rent for a month is due on the 1st (paid in advance) and shown as overdue after this day of the month. */
 export const RENT_GRACE_DAY = 5;

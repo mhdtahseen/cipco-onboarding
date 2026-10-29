@@ -261,6 +261,7 @@ create table if not exists public.transport_payments (
   reference text not null default '',
   note text not null default '',
   project_id uuid references public.projects(id),         -- taken from the vehicle's project
+  bill_path text,                                         -- optional bill / receipt (R2), shown on the project's expense
   voided_at timestamptz, voided_by uuid,                  -- payments are never edited or deleted; a wrong one is voided and re-entered
   created_by uuid default auth.uid(),
   created_at timestamptz not null default now()
@@ -268,6 +269,7 @@ create table if not exists public.transport_payments (
 
 -- a payments table left by an earlier run of this file has no project column: add it, and fill it from each payment's vehicle
 alter table public.transport_payments add column if not exists project_id uuid references public.projects(id);
+alter table public.transport_payments add column if not exists bill_path text;   -- optional bill / receipt, shown on the project's expense
 update public.transport_payments p set project_id = v.project_id from public.transport_vehicles v where v.id = p.vehicle_id and p.project_id is null;
 
 alter table public.transport_vehicles enable row level security;
@@ -329,7 +331,8 @@ create or replace function public.transport_money_guard() returns trigger langua
 begin
   if tg_op = 'DELETE' then raise exception 'This is never deleted. Void it and enter the right one.'; end if;
   if tg_op = 'UPDATE' then
-    if to_jsonb(new) - 'voided_at' - 'voided_by' is distinct from to_jsonb(old) - 'voided_at' - 'voided_by' then raise exception 'This cannot be edited. Void it and enter the right one.'; end if;
+    if to_jsonb(new) - 'voided_at' - 'voided_by' - 'bill_path' is distinct from to_jsonb(old) - 'voided_at' - 'voided_by' - 'bill_path' then raise exception 'This cannot be edited. Void it and enter the right one.'; end if;   -- (the bill file is a document, it can be attached or replaced later)
+    if old.voided_at is not null and new.voided_at is not distinct from old.voided_at and (to_jsonb(new) ->> 'bill_path') is distinct from (to_jsonb(old) ->> 'bill_path') then return new; end if;   -- (a voided payment can still get its bill)
     if old.voided_at is not null then raise exception 'This is already voided.'; end if;
     if new.voided_at is not null then new.voided_by := auth.uid(); end if;
     return new;
@@ -359,6 +362,7 @@ create table if not exists public.vendor_payments (
   created_by uuid default auth.uid(),
   created_at timestamptz not null default now()
 );
+alter table public.vendor_payments add column if not exists bill_path text;   -- optional bill / receipt, shown on the project's expense
 alter table public.vendor_payments enable row level security;
 drop policy if exists "staff vendor payments" on public.vendor_payments;
 create policy "staff vendor payments" on public.vendor_payments for all to authenticated using (public.is_staff()) with check (public.is_staff());
@@ -380,6 +384,8 @@ begin
   if tg_op = 'UPDATE' then
     if new.voided_at is not null and old.voided_at is null then   -- voiding a payment removes the expense it posted
       perform set_config('app.posting', '1', true); delete from public.project_expenses where source = kind and source_id = new.id; perform set_config('app.posting', '', true);
+    elsif new.voided_at is null and kind <> 'room_payment' then   -- a bill attached (or replaced) later goes onto the expense too
+      update public.project_expenses set bill_path = (to_jsonb(new) ->> 'bill_path') where source = kind and source_id = new.id;
     end if;
     return new;
   end if;
@@ -389,8 +395,8 @@ begin
   if kind = 'vendor_payment' then select name into who from public.food_vendors where id = new.vendor_id; lbl := 'Meals payment';
   elsif kind = 'room_payment' then select name || coalesce(' · ' || nullif(btrim(landlord), ''), '') into who from public.accommodation_rooms where id = new.room_id; lbl := 'Rent' || coalesce(' (' || to_char(new.for_month, 'Mon YYYY') || ')', '');
   else select name into who from public.transport_vehicles where id = new.vehicle_id; lbl := 'Transport payment'; end if;   -- (separate statements: the other table's column does not exist on this row)
-  insert into public.project_expenses (project_id, category_id, expense_date, amount, description, source, source_id, created_by)
-  values (new.project_id, cat, new.paid_on, new.amount, lbl || ' · ' || coalesce(who, '') || coalesce(' · ' || nullif(btrim(new.reference), ''), ''), kind, new.id, auth.uid());
+  insert into public.project_expenses (project_id, category_id, expense_date, amount, description, source, source_id, created_by, bill_path)
+  values (new.project_id, cat, new.paid_on, new.amount, lbl || ' · ' || coalesce(who, '') || coalesce(' · ' || nullif(btrim(new.reference), ''), ''), kind, new.id, auth.uid(), to_jsonb(new) ->> 'bill_path');
   return new;
 end $$;
 drop trigger if exists vendor_payment_post_trg on public.vendor_payments;
@@ -415,66 +421,19 @@ do $$ begin
   end if;
 end $$;
 
--- ---------- 8c. accommodation: rooms rented for a project, rent in advance, capacity ----------
--- Rooms belong to a project. Rent is paid a full month in advance and can change over time (a new rent applies from a date, like prices).
--- Capacity (beds) is tracked so the page can show whether the rooms hold the people on the project, or more rooms are needed.
--- The landlord (who is paid) is a free-text name per room. Rent payments post an Accommodation expense on the project.
-create table if not exists public.accommodation_rooms (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references public.projects(id) on delete cascade,
-  name text not null,
-  room_type text not null default 'non_ac' check (room_type in ('ac','non_ac')),
-  capacity int not null default 0 check (capacity >= 0),    -- beds; 0 = not set yet
-  landlord text not null default '',
-  rented_from date not null default current_date,
-  vacated_on date,                                         -- the last month billed is the month of this date
-  notes text not null default '',
-  sort_order int not null default 100,
-  created_at timestamptz not null default now()
-);
-create unique index if not exists accommodation_rooms_name_uq on public.accommodation_rooms (project_id, lower(btrim(name)));
-create table if not exists public.accommodation_rents (
-  id uuid primary key default gen_random_uuid(),
-  room_id uuid not null references public.accommodation_rooms(id) on delete cascade,
-  rent numeric(10,2) not null check (rent >= 0),
-  effective_from date not null default current_date,
-  unique (room_id, effective_from)
-);
-create table if not exists public.accommodation_payments (
-  id uuid primary key default gen_random_uuid(),
-  room_id uuid not null references public.accommodation_rooms(id),
-  project_id uuid references public.projects(id),          -- taken from the room's project
-  for_month date,                                          -- the first day of the month this rent is for (blank = a general payment)
-  paid_on date not null default current_date,
-  amount numeric(12,2) not null check (amount > 0),
-  reference text not null default '',
-  note text not null default '',
-  voided_at timestamptz, voided_by uuid,
-  created_by uuid default auth.uid(),
-  created_at timestamptz not null default now()
-);
-alter table public.accommodation_rooms enable row level security;
-alter table public.accommodation_rents enable row level security;
-alter table public.accommodation_payments enable row level security;
-do $$ declare t text; begin
-  foreach t in array array['accommodation_rooms','accommodation_rents','accommodation_payments'] loop
-    execute format('drop policy if exists "staff all" on public.%I', t);
-    execute format('create policy "staff all" on public.%I for all to authenticated using (public.is_staff()) with check (public.is_staff())', t);
-  end loop;
-end $$;
-drop trigger if exists accommodation_payment_guard_trg on public.accommodation_payments;
-create trigger accommodation_payment_guard_trg before insert or update or delete on public.accommodation_payments for each row execute function public.transport_money_guard();
-drop trigger if exists accommodation_payment_post_trg on public.accommodation_payments;
-create trigger accommodation_payment_post_trg after insert or update on public.accommodation_payments for each row execute function public.post_payment_expense();
+-- (accommodation lives in its own file, 2026-10-accommodation.sql, run after this one. The payment functions above already know about room payments.)
 
 -- ---------- 8d. vendor bills: the bill a food vendor sends, checked against the meals recorded ----------
--- One bill per vendor per month. Recording it shows the difference from what the recorded meals come to; approving it fixes the amount that
--- is due for that month (instead of the computed amount) and keeps what the meals came to at that time. Bills are never deleted, only voided.
+-- A bill covers a date range (weekly, fortnightly or monthly: a vendor can have several in a month) that never crosses a month end, and two live
+-- bills of one vendor never cover the same day. Recording a bill shows the difference from what the meals recorded in its range come to; approving it
+-- fixes the amount due for those days (instead of the computed amount) and keeps what the meals came to at that time. Never deleted, only voided.
 create table if not exists public.vendor_bills (
   id uuid primary key default gen_random_uuid(),
   vendor_id uuid not null references public.food_vendors(id),
   project_id uuid references public.projects(id),          -- taken from the vendor's project
-  bill_month date not null,                                -- the first day of the month the bill covers
+  bill_month date not null,                                -- the first day of the month the bill falls in (set from bill_from)
+  bill_from date not null,                                 -- the first day the bill covers
+  bill_to date not null,                                   -- the last day the bill covers (same month as bill_from)
   bill_no text not null default '',
   bill_amount numeric(12,2) not null check (bill_amount >= 0),
   status text not null default 'received' check (status in ('received','approved')),
@@ -487,7 +446,18 @@ create table if not exists public.vendor_bills (
   created_by uuid default auth.uid(),
   created_at timestamptz not null default now()
 );
-create unique index if not exists vendor_bills_one_per_month on public.vendor_bills (vendor_id, bill_month) where voided_at is null;
+-- an earlier version of this file allowed one bill per month: each such bill now covers its whole month
+alter table public.vendor_bills add column if not exists bill_from date;
+alter table public.vendor_bills add column if not exists bill_to date;
+do $$ begin   -- the protection trigger of the earlier version refuses to touch voided or approved bills, so it is paused for this one-off fill and switched back on straight after
+  if exists (select 1 from pg_trigger where tgname = 'vendor_bill_guard_trg' and tgrelid = 'public.vendor_bills'::regclass) then alter table public.vendor_bills disable trigger vendor_bill_guard_trg; end if;
+  update public.vendor_bills set bill_from = bill_month, bill_to = (bill_month + interval '1 month' - interval '1 day')::date where bill_from is null or bill_to is null;
+  if exists (select 1 from pg_trigger where tgname = 'vendor_bill_guard_trg' and tgrelid = 'public.vendor_bills'::regclass) then alter table public.vendor_bills enable trigger vendor_bill_guard_trg; end if;
+end $$;
+alter table public.vendor_bills alter column bill_from set not null;
+alter table public.vendor_bills alter column bill_to set not null;
+drop index if exists public.vendor_bills_one_per_month;
+create index if not exists vendor_bills_vendor_idx on public.vendor_bills (vendor_id, bill_from);
 alter table public.vendor_bills enable row level security;
 drop policy if exists "staff vendor bills" on public.vendor_bills;
 create policy "staff vendor bills" on public.vendor_bills for all to authenticated using (public.is_staff()) with check (public.is_staff());
@@ -498,11 +468,16 @@ begin
   if tg_op = 'INSERT' then
     select f.project_id into new.project_id from public.food_vendors f where f.id = new.vendor_id;
     if new.project_id is null then raise exception 'This vendor is not assigned to a project yet. Assign it to a project first.'; end if;
-    new.bill_month := date_trunc('month', new.bill_month)::date; new.status := 'received'; new.approved_amount := null; new.computed_amount := null; new.approved_by := null; new.approved_at := null;
+    if new.bill_from > new.bill_to then raise exception 'The bill''s first day is after its last day.'; end if;
+    if to_char(new.bill_from, 'YYYY-MM') <> to_char(new.bill_to, 'YYYY-MM') then raise exception 'A bill cannot cross a month end. Record it as two bills, one for each month.'; end if;
+    if exists (select 1 from public.vendor_bills b where b.vendor_id = new.vendor_id and b.voided_at is null and b.id is distinct from new.id and b.bill_from <= new.bill_to and b.bill_to >= new.bill_from) then
+      raise exception 'This vendor already has a bill covering some of % to %. Void that bill first, or choose other dates.', to_char(new.bill_from, 'DD Mon'), to_char(new.bill_to, 'DD Mon');
+    end if;
+    new.bill_month := date_trunc('month', new.bill_from)::date; new.status := 'received'; new.approved_amount := null; new.computed_amount := null; new.approved_by := null; new.approved_at := null;
     new.voided_at := null; new.voided_by := null; new.created_by := auth.uid(); return new;
   end if;
   if old.voided_at is not null then raise exception 'This bill is already voided.'; end if;
-  if new.vendor_id <> old.vendor_id or new.project_id is distinct from old.project_id or new.bill_month <> old.bill_month then raise exception 'A bill''s vendor and month cannot be changed. Void it and record it again.'; end if;
+  if new.vendor_id <> old.vendor_id or new.project_id is distinct from old.project_id or new.bill_month <> old.bill_month or new.bill_from <> old.bill_from or new.bill_to <> old.bill_to then raise exception 'A bill''s vendor and dates cannot be changed. Void it and record it again.'; end if;
   if new.voided_at is not null then new.voided_by := auth.uid(); return new; end if;
   if old.status = 'approved' and new.status = 'approved' and (new.bill_amount <> old.bill_amount or new.bill_no is distinct from old.bill_no or new.approved_amount is distinct from old.approved_amount) then raise exception 'This bill is approved. Reopen it to change it.'; end if;
   if old.status = 'received' and new.status = 'approved' then

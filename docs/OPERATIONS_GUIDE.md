@@ -24,7 +24,7 @@ Money flow: meals and transport and rent are *owed* as they happen. You record a
 
 ## 2. First-time setup (Admin)
 
-1. **Database.** In the Supabase SQL editor run, in order: the other 2026-10 migrations if not run yet, then `2026-10-roles-attendance.sql` (**once only**), then `2026-10-attendance-accountability-transport.sql` (safe to re-run any time; re-run it whenever it changes). `2026-10-project-expenses.sql` must exist before payments can post to expenses. Do **not** re-run the older migrations after the roles migration.
+1. **Database.** In the Supabase SQL editor run, in order: the other 2026-10 migrations if not run yet, then `2026-10-roles-attendance.sql` (**once only**), then `2026-10-attendance-accountability-transport.sql` (safe to re-run any time; re-run it whenever it changes), then `2026-10-accommodation.sql` (rooms and rent; run after the previous one; also safe to re-run). `2026-10-project-expenses.sql` must exist before payments can post to expenses. Do **not** re-run the older migrations after the roles migration.
 2. **Users.** Create each login in Supabase (Authentication → Add user). Then open **Users** in the app: give each person a **name** (this is what stamps show), a **role** and, for a Supervisor or Site Engineer, tick their **sites**. Save.
 3. **Vendors.** **Meals → Vendors & prices** (or Settings → Food vendors): pick the project, add every place people eat (for example the accommodation mess and the site canteen) and set each meal's price. Any old vendors under "Not assigned to a project yet" need **Assign to this project**.
 4. **Vehicles.** **Transport → Vehicles & prices**: pick the project, add each hired vehicle with its operator, **Per trip** or **Monthly**, and the price. Old vehicles under "not assigned to a project yet" need **Assign to this project**.
@@ -142,12 +142,14 @@ To stop an Admin changing something by accident, the daily sheet opens **view on
 **How the amount owed is worked out:** every meal recorded on the sheet (whatever the person's work status) × that vendor's price on the day. A meal with no price is counted but not billed. For a month with an approved bill, the approved amount is used instead.
 
 ### 7.1 Vendor bills
-Each month a vendor sends a bill that may differ from what the recorded meals come to. On **Bills**, for the month chosen, each vendor row shows the **meals recorded**, the **vendor's bill**, the **difference** ("Matches", "+₹1,600 charged more" or "−₹… charged less") and a status.
-1. **Record bill**: vendor, amount, optional bill number, note, and a photo or PDF of the bill (up to 5 MB).
-2. Use **See the meals** to open the vendor statement and find the days that differ; check the Daily log if needed.
-3. **Approve bill** (use the vendor's amount), **Approve meals** (use the computed amount) or **Other…** (your own amount). That becomes **what is due for the month**; the app keeps what the meals came to at the time and who approved.
-4. A received bill can be corrected. An approved one must be **Reopened** first. **Void** cancels a bill and the computed amount is used again.
-- One live bill per vendor per month; bills are never deleted. Bills do not create expenses, only payments do.
+A vendor may bill you every **week, fortnight or month**, and the bill may differ from what the recorded meals come to. On **Bills**, for the month chosen, each vendor has a card with its bills for the month, a **coverage strip** (one small block per day: green = covered by an approved bill, amber = covered by a bill waiting for approval, grey = meals recorded but no bill yet), and a row per bill showing the **days it covers**, the **meals recorded** for those days, the **vendor's bill**, the **difference** ("Matches", "+₹400 charged more" or "−₹… charged less") and a status.
+1. **Record a bill:** choose the vendor; the **From** and **To** days are suggested (the first uncovered stretch of the month, up to a week). Adjust them, or use **week**, **fortnight** or **to month end**. Enter the amount, an optional bill number and note, and a photo or PDF of the bill (up to 5 MB). After recording, the next stretch is suggested, so a month of weekly bills is quick to enter.
+2. Use **See the meals** on a bill to open the vendor statement for exactly those days and find where it differs; the Daily log shows each day.
+3. **Approve bill** (use the vendor's amount), **Approve meals** (use the computed amount) or **Other…** (your own amount). That becomes **what is due for those days**; the app keeps what the meals came to at the time and who approved.
+4. A received bill can be corrected. An approved one must be **Reopened** first. **Void** cancels a bill: its days are free again and the computed amount is used for them.
+- **A bill never crosses a month end** (record it as two bills, one for each month) and **two live bills of one vendor never cover the same day** (the database refuses an overlap and says which days). Bills are never deleted.
+- **What is due:** for each day covered by an approved bill, the approved amount; for every other day, the computed meal cost. Totals and Due on the Overview follow this however the bills are split.
+- Bills do not create expenses, only payments do. Earlier monthly bills became a bill covering their whole month.
 
 ### 7.2 Paying vendors
 **Payments** tab: choose the vendor, amount, date, reference (UTR) and note, then **Record payment**.
@@ -191,7 +193,7 @@ Each month a vendor sends a bill that may differ from what the recorded meals co
 - **Add rooms** adds one or several of a kind at once: how many, type, rent, beds each, landlord, date rented. Rooms are named Room 1, Room 2, … and can be renamed. Example: 4 non-AC at ₹7,000, then 1 AC at ₹13,000 gives ₹41,000 a month.
 - **Changing the rent:** type the new rent and press **Set**; it applies from the date in "A changed rent applies from" (earlier months keep the old rent). **Vacate** stops rent after the current month; **Reopen** undoes it.
 - **Landlord** is a free-text name per room: who is paid. It appears on the payment's expense and helps match bank transfers. It can be left blank.
-- **Rent & payments:** pick the month. Each room shows rent, paid, left and status (**Paid / Part paid / Due / Overdue**). **Pay** on a room, or **Pay all unpaid** for the month (one payment per room, with one reference). Each payment posts an **Accommodation** expense (for example "Rent (Oct 2026) · Room 1 · Mr Sharma"); **Void** removes it. **⬇ CSV** exports the month.
+- **Rent & payments:** pick the month. Each room shows rent, paid, left and status (**Paid / Part paid / Due / Overdue**). **Pay** on a single room, or **tick several rooms** (quick buttons: **Select Non-AC**, **Select AC**, **Select all unpaid**) and make **one cumulative payment**: edit the amount for each ticked room if it is only a part payment, add the paid-on date and reference, then **Record payment (₹total)**. A multi-room payment is one line in the list ("4 rooms", click it to see each room) and posts **one** Accommodation expense (for example "Rent (Oct 2026) · Room 1, Room 2, Room 3, Room 4 · UTR…"); each room still shows its own paid/left. A single-room payment posts "Rent (Oct 2026) · Room 1 · Mr Sharma". **Bills:** attach the landlord's bill or receipt when you record the payment (the **Bill** picker), or later with **Attach bill** on the payment line (**Replace** swaps the file). The bill also shows as **Bill** on the matching expense in the project's Expenses tab. Meals and Transport payments work the same way. **Void** removes the expense; **Void all** on a multi-room line voids the whole payment, or open it and void one room, and the expense is recalculated. **⬇ CSV** exports the month.
 - Who sleeps in which room is **not** tracked, only capacity against headcount.
 
 ---
@@ -254,7 +256,7 @@ Only what is **paid** becomes an expense. What is merely owed (billed meals, tri
 0. **Payroll:** from the last day of the month, calculate, adjust, approve; pay between the 1st and 4th; record PF / ESI / PT remittances.
 1. **Meals → Bills**: record each vendor's bill, compare, approve. Then **Payments**.
 2. **Transport**: check no-shows, add errands, record payments.
-3. **Accommodation → Rent & payments**: **Pay all unpaid** for the coming month (rent is in advance).
+3. **Accommodation → Rent & payments**: **Select all unpaid** and record one payment for the coming month (rent is in advance).
 4. **Meals → Reports** and **Attendance → Monthly** for CSVs; the project's Expenses tab for the cost view.
 
 ---
@@ -270,7 +272,8 @@ Only what is **paid** becomes an expense. What is merely owed (billed meals, tri
 | "That vehicle does not belong to this project." | Same, for vehicles |
 | "This vendor or vehicle is not assigned to a project yet." | Assign it to a project first (Meals → Vendors & prices, Transport → Vehicles & prices) |
 | "This expense comes from a payment …" | Void the payment instead of editing the expense |
-| "There is already a bill for … this month." | One live bill per vendor per month. Void it first, or correct it |
+| "This vendor already has a bill covering some of 12 Oct to 16 Oct." | Bills of one vendor cannot overlap. Void that bill first, or choose other days |
+| "A bill cannot cross a month end." | Record two bills, one for each month |
 | "Only an Admin can clear a day." | Clear day is for Admins |
 | No vehicles / vendors listed on the sheet | The Admin has not added any for that project yet |
 

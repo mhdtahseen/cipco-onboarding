@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { uploadBill } from "@/lib/billUpload";
+import PaymentBill from "@/components/PaymentBill";
 import { supabase } from "@/lib/supabase/client";
 import { istToday, tripRate, type Billing, type Run, type TransportRate, type Vehicle } from "@/lib/attendance";
 import type { Project } from "@/lib/types";
 
 type Money = { id: string; vehicle_id: string; amount: number; voided_at: string | null };
-type Pay = Money & { paid_on: string; reference: string; note: string };
+type Pay = Money & { paid_on: string; reference: string; note: string; bill_path?: string | null };
 type Errand = Money & { work_date: string; description: string };
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const BILL: Record<Billing, string> = { per_trip: "per trip", monthly: "per month" };
@@ -16,7 +18,7 @@ export default function TransportPage() {
   const [projects, setProjects] = useState<Project[]>([]); const [pid, setPid] = useState(""); const [allVehicles, setVehicles] = useState<Vehicle[]>([]); const [allRates, setRates] = useState<TransportRate[]>([]); const [allRuns, setRuns] = useState<Run[]>([]); const [allPays, setPays] = useState<Pay[]>([]); const [allErr, setErrands] = useState<Errand[]>([]);
   const [tab, setTab] = useState<"overview" | "daily" | "vehicles" | "errands" | "payments">("overview"); const [loading, setLoading] = useState(true); const [err, setErr] = useState(""); const [month, setMonth] = useState(istToday().slice(0, 7));
   const [nv, setNv] = useState<{ name: string; operator: string; billing: Billing }>({ name: "", operator: "", billing: "per_trip" }); const [rateIn, setRateIn] = useState<Record<string, string>>({}); const [rateFrom, setRateFrom] = useState(istToday());
-  const [pf, setPf] = useState({ vehicle_id: "", amount: "", paid_on: istToday(), reference: "", note: "" }); const [ef, setEf] = useState({ vehicle_id: "", amount: "", work_date: istToday(), description: "" });
+  const [pfBill, setPfBill] = useState<File | null>(null); const [pf, setPf] = useState({ vehicle_id: "", amount: "", paid_on: istToday(), reference: "", note: "" }); const [ef, setEf] = useState({ vehicle_id: "", amount: "", work_date: istToday(), description: "" });
   async function load() {
     const sb = supabase(); const [pr, v, r, t, p, e] = await Promise.all([sb.from("projects").select("*").eq("status", "active").order("name"), sb.from("transport_vehicles").select("*").order("sort_order").order("name"), sb.from("transport_rates").select("*"), sb.from("transport_runs").select("*"), sb.from("transport_payments").select("*").order("paid_on", { ascending: false }), sb.from("transport_errands").select("*").order("work_date", { ascending: false })]);
     const x = pr.error || v.error || r.error || t.error || p.error || e.error; if (x) { setErr(x.message + " — has the accountability migration been run?"); setLoading(false); return; }
@@ -48,7 +50,8 @@ export default function TransportPage() {
   const addVehicle = async () => { if (!nv.name.trim()) return; if (await run(sb().from("transport_vehicles").insert({ project_id: pid, name: nv.name.trim(), operator: nv.operator.trim(), billing: nv.billing }))) setNv({ name: "", operator: "", billing: nv.billing }); };
   const setBilling = (v: Vehicle, b: Billing) => { if (b !== v.billing && confirm(`Switch ${v.name} to ${BILL[b]}? Its price now means an amount ${BILL[b]}, and past days are re-priced the same way. Set the new price afterwards.`)) run(sb().from("transport_vehicles").update({ billing: b }).eq("id", v.id)); };
   const setRate = async (id: string) => { const price = parseFloat(rateIn[id] || ""); if (!(price >= 0)) return; if (await run(sb().from("transport_rates").upsert({ vehicle_id: id, price, effective_from: rateFrom || istToday() }, { onConflict: "vehicle_id,effective_from" }))) setRateIn((s) => ({ ...s, [id]: "" })); };
-  const addPay = async () => { const amount = parseFloat(pf.amount); if (!pf.vehicle_id || !(amount > 0)) { setErr("Choose the vehicle and enter the amount."); return; } if (await run(sb().from("transport_payments").insert({ vehicle_id: pf.vehicle_id, amount, paid_on: pf.paid_on, reference: pf.reference.trim(), note: pf.note.trim() }))) setPf({ ...pf, amount: "", reference: "", note: "" }); };
+  const addPay = async () => { const amount = parseFloat(pf.amount); if (!pf.vehicle_id || !(amount > 0)) { setErr("Choose the vehicle and enter the amount."); return; } let bill_path: string | undefined; if (pfBill) { const u = await uploadBill(pfBill, pid); if ("error" in u) { setErr(u.error); return; } bill_path = u.path; } if (await run(sb().from("transport_payments").insert({ vehicle_id: pf.vehicle_id, amount, paid_on: pf.paid_on, reference: pf.reference.trim(), note: pf.note.trim(), ...(bill_path ? { bill_path } : {}) }))) { setPfBill(null); setPf({ ...pf, amount: "", reference: "", note: "" }); } };
+  const attachBill = (x: Pay, path: string) => run(sb().from("transport_payments").update({ bill_path: path }).eq("id", x.id));
   const addErrand = async () => { const amount = parseFloat(ef.amount); if (!ef.vehicle_id || !(amount > 0) || !ef.description.trim()) { setErr("Choose the vehicle, describe the errand and enter the quoted amount."); return; } if (await run(sb().from("transport_errands").insert({ vehicle_id: ef.vehicle_id, amount, work_date: ef.work_date, description: ef.description.trim() }))) setEf({ ...ef, amount: "", description: "" }); };
   const assign = async (v: Vehicle) => { await run(sb().from("transport_vehicles").update({ project_id: pid }).eq("id", v.id)); };
   const voidIt = (table: "transport_payments" | "transport_errands", x: Money, what: string) => { if (confirm(`Void this ₹${inr(x.amount)} ${what} for ${vName(x.vehicle_id)}? It stays in the list, marked void.`)) run(sb().from(table).update({ voided_at: new Date().toISOString() }).eq("id", x.id)); };
@@ -110,8 +113,9 @@ export default function TransportPage() {
             <input className="inp !w-32" inputMode="decimal" placeholder="Amount ₹" aria-label="Amount" value={pf.amount} onChange={(e) => setPf({ ...pf, amount: e.target.value })} />
             <input className="inp !w-40" type="date" aria-label="Paid on" value={pf.paid_on} onChange={(e) => setPf({ ...pf, paid_on: e.target.value })} />
             <input className="inp !w-40" placeholder="Reference / UTR" aria-label="Reference" value={pf.reference} onChange={(e) => setPf({ ...pf, reference: e.target.value })} />
+            <label className="text-xs text-slate-500 flex items-center gap-1">Bill<input type="file" accept="image/*,application/pdf" aria-label="Payment bill" className="max-w-[11rem] text-xs" onChange={(e) => setPfBill(e.target.files?.[0] ?? null)} /></label>
             <button className="btn btn-primary" onClick={addPay}>Record payment</button></div>
-          <ul className="divide-y divide-slate-100 text-sm">{pays.map((x) => <li key={x.id} className={`py-2 flex flex-wrap items-center gap-x-3 ${x.voided_at ? "text-slate-400 line-through" : ""}`}><span className="tabular-nums w-24">{x.paid_on}</span><span className="w-32 truncate">{vName(x.vehicle_id)}</span><span className="tabular-nums w-28">₹{inr(x.amount)}</span><span className="text-xs text-slate-400 flex-1 truncate">{x.reference}{x.note ? ` · ${x.note}` : ""}</span>{x.voided_at ? <span className="text-xs">void</span> : <button className="text-xs text-red-700 underline" onClick={() => voidIt("transport_payments", x, "payment")}>Void</button>}</li>)}</ul>
+          <ul className="divide-y divide-slate-100 text-sm">{pays.map((x) => <li key={x.id} className={`py-2 flex flex-wrap items-center gap-x-3 ${x.voided_at ? "text-slate-400 line-through" : ""}`}><span className="tabular-nums w-24">{x.paid_on}</span><span className="w-32 truncate">{vName(x.vehicle_id)}</span><span className="tabular-nums w-28">₹{inr(x.amount)}</span><span className="text-xs text-slate-400 flex-1 truncate">{x.reference}{x.note ? ` · ${x.note}` : ""}</span><PaymentBill path={x.bill_path} projectId={pid} onAttach={(path) => attachBill(x, path)} onError={setErr} />{x.voided_at ? <span className="text-xs">void</span> : <button className="text-xs text-red-700 underline" onClick={() => voidIt("transport_payments", x, "payment")}>Void</button>}</li>)}</ul>
           {!pays.length && <p className="text-sm text-slate-400">No payments recorded.</p>}</section>
         </>}
       </>}

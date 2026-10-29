@@ -76,7 +76,7 @@ Roles are now Admin, Site Engineer (sees attendance only) and Supervisor. Every 
 - [x] Activity tab (Admin / Site Engineer), Sites today page, Transport page per project (vehicles paid per trip or monthly, no-shows, errands, payments, balance due)
 - [x] Meals page (Overview, Daily log, People, Vendors & prices, Payments, Reports) and Transport tabs; marking stays on the Attendance page
 - [x] Accommodation (rooms per project, rent in advance, capacity vs people, rent payments posting to expenses)
-- [x] Vendor bills for meals: record, compare with the meals recorded, approve; the approved amount becomes what is due for the month
+- [x] Vendor bills for meals: record (weekly, fortnightly or monthly: a date range inside one month, several per month, no overlaps), compare with the meals recorded, approve; the approved amount becomes what is due for those days
 - [ ] Same bill-and-approve check for transport operators and landlords (only if wanted)
 - [x] Meal payments page (what each vendor is owed, record payments) with payments from meals and transport posted to project expenses automatically (Food, Transport / freight); voiding removes the expense
 - [x] No per-person locking on attendance or transport records (changes are stamped and logged; overrides flagged)
@@ -98,8 +98,14 @@ Roles are now Admin, Site Engineer (sees attendance only) and Supervisor. Every 
 - [x] Payroll run (readiness, draft, adjustments, LOP waiver, approve, reopen), Pay tab (bank CSV, UPI list and links, hold, payments), Statutory tab, Advances tab
 - [x] Salary slip PDFs (one, or all in one PDF); project overview Salary cost panel
 - [x] Salary payments post one Salaries & wages expense per run; PF / ESI / PT remittances post Statutory / compliance
-- [ ] Re-run `2026-10-attendance-accountability-transport.sql`, then set each employee's joining date, salary, pay mode and bank / UPI details
+- [ ] Re-run `2026-10-attendance-accountability-transport.sql`, then run the new `2026-10-accommodation.sql` (rooms and rent moved into their own file), then set each employee's joining date, salary, pay mode and bank / UPI details
 - [ ] Try one real month end to end (October 2026) and compare with your own calculation
+- [ ] **ESI for the CSL project (decided 30 Oct 2026, not built yet).** ESI becomes a per-project payroll rule instead of the current automatic one (today payroll deducts ESI for anyone with a contract gross of ₹21,000 or less on every project):
+  - applies only to the **CSL project**, from the **November 2026 payroll**, to everyone there whose contract gross is **below ₹42,000** (strictly below);
+  - **no ESI in payroll before November** or on other projects; **offer letters and CTC figures stay unchanged**;
+  - employee 0.75% and employer 3.25%, the employer share always counted where ESI applies; arrears follow the month the wages belong to (October arrears paid in November carry no ESI);
+  - a per-project setting on the Payroll page (on/off, first month, gross limit), refused once an approved payroll is covered by the rule;
+  - confirm with your CA first: ₹42,000 is above the usual ESI ceiling of ₹21,000, and ESI coverage runs by contribution period (April to September, October to March).
 - [ ] Refinements listed in docs/PAYROLL_PLAN.md section 13 (two-project employees, back-dated revisions, holidays, final settlement, bank file templates)
 
 ## Platform roadmap — payroll, invoices, inventory (agreed 2026-10-27)
