@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { istToday } from "@/lib/attendance";
@@ -25,7 +26,7 @@ export default function Payroll() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold sm:mr-auto">Payroll</h1>
+      <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold sm:mr-auto">Payroll <Link href="/payroll/template" className="ml-2 align-middle text-xs font-normal text-blue-700 underline">Salary slip template</Link></h1>
         {projects.length > 0 && <select className="inp w-full sm:!w-auto max-w-full" aria-label="Project" value={pid} onChange={(e) => setPid(e.target.value)}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.location ? ` — ${p.location}` : ""}</option>)}</select>}
         <label className="flex items-center gap-2 text-sm text-slate-500">Month<input type="month" className="inp !w-40" aria-label="Payroll month" value={ym} onChange={(e) => e.target.value && setYm(e.target.value)} /></label></div>
       <p className="text-xs text-slate-500">{monthName(ym)} salary · calculated on {new Date(`${ym}-01T00:00:00`).toLocaleDateString("en-IN", { month: "short" })} {new Date(Number(ym.slice(0, 4)), Number(ym.slice(5)), 0).getDate()}, credited {win.from.slice(8)}–{win.to.slice(8)} {new Date(`${win.from}T00:00:00`).toLocaleDateString("en-IN", { month: "short", year: "numeric" })}. Joined after the 20th: paid in the next run.</p>

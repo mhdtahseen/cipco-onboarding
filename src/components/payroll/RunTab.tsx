@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { computeLine, monthEnd, monthName, monthStart, type LineResult, type Adjustment } from "@/lib/payroll";
 import type { usePayroll, Line } from "@/lib/payrollData";
+import SalarySlip from "./SalarySlip";
 
 type P = ReturnType<typeof usePayroll>;
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
@@ -74,10 +75,8 @@ export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: 
             <td className="p-2.5"><div className="font-medium">{x.name}</div><div className="text-xs text-slate-400">{x.emp_no ?? ""}{x.flags.length > 0 && <span className="text-amber-700"> ⚑ {x.flags.join(" · ")}</span>}</div></td>
             <td>{x.line.kind === "daily" ? "Daily" : "Salaried"}</td><td className="text-right tabular-nums">{c.present ?? 0} / {c.half ?? 0} / {c.absent ?? 0} / {c.off ?? 0}</td><td className="text-right tabular-nums">{x.line.kind === "salaried" ? x.line.lop_days || "–" : "–"}</td>
             <td className="text-right tabular-nums">₹{inr(x.line.gross)}</td><td className="text-right tabular-nums">₹{inr(x.line.deductions)}</td><td className="text-right tabular-nums font-medium">₹{inr(x.line.net)}</td><td className="pl-3 capitalize">{x.line.pay_mode}</td><td className="text-right pr-2 text-slate-400">{isOpen ? "▾" : "▸"}</td></tr>
-          {isOpen && <tr key={x.id + "-d"} className="bg-slate-50/60"><td colSpan={9} className="p-3"><div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-1"><div className="text-xs font-medium text-slate-500">Earnings and deductions</div>{x.line.items.map((it: any, i: number) => <div key={i} className="flex gap-2 text-sm"><span className="flex-1">{it.label}{it.note ? <span className="text-xs text-slate-400"> · {it.note}</span> : null}</span><span className={`tabular-nums ${it.kind === "deduction" ? "text-rose-700" : ""}`}>{it.kind === "deduction" ? "−" : ""}₹{inr(it.amount)}</span></div>)}
-              <div className="flex gap-2 text-sm font-medium border-t border-slate-200 pt-1"><span className="flex-1">Net pay</span><span className="tabular-nums">₹{inr(x.line.net)}</span></div>
-              {x.line.snapshot?.arrears && <div className="text-xs text-slate-500">Arrears window {x.line.snapshot.arrears.from} to {x.line.snapshot.arrears.to}: P {x.line.snapshot.arrears.present}, ½ {x.line.snapshot.arrears.half}, A {x.line.snapshot.arrears.absent}</div>}</div>
+          {isOpen && <tr key={x.id + "-d"} className="bg-slate-50/60"><td colSpan={9} className="p-3"><div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <div onClick={(e) => e.stopPropagation()}><SalarySlip projectName={projectName} payMonth={monthStart(ym)} line={x.line} draft={!approved} /></div>
             <div className="space-y-2"><div className="text-xs font-medium text-slate-500">Adjustments for {monthName(ym)}</div>
               {adjFor(x.id).map((a) => <div key={a.id} className="flex items-center gap-2 text-sm"><span className="flex-1">{a.kind === "deduction" ? "−" : "+"} {a.label}{a.kind === "lop_waiver" ? ` (${a.days} days)` : ` ₹${inr(a.amount)}`}{a.reason ? <span className="text-xs text-slate-400"> · {a.reason}</span> : null}</span>{!approved && <button className="text-xs text-red-700 underline" onClick={(e) => { e.stopPropagation(); voidAdj(a.id); }}>Void</button>}</div>)}
               {!adjFor(x.id).length && <div className="text-xs text-slate-400">None.</div>}
