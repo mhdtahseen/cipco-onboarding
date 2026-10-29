@@ -32,12 +32,12 @@ export default function Payroll() {
       <p className="text-xs text-slate-500">{monthName(ym)} salary · calculated on {new Date(`${ym}-01T00:00:00`).toLocaleDateString("en-IN", { month: "short" })} {new Date(Number(ym.slice(0, 4)), Number(ym.slice(5)), 0).getDate()}, credited {win.from.slice(8)}–{win.to.slice(8)} {new Date(`${win.from}T00:00:00`).toLocaleDateString("en-IN", { month: "short", year: "numeric" })}. Joined after the 20th: paid in the next run.</p>
       <div role="tablist" className="flex border-b border-slate-200 overflow-x-auto">{([["run", "Payroll run"], ["pay", "Pay"], ["statutory", "Statutory"], ["advances", "Advances"]] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab whitespace-nowrap ${tab === k ? "tab-on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>
       {P.err && <p className="warn">{P.err}</p>}{P.loading && <p className="text-slate-500">Loading…</p>}
-      {!P.loading && P.d && <>
+      {!P.loading && P.d && <div key={tab} className="fade-in space-y-4">
         {tab === "run" && <RunTab P={P} pid={pid} ym={ym} today={today} projectName={proj?.name ?? ""} />}
         {tab === "pay" && <PayTab P={P} ym={ym} today={today} />}
         {tab === "statutory" && <StatutoryTab P={P} pid={pid} ym={ym} today={today} />}
         {tab === "advances" && <AdvancesTab P={P} pid={pid} today={today} />}
-      </>}
+      </div>}
     </div>
   );
 }

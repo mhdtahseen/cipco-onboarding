@@ -46,7 +46,7 @@ export default function PipelineBar({ emp, onChange }: { emp: Employee; onChange
         {!next && <span className="text-sm text-emerald-700">✓ Onboarded — all steps done</span>}
         <details className="relative ml-auto">
           <summary className="btn list-none [&::-webkit-details-marker]:hidden" aria-label="More actions"><Icon name="more" className="h-4 w-4" /></summary>
-          <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-lg text-sm">
+          <div className="pop absolute right-0 z-20 mt-1 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-lg text-sm">
             <button className="w-full text-left rounded-lg px-3 py-2 text-red-700 hover:bg-red-50" onClick={(e) => { setOpen(true); e.currentTarget.closest("details")?.removeAttribute("open"); }}>Reject / declined…</button>
           </div>
         </details>

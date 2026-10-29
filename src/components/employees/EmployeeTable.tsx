@@ -41,7 +41,7 @@ export function EmployeeCards({ rows, pile, sel, setSel, docs, loading, empty, e
       {loading && <Skeleton />}
       {!loading && !rows.length && <div className="card text-center text-sm text-slate-500 space-y-3"><p>{empty}</p>{emptyAction}</div>}
       {rows.map((r) => { const j = pile === "process" ? joinInfo(r) : null; const idle = pile === "process" ? idleDays(r) : null; return (
-        <div key={r.id} className="card !p-3 flex gap-3">
+        <div key={r.id} className="fade card !p-3 flex gap-3">
           <input type="checkbox" className="mt-2 h-5 w-5" aria-label={`Select ${r.full_name}`} checked={sel.includes(r.id)} onChange={(e) => toggle(r.id, e.target.checked)} />
           <Link href={`/employees/${r.id}`} className="flex-1 min-w-0 flex gap-3">
             <Avatar name={r.full_name} />
@@ -83,7 +83,7 @@ export function EmployeeTable({ rows, pile, sel, setSel, docs, loading, empty, e
           {loading && <Skeleton table />}
           {!loading && !rows.length && <tr><td className="p-8 text-center text-slate-500" colSpan={cols}><p>{empty}</p>{emptyAction && <div className="mt-3">{emptyAction}</div>}</td></tr>}
           {rows.map((r) => { const j = pile === "process" ? joinInfo(r) : null; const idle = pile === "process" ? idleDays(r) : null; return (
-            <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => router.push(`/employees/${r.id}`)}>
+            <tr key={r.id} className="fade border-t border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => router.push(`/employees/${r.id}`)}>
               <td className="p-3" onClick={(e) => e.stopPropagation()}><input type="checkbox" aria-label={`Select ${r.full_name}`} checked={sel.includes(r.id)} onChange={(e) => toggle(r.id, e.target.checked)} /></td>
               <td className="p-3"><div className="flex items-center gap-3"><Avatar name={r.full_name} /><div className="min-w-0"><Link className="font-medium text-blue-800 hover:underline" href={`/employees/${r.id}`} onClick={(e) => e.stopPropagation()}>{r.full_name}</Link><div className="text-xs text-slate-500">{r.emp_no}</div></div></div></td>
               <td className="p-3">{r.designation}<div className="text-xs text-slate-500">{r.department}</div></td>

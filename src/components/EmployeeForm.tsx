@@ -121,12 +121,13 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
   };
   const filled = (fields: { key: string }[]) => fields.filter((f) => String(v[f.key] ?? "").trim() !== "").length;
   const copy = async (k: string) => { try { await navigator.clipboard.writeText(String(v[k] ?? "")); setCopied(k); setTimeout(() => setCopied(""), 1500); } catch { /* clipboard blocked */ } };
-  const input = (f: { key: string; type?: string }) => {
+  const input = (f: { key: string; label: string; type?: string }) => {
     const hid = SENSITIVE.includes(f.key) && v[f.key] && !shown.includes(f.key);
     if (hid) return (
-      <div className="flex items-center gap-2"><div className="inp !bg-slate-50 font-mono tracking-wide text-slate-700 select-none" aria-label={`${f.key} hidden`}>{mask(String(v[f.key]))}</div>
-        <button type="button" className="btn btn-sm shrink-0" onClick={() => setShown([...shown, f.key])}><Icon name="eye" className="h-4 w-4" />Show</button>
-        <button type="button" className="btn btn-sm shrink-0" onClick={() => copy(f.key)}><Icon name="copy" className="h-4 w-4" />{copied === f.key ? "Copied" : "Copy"}</button></div>);
+      <div className="flex items-center gap-1.5">
+        <div className="inp !bg-slate-50 font-mono tracking-wide text-slate-700 select-none flex-1 min-w-0 truncate" aria-label={`${f.label} hidden`}>{mask(String(v[f.key]))}</div>
+        <button type="button" className="btn btn-sm shrink-0 !px-2" title={`Show ${f.label}`} aria-label={`Show ${f.label}`} onClick={() => setShown([...shown, f.key])}><Icon name="eye" className="h-4 w-4" /></button>
+        <button type="button" className="btn btn-sm shrink-0 !px-2" title={copied === f.key ? "Copied" : `Copy ${f.label}`} aria-label={`Copy ${f.label}`} onClick={() => copy(f.key)}>{copied === f.key ? <span className="text-xs text-emerald-700">Copied</span> : <Icon name="copy" className="h-4 w-4" />}</button></div>);
     const a = INPUT[f.key] ?? {};
     return <input className={`inp ${a.upper ? "uppercase" : ""}`} type={a.type ?? f.type ?? "text"} inputMode={a.mode} maxLength={a.max} autoComplete={a.auto} autoCapitalize={a.upper ? "characters" : undefined} aria-invalid={!!warn[f.key]} value={v[f.key] ?? ""} onChange={(e) => set(f.key, a.upper ? e.target.value.toUpperCase() : e.target.value)} />;
   };

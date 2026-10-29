@@ -45,7 +45,7 @@ function NavList({ items, path, showLabels, collapsed, onNavigate }: { items: Na
               className={`w-full items-center justify-between rounded-lg px-3 min-h-9 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600 disabled:hover:text-slate-400 ${showLabels === "always" ? "flex" : collapsed ? "hidden" : "hidden xl:flex"}`}>
               {s}<Icon name="chevron-down" className={`h-4 w-4 transition-transform ${open ? "" : "-rotate-90"}`} />
             </button>
-            <div className={`space-y-0.5 ${folded ? (showLabels === "always" ? "hidden" : "xl:hidden") : ""}`}>{list.map(row)}</div>
+            <div className={`grid transition-[grid-template-rows,visibility] duration-200 ease-out ${!folded ? "grid-rows-[1fr]" : showLabels === "always" ? "grid-rows-[0fr] invisible" : "grid-rows-[1fr] xl:grid-rows-[0fr] xl:invisible"}`}><div className="space-y-0.5 min-h-0 overflow-hidden">{list.map(row)}</div></div>
           </div>);
       })}
     </nav>
@@ -70,7 +70,7 @@ function Account({ email, name, role }: { email: string; name: string; role: str
         <span className="hidden md:block text-left leading-tight"><span className="block text-xs text-slate-700 max-w-40 truncate">{name || email || "…"}</span><span className="block text-[11px] text-slate-400">{who}</span></span>
         <Icon name="chevron-down" className="hidden md:block h-4 w-4 text-slate-400" />
       </button>
-      {open && <div role="menu" className="absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50">
+      {open && <div role="menu" className="pop-in absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50">
         <div className="px-3 py-2 border-b border-slate-100"><div className="text-sm font-medium break-all">{name || email}</div>{name && <div className="text-xs text-slate-500 break-all">{email}</div>}<div className="text-xs text-slate-500">{who}</div></div>
         <button type="button" role="menuitem" onClick={signOut} className="w-full flex items-center gap-2 px-3 min-h-11 mt-1 rounded-lg text-sm text-left hover:bg-slate-100"><Icon name="logout" className="h-4 w-4" />Sign out</button>
       </div>}
@@ -107,16 +107,16 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
     <div className={`min-h-screen ${minimal ? "" : "shell-has-bar"}`}>
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[60] focus:bg-white focus:px-3 focus:py-2 focus:rounded-lg focus:shadow">Skip to content</a>
 
-      {!minimal && <aside aria-label="Sidebar" className={`hidden md:flex flex-col fixed inset-y-0 left-0 z-30 bg-white border-r border-slate-200 print:hidden ${collapsed ? "w-16" : "w-16 xl:w-64"}`}>
+      {!minimal && <aside aria-label="Sidebar" className={`hidden md:flex flex-col fixed inset-y-0 left-0 z-30 bg-white border-r border-slate-200 print:hidden transition-[width] duration-200 ease-out ${collapsed ? "w-16" : "w-16 xl:w-64"}`}>
         <div className={`h-14 shrink-0 flex items-center gap-2 border-b border-slate-100 px-3 ${collapsed ? "justify-center" : "justify-center xl:justify-between"}`}>
           <Link href="/" aria-label="CIPCO home" className={`items-center gap-2 min-w-0 ${collapsed ? "hidden" : "hidden xl:flex"}`}><img src="/branding/logo.png" alt="CIPCO" className="h-7 w-auto" /><span className="text-sm font-semibold text-slate-500">Operations</span></Link>
           <button type="button" onClick={toggleSide} aria-label={collapsed ? "Expand sidebar" : "Menu"} title={collapsed ? "Expand sidebar" : "Menu"} className="h-10 w-10 grid place-items-center rounded-lg text-slate-500 hover:bg-slate-100 touch-manipulation"><Icon name={collapsed ? "chevron-right" : "menu"} /></button>
         </div>
-        <div className="flex-1 overflow-y-auto p-2"><NavList items={items} path={path} showLabels="wide" collapsed={collapsed} /></div>
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2"><NavList items={items} path={path} showLabels="wide" collapsed={collapsed} /></div>
         {!collapsed && <div className="hidden xl:block p-3 border-t border-slate-100"><button type="button" onClick={toggleSide} className="w-full flex items-center gap-2 px-3 min-h-10 rounded-lg text-xs text-slate-500 hover:bg-slate-100"><Icon name="chevron-left" className="h-4 w-4" />Collapse</button></div>}
       </aside>}
 
-      <div className={minimal ? "" : collapsed ? "md:pl-16" : "md:pl-16 xl:pl-64"}>
+      <div className={`transition-[padding] duration-200 ease-out ${minimal ? "" : collapsed ? "md:pl-16" : "md:pl-16 xl:pl-64"}`}>
         <header className="sticky top-0 z-20 h-14 bg-white border-b border-slate-200 flex items-center gap-2 px-3 sm:px-4 print:hidden">
           {!minimal && <button type="button" onClick={() => setDrawer(true)} aria-label="Open menu" className="md:hidden h-11 w-11 -ml-1 grid place-items-center rounded-lg text-slate-600 hover:bg-slate-100 touch-manipulation"><Icon name="menu" /></button>}
           <Link href="/" aria-label="CIPCO home" className={`shrink-0 items-center gap-2 ${minimal ? "flex" : "hidden"}`}><img src="/branding/logo.png" alt="CIPCO" className="h-7 w-auto" /></Link>
@@ -135,15 +135,15 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
         </div>
       </nav>}
 
-      {drawer && <div className="fixed inset-0 z-50 xl:hidden print:hidden" role="dialog" aria-modal="true" aria-label="Menu">
-        <div className="absolute inset-0 bg-slate-900/40" onClick={() => setDrawer(false)} />
-        <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-white shadow-xl flex flex-col pt-[env(safe-area-inset-top)]">
+      <div className="overlay z-50 xl:hidden print:hidden" data-open={drawer} role="dialog" aria-modal="true" aria-label="Menu">
+        <div className="overlay-bg bg-slate-900/40" onClick={() => setDrawer(false)} />
+        <div className="overlay-panel from-left absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-white shadow-xl flex flex-col pt-[env(safe-area-inset-top)]">
           <div className="h-14 shrink-0 px-4 flex items-center gap-2 border-b border-slate-100"><img src="/branding/logo.png" alt="CIPCO" className="h-7 w-auto" /><span className="text-sm font-semibold text-slate-500">Operations</span>
             <button ref={closeRef} type="button" onClick={() => setDrawer(false)} aria-label="Close menu" className="ml-auto h-11 w-11 -mr-2 grid place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><Icon name="x" /></button></div>
           <div className="flex-1 overflow-y-auto p-3"><NavList items={items} path={path} showLabels="always" onNavigate={() => setDrawer(false)} /></div>
           <div className="border-t border-slate-100 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><div className="px-3 pb-2"><div className="text-sm font-medium break-all">{name || email}</div>{name && <div className="text-xs text-slate-500 break-all">{email}</div>}<div className="text-xs text-slate-500">{role ? ROLE_LABEL[role] : ""}</div></div><button type="button" onClick={signOut} className="w-full flex items-center gap-3 px-3 min-h-11 rounded-lg text-sm text-slate-600 hover:bg-slate-100"><Icon name="logout" />Sign out</button></div>
         </div>
-      </div>}
+      </div>
     </div>
   );
 }

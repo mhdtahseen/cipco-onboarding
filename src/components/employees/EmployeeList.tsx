@@ -81,7 +81,7 @@ export default function EmployeeList() {
         <div className="sm:mr-auto w-full sm:w-auto"><h1 className="text-xl font-bold">Employees</h1><p className="text-sm text-slate-500">Candidates in hiring and onboarded staff</p></div>
         <details className="relative">
           <summary className="btn list-none [&::-webkit-details-marker]:hidden"><Icon name="download" className="h-4 w-4" />Export<Icon name="chevron-down" className="h-4 w-4" /></summary>
-          <div className="absolute right-0 z-20 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-1 shadow-lg text-sm">
+          <div className="pop absolute right-0 z-20 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-1 shadow-lg text-sm">
             <a className="block rounded-lg px-3 py-2 hover:bg-slate-100" href="/api/export/excel">Excel — all employees</a>
             {live.length > 0 ? <a className="block rounded-lg px-3 py-2 hover:bg-slate-100" href={`/api/export/excel?ids=${live.join(",")}`}>Excel — selected ({live.length})</a> : <span className="block rounded-lg px-3 py-2 text-slate-400">Excel — selected (tick rows first)</span>}
           </div>

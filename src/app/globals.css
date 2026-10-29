@@ -52,3 +52,29 @@ body { overflow-x: clip; }   /* clip (not hidden) so the sticky nav keeps workin
 .shell-has-bar { --bottom-nav-h: 0px; }
 @media (max-width: 767px) { .shell-has-bar { --bottom-nav-h: calc(56px + env(safe-area-inset-bottom, 0px)); } }
 @media print { aside, header.sticky { display: none !important; } main { max-width: none !important; } div[class*="md:pl-"] { padding-left: 0 !important; } }
+
+/* ── Motion ── short and eased; everything below is switched off for people who ask for reduced motion ── */
+:root { --ease: cubic-bezier(0.2, 0.7, 0.2, 1); interpolate-size: allow-keywords; }
+.btn, .inp, .tab, .chip { transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s; }
+tbody tr { transition: background-color 0.12s; }
+@keyframes fade { from { opacity: 0; } }
+@keyframes fade-up { from { opacity: 0; transform: translateY(6px); } }
+@keyframes pop { from { opacity: 0; transform: translateY(-4px) scale(0.97); } }
+.fade { animation: fade 0.2s var(--ease) backwards; }                 /* rows and small blocks appearing */
+.fade-in { animation: fade-up 0.22s var(--ease) backwards; }          /* a tab's content, an opened detail */
+.pop-in, details[open] > .pop { animation: pop 0.14s var(--ease); transform-origin: top right; }   /* menus */
+/* Collapsible cards (<details class="card">) glide open and shut where the browser supports it; elsewhere they simply switch */
+details.card::details-content { block-size: 0; overflow: clip; transition: block-size 0.25s var(--ease), content-visibility 0.25s allow-discrete; }
+details.card[open]::details-content { block-size: auto; }
+/* Slide-overs and the mobile menu stay mounted so they can slide out as well as in */
+.overlay { position: fixed; inset: 0; visibility: hidden; transition: visibility 0s linear 0.25s; }
+.overlay[data-open="true"] { visibility: visible; transition-delay: 0s; }
+.overlay-bg { position: absolute; inset: 0; opacity: 0; transition: opacity 0.25s var(--ease); }
+.overlay[data-open="true"] .overlay-bg { opacity: 1; }
+.overlay-panel { transition: transform 0.25s var(--ease); }
+.overlay-panel.from-right { transform: translateX(100%); }
+.overlay-panel.from-left { transform: translateX(-100%); }
+.overlay[data-open="true"] .overlay-panel { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after, ::details-content { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; transition-delay: 0s !important; }
+}

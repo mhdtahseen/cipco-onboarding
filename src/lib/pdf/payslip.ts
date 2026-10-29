@@ -12,7 +12,7 @@ const monthLabel = (iso: string) => new Date(iso.slice(0, 7) + "-01T00:00:00").t
 const dmy = (iso?: string | null) => (iso ? new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 const num = (n: unknown) => { const v = Number(n); return Number.isInteger(v) ? String(v) : v.toFixed(1); };
 
-/** One salary slip per page, in the style of the letters: company header, employee and attendance details, earnings and deductions, net pay in words, employer contributions, seal and signature. */
+/** One salary slip per page, in the style of the letters: company header, employee and attendance details, earnings and deductions, net pay in words, seal and signature (employer contributions are deliberately left off). */
 export async function buildPayslips(slips: SlipInput[]): Promise<Uint8Array> {
   const doc = await newDoc(); const f = await embedFonts(doc);
   for (const s of slips) await slipPage(doc.addPage([W, H]), doc, f, s);
@@ -33,7 +33,7 @@ async function slipPage(page: PDFPage, doc: Awaited<ReturnType<typeof newDoc>>, 
   info.forEach(([k, v], i) => { const col = i % 2, row = Math.floor(i / 2); const x = M + 8 + col * ((W - 2 * M) / 2); const yy = y - 10 - row * 15; page.drawText(k, { x, y: yy, size: 8, font: f.reg, color: mute }); let vs = 9; const maxW = (W - 2 * M) / 2 - 88; while (vs > 6.5 && f.bold.widthOfTextAtSize(v, vs) > maxW) vs -= 0.25; page.drawText(v, { x: x + 78, y: yy, size: vs, font: f.bold, color: ink }); });
   y -= 12 + Math.ceil(info.length / 2) * 15 + 6;
   // attendance
-  const att = s.line.kind === "daily" ? [["Days worked", num(Number(c.present ?? 0) + Number(c.half ?? 0) * 0.5)], ["Present", num(c.present ?? 0)], ["Half-days", num(c.half ?? 0)], ["Absent", num(c.absent ?? 0)], ["Weekly offs", num(c.off ?? 0)]] : [["Days in month", num(s.line.days_in_month)], ["Paid days", num(s.line.paid_days)], ["LOP days", num(s.line.lop_days)], ["Present", num(c.present ?? 0)], ["Weekly offs", num(c.off ?? 0)]];
+  const att = s.line.kind === "daily" ? [["Days worked", num(Number(c.present ?? 0) + Number(c.half ?? 0) * 0.5)], ["Present", num(c.present ?? 0)], ["Half-days", num(c.half ?? 0)], ["Absent", num(c.absent ?? 0)], ["Weekly offs", num(c.off ?? 0)]] : [["Days in month", num(s.line.days_in_month)], ["Paid days", num(s.line.paid_days)], ["LOP days", num(s.line.lop_days)], ["Present", num(c.present ?? 0)], ["Half-days", num(c.half ?? 0)], ["Weekly offs", num(c.off ?? 0)]];
   const cw = (W - 2 * M) / att.length; att.forEach(([k, v], i) => { const x = M + i * cw; page.drawText(k, { x: x + 6, y, size: 7.5, font: f.reg, color: mute }); page.drawText(v, { x: x + 6, y: y - 13, size: 11, font: f.bold, color: ink }); });
   y -= 24; if (sn.arrears) { text(`Arrears: ${dmy(sn.arrears.from)} to ${dmy(sn.arrears.to)} (${sn.arrears.days} days)`, M + 6, 8, f.ital, mute); y -= 12; }
   rule(y); y -= 18;
@@ -49,8 +49,6 @@ async function slipPage(page: PDFPage, doc: Awaited<ReturnType<typeof newDoc>>, 
   page.drawRectangle({ x: M, y: y - 26, width: W - 2 * M, height: 38, color: soft, borderColor: line, borderWidth: 0.6 });
   page.drawText("NET PAY", { x: M + 10, y: y - 2, size: 9, font: f.bold, color: mute }); const nv = inr(s.line.net); page.drawText(nv, { x: W - M - 10 - f.bold.widthOfTextAtSize(nv, 16), y: y - 5, size: 16, font: f.bold, color: blue });
   page.drawText(rupeesWords(Math.max(0, Math.round(s.line.net))), { x: M + 10, y: y - 19, size: 8.5, font: f.ital, color: ink }); y -= 50;
-  // employer contributions (memo)
-  if (s.line.er_total > 0) { page.drawText("Employer contributions (not deducted from your pay)", { x: M, y, size: 8, font: f.bold, color: mute }); y -= 12; const er = [["PF", s.line.pf_er], ["PF admin / EDLI", s.line.pf_admin], ["ESI", s.line.esi_er]].filter(([, v]) => Number(v) > 0); er.forEach(([k, v], i) => page.drawText(`${k}: ${inr(Number(v))}`, { x: M + i * 130, y, size: 8.5, font: f.reg, color: ink })); y -= 20; }
   // footer
   page.drawText("This is a computer-generated salary slip.", { x: M, y: 70, size: 8, font: f.ital, color: mute });
   await drawStamp(doc, page, { x: W - M - 150, top: H - 150, signW: 70, signMaxH: 34, sealW: 48 });

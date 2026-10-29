@@ -15,8 +15,8 @@ export default function PromptDialog({ spec }: { spec: PromptSpec | null }) {
   const submit = (e: React.FormEvent) => { e.preventDefault(); const v = val.trim(); const bad = spec.validate?.(v); if (bad) { setErr(bad); return; } spec.resolve(v); };
   return (
     <div className="fixed inset-0 z-[70] grid place-items-center p-4" role="dialog" aria-modal="true" aria-label={spec.title}>
-      <div className="absolute inset-0 bg-slate-900/40" onClick={() => spec.resolve(null)} />
-      <form onSubmit={submit} className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl space-y-3">
+      <div className="fade absolute inset-0 bg-slate-900/40" onClick={() => spec.resolve(null)} />
+      <form onSubmit={submit} className="pop-in !origin-center relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl space-y-3">
         <h2 className="font-semibold">{spec.title}</h2>
         <div><label className="lbl" htmlFor="prompt-input">{spec.label}</label><input id="prompt-input" ref={ref} className="inp" type={spec.type ?? "text"} value={val} onChange={(e) => { setVal(e.target.value); setErr(""); }} />
           {spec.hint && <p className="text-xs text-slate-500 mt-1">{spec.hint}</p>}{err && <p className="warn">{err}</p>}</div>

@@ -75,8 +75,9 @@ function wagePart(e: PayEmp, revs: Revision[], ym: string, from: string, to: str
     else { const m = calc.monthly; let pd = 0, lp = 0; for (const d of s.dates) { const st = counts.status[d]; if (st === "present" || st === "off") pd += 1; else if (st === "half") { pd += 0.5; lp += 0.5; } else if (st === "absent") lp += 1; else lp += 1; } paid += pd; lop += lp; const ratio = pd / n; gross += m.gross * ratio; basic += m.basic * ratio; hra += m.hra * ratio; perDay = m.gross / n; }
   }
   const G = R(gross), B = R(basic), H = R(hra), S = G - B - H; const cfg = cfgLast; const wage = cfg.pf_cap ? Math.min(B, PF_WAGE_CEILING) : B;
-  const pf = cfg.pf_applicable ? R(wage * PF_EE) : 0; const eligible = !!calcLast && calcLast.monthly.gross <= ESI_CEILING && calcLast.monthly.gross > 0; const esi = eligible ? Math.ceil(G * ESI_EE) : 0;
-  const erPF = cfg.employer_in_ctc && cfg.pf_applicable ? R(wage * PF_ER) : 0, erAdmin = cfg.employer_in_ctc && cfg.pf_applicable ? R(wage * ADMIN_EDLI) : 0, erESI = cfg.employer_in_ctc && eligible ? Math.ceil(G * ESI_ER) : 0;
+  const daily = kind === "daily";   // daily-wage workers: ESI is the only automatic deduction, so no PF (and no employer PF / EDLI) and no Professional Tax
+  const pf = cfg.pf_applicable && !daily ? R(wage * PF_EE) : 0; const eligible = !!calcLast && calcLast.monthly.gross <= ESI_CEILING && calcLast.monthly.gross > 0; const esi = eligible ? Math.ceil(G * ESI_EE) : 0;
+  const erPF = cfg.employer_in_ctc && cfg.pf_applicable && !daily ? R(wage * PF_ER) : 0, erAdmin = cfg.employer_in_ctc && cfg.pf_applicable && !daily ? R(wage * ADMIN_EDLI) : 0, erESI = cfg.employer_in_ctc && eligible ? Math.ceil(G * ESI_ER) : 0;
   return { part: { label, from, to, n, paid, lop, gross: G, basic: B, hra: H, special: S, pf, erPF, erAdmin, esi, erESI, rateOrGross: kind === "daily" ? Number(cfg.amount) : calcLast!.monthly.gross }, kind, cfg, perDay, blockers: [] };
 }
 
@@ -107,11 +108,11 @@ export function computeLine(e: PayEmp, ym: string, att: Record<string, DayStatus
   let earnings = part.gross, pf = part.pf, esi = part.esi, erPF = part.erPF, erAdmin = part.erAdmin, erESI = part.erESI;
   if (arr && "part" in arr) { const a = arr.part; items.push({ kind: "earning", label: `Arrears ${fmtShort(a.from)} to ${fmtShort(a.to)} (${a.paid} days)`, amount: a.gross }); earnings += a.gross; pf += a.pf; esi += a.esi; erPF += a.erPF; erAdmin += a.erAdmin; erESI += a.erESI; }
   // Professional Tax is on the month's earnings (Maharashtra slab, ₹300 in February; an override on the salary is a fixed monthly amount)
-  const monthGross = part.gross; let pt = cfg.pt_monthly != null && ("" + cfg.pt_monthly) !== "" ? Number(cfg.pt_monthly) : ptSlab(monthGross, e.gender); if (monthGross <= 0) pt = 0; if (pt === 200 && ym.endsWith("-02") && !(cfg.pt_monthly != null && ("" + cfg.pt_monthly) !== "")) pt = 300;
-  let additions = 0, otherDed = 0;
+  const monthGross = part.gross; let pt = cfg.pt_monthly != null && ("" + cfg.pt_monthly) !== "" ? Number(cfg.pt_monthly) : ptSlab(monthGross, e.gender); if (monthGross <= 0 || kind === "daily") pt = 0; if (pt === 200 && ym.endsWith("-02") && !(cfg.pt_monthly != null && ("" + cfg.pt_monthly) !== "")) pt = 300;
+  let additions = 0, otherDed = 0, waived = 0;
   for (const a of adjs) {
     if (a.kind === "earning") { items.push({ kind: "earning", label: a.label, amount: a.amount, note: a.reason }); additions += a.amount; }
-    else if (a.kind === "lop_waiver") { const amt = R(perDay * (a.days || 0)); items.push({ kind: "earning", label: `${a.label || "LOP waived"} (${a.days} day${(a.days || 0) === 1 ? "" : "s"})`, amount: amt, note: a.reason }); additions += amt; }
+    else if (a.kind === "lop_waiver") { const amt = R(perDay * (a.days || 0)); items.push({ kind: "earning", label: `${a.label || "LOP waived"} (${a.days} day${(a.days || 0) === 1 ? "" : "s"})`, amount: amt, note: a.reason }); additions += amt; waived += Number(a.days) || 0; }
     else { items.push({ kind: "deduction", label: a.label, amount: a.amount, note: a.reason }); otherDed += a.amount; }
   }
   if (pf) items.push({ kind: "deduction", label: "Provident fund (employee)", amount: pf }); if (esi) items.push({ kind: "deduction", label: "ESI (employee)", amount: esi }); if (pt) items.push({ kind: "deduction", label: "Professional tax", amount: pt });
@@ -122,7 +123,10 @@ export function computeLine(e: PayEmp, ym: string, att: Record<string, DayStatus
   if (kind === "salaried" && part.lop >= 10) out.flags.push(`${part.lop} LOP days`); if (kind === "daily" && worked < 10 && counts.days >= 20) out.flags.push(`only ${worked} days worked`);
   if (arr) out.flags.push("arrears (joined after the 20th last month)"); if (e.join_date! >= monthStart(ym)) out.flags.push("joined this month"); if (e.left_on && e.left_on <= monthEnd(ym)) out.flags.push("leaves this month");
   if (new Set(revs.map((r) => r.effective_from).filter((d) => d > monthStart(ym) && d <= monthEnd(ym))).size) out.flags.push("salary revised this month"); if (net <= 0) out.flags.push("nothing to pay"); if (recovery) out.flags.push("advance recovery");
-  out.line = { kind, days_in_month: part.n, paid_days: part.paid, lop_days: part.lop, gross, deductions, net, pf_emp: pf, pf_er: erPF, pf_admin: erAdmin, esi_emp: esi, esi_er: erESI, pt, er_total: erPF + erAdmin + erESI, pay_mode: mode, items,
+  // a waived LOP day is paid, so the day counts shown on the slip follow it (never below zero LOP)
+  const waivedDays = kind === "salaried" ? Math.min(waived, part.lop) : 0;
+  if (kind === "salaried" && waived > part.lop) out.warnings.push(`${e.full_name}: ${waived} LOP days waived but only ${part.lop} were lost, so the waiver pays for ${waived - part.lop} extra`);
+  out.line = { kind, days_in_month: part.n, paid_days: part.paid + waivedDays, lop_days: part.lop - waivedDays, gross, deductions, net, pf_emp: pf, pf_er: erPF, pf_admin: erAdmin, esi_emp: esi, esi_er: erESI, pt, er_total: erPF + erAdmin + erESI, pay_mode: mode, items,
     snapshot: { name: e.full_name, emp_no: e.emp_no, designation: e.designation, department: e.department, join_date: e.join_date, left_on: e.left_on, pan: e.pan, uan: e.uan, bank_name: e.bank_name, account_no: e.account_no, ifsc: e.ifsc, upi_id: e.upi_id, pay_mode: mode, window: { from, to }, counts: { days: counts.days, present: counts.present, half: counts.half, absent: counts.absent, off: counts.off }, arrears: aw && aCounts ? { ...aw, days: aCounts.days, present: aCounts.present, half: aCounts.half, absent: aCounts.absent } : null, rate: kind === "daily" ? part.rateOrGross : null, monthly_gross: kind === "salaried" ? part.rateOrGross : null, month: ym } };
   return out;
 }

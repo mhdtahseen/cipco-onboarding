@@ -36,11 +36,11 @@ export default function SalaryEditor({ value, gender, onChange }: { value: Parti
             <div><label className="lbl">{cfg.basic_mode === "fixed" ? "Basic (₹/month)" : "Basic (%)"}</label><input className="inp" type="number" value={cfg.basic_value} onChange={(e) => set({ basic_value: num(e.target.value) })} /></div>
             <div><label className="lbl">HRA (% of basic)</label><input className="inp" type="number" value={cfg.hra_pct} onChange={(e) => set({ hra_pct: num(e.target.value) })} /></div>
             </>}
-            <div><label className="lbl">Professional Tax override (₹/month)</label><input className="inp" type="number" placeholder="auto (Maharashtra)" value={cfg.pt_monthly ?? ""} onChange={(e) => set({ pt_monthly: e.target.value === "" ? null : num(e.target.value) })} /></div>
+            {cfg.basis !== "daily" && <div><label className="lbl">Professional Tax override (₹/month)</label><input className="inp" type="number" placeholder="auto (Maharashtra)" value={cfg.pt_monthly ?? ""} onChange={(e) => set({ pt_monthly: e.target.value === "" ? null : num(e.target.value) })} /></div>}
           </div>
           <div className="flex flex-wrap gap-5 text-sm">
-            <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.pf_applicable} onChange={(e) => set({ pf_applicable: e.target.checked })} /> PF applicable</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.pf_cap} onChange={(e) => set({ pf_cap: e.target.checked })} /> Cap PF wage at ₹15,000</label>
+            {cfg.basis !== "daily" && <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.pf_applicable} onChange={(e) => set({ pf_applicable: e.target.checked })} /> PF applicable</label>}
+            {cfg.basis !== "daily" && <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.pf_cap} onChange={(e) => set({ pf_cap: e.target.checked })} /> Cap PF wage at ₹15,000</label>}
             <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.employer_in_ctc} onChange={(e) => set({ employer_in_ctc: e.target.checked })} /> CTC includes employer PF / EDLI / ESI <span className="text-xs text-slate-500">(off = CTC equals gross)</span></label>
           </div>
         </div>

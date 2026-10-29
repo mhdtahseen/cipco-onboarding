@@ -75,7 +75,7 @@ export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: 
             <td className="p-2.5"><div className="font-medium">{x.name}</div><div className="text-xs text-slate-400">{x.emp_no ?? ""}{x.flags.length > 0 && <span className="text-amber-700"> ⚑ {x.flags.join(" · ")}</span>}</div></td>
             <td>{x.line.kind === "daily" ? "Daily" : "Salaried"}</td><td className="text-right tabular-nums">{c.present ?? 0} / {c.half ?? 0} / {c.absent ?? 0} / {c.off ?? 0}</td><td className="text-right tabular-nums">{x.line.kind === "salaried" ? x.line.lop_days || "–" : "–"}</td>
             <td className="text-right tabular-nums">₹{inr(x.line.gross)}</td><td className="text-right tabular-nums">₹{inr(x.line.deductions)}</td><td className="text-right tabular-nums font-medium">₹{inr(x.line.net)}</td><td className="pl-3 capitalize">{x.line.pay_mode}</td><td className="text-right pr-2 text-slate-400">{isOpen ? "▾" : "▸"}</td></tr>
-          {isOpen && <tr key={x.id + "-d"} className="bg-slate-50/60"><td colSpan={9} className="p-3"><div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          {isOpen && <tr key={x.id + "-d"} className="bg-slate-50/60"><td colSpan={9} className="p-3"><div className="fade-in grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <div onClick={(e) => e.stopPropagation()}><SalarySlip projectName={projectName} payMonth={monthStart(ym)} line={x.line} draft={!approved} /></div>
             <div className="space-y-2"><div className="text-xs font-medium text-slate-500">Adjustments for {monthName(ym)}</div>
               {adjFor(x.id).map((a) => <div key={a.id} className="flex items-center gap-2 text-sm"><span className="flex-1">{a.kind === "deduction" ? "−" : "+"} {a.label}{a.kind === "lop_waiver" ? ` (${a.days} days)` : ` ₹${inr(a.amount)}`}{a.reason ? <span className="text-xs text-slate-400"> · {a.reason}</span> : null}</span>{!approved && <button className="text-xs text-red-700 underline" onClick={(e) => { e.stopPropagation(); voidAdj(a.id); }}>Void</button>}</div>)}
@@ -88,7 +88,7 @@ export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: 
               {approved && <a className="btn inline-flex" href={`/api/payslips/${(x.line as Line).id}`} target="_blank" onClick={(e) => e.stopPropagation()}>Salary slip (PDF)</a>}</div></div></td></tr>}
         </>); })}</tbody></table>
         {!shown.length && <p className="p-6 text-center text-sm text-slate-500">{d.emps.length ? "Nobody is in this month's payroll yet. Calculate the draft once the month's attendance is complete." : "Nobody is on this project."}</p>}</div>
-      <p className="text-xs text-slate-400">Salaried: gross × paid days ÷ calendar days (weekly off paid; absent and unmarked days are LOP). Daily wage: rate × days worked (weekly off unpaid). Everyone who joined on or before the 20th is paid from their joining date; later joiners are paid in the next run with arrears. PF, ESI and Professional Tax follow each person's salary structure.</p>
+      <p className="text-xs text-slate-400">Salaried: gross × paid days ÷ calendar days (weekly off paid; absent and unmarked days are LOP). Daily wage: rate × days worked (weekly off unpaid). Everyone who joined on or before the 20th is paid from their joining date; later joiners are paid in the next run with arrears. PF, ESI and Professional Tax follow each salaried person's salary structure; daily-wage workers have ESI only.</p>
     </div>
   );
 }

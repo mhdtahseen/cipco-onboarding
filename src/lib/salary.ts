@@ -74,10 +74,10 @@ const pick = (m: Month, basis: SalaryCfg["basis"]) => (basis === "inhand" ? m.ne
 function calcDaily(cfg: SalaryCfg, gender?: string | null): Calc | null {
   const rate = Number(cfg.amount); if (!rate || rate <= 0) return null;
   const days = Number(cfg.days_per_month) > 0 ? Number(cfg.days_per_month) : DAILY_DEFAULT_DAYS;
-  const R = Math.round, gross = R(rate * days), wage = cfg.pf_cap ? Math.min(gross, PF_WAGE_CEILING) : gross;
-  const pf = cfg.pf_applicable ? R(wage * PF_EE) : 0, esi = gross <= ESI_CEILING ? Math.ceil(gross * ESI_EE) : 0;
-  const pt = cfg.pt_monthly != null && cfg.pt_monthly !== ("" as any) ? Number(cfg.pt_monthly) : ptSlab(gross, gender);
-  const erPF = cfg.employer_in_ctc && cfg.pf_applicable ? R(wage * PF_ER) : 0, erAdmin = cfg.employer_in_ctc && cfg.pf_applicable ? R(wage * ADMIN_EDLI) : 0;
+  const R = Math.round, gross = R(rate * days);
+  // Daily wage: ESI is the only deduction (when earnings are within the ESI ceiling); no PF, EDLI or Professional Tax.
+  const pf = 0, pt = 0, esi = gross <= ESI_CEILING ? Math.ceil(gross * ESI_EE) : 0;
+  const erPF = 0, erAdmin = 0;
   const erESI = cfg.employer_in_ctc && gross <= ESI_CEILING ? Math.ceil(gross * ESI_ER) : 0, erTotal = erPF + erAdmin + erESI, ded = pf + esi + pt;
   const m: Month = { basic: gross, hra: 0, special: 0, gross, pf, esi, pt, ded, net: gross - ded, erPF, erAdmin, erESI, erTotal, ctc: gross + erTotal };
   const ptA = m.pt === 0 ? 0 : ptYear(m.pt), A = (k: keyof Month) => m[k] * 12;
