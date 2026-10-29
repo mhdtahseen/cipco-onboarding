@@ -14,4 +14,11 @@ export const COMPANY = {
   signatoryDept: "Human Resources Department",
   signatoryDesignation: "Authorised Signatory",
   city: "Pune",
+  gstin: "27AAOPI1552K2ZG",
+  udyam: "UDYAM-MH-26-0770375",
 };
+/** PAN is characters 3 to 12 of the GSTIN. */
+export const COMPANY_PAN = COMPANY.gstin.slice(2, 12);
+
+// Bank account printed on invoices so clients pay the right account. Fill these in: the block is left off the invoice until the account number is set.
+export const BANK = { accountName: "", bank: "", branch: "", accountNo: "", ifsc: "" };

@@ -25,6 +25,9 @@ export const NAV: NavItem[] = [
   { href: "/meals", label: "Meals", icon: "utensils", section: "Operations", roles: ["admin"], paths: ["/meals"] },
   { href: "/accommodation", label: "Accommodation", icon: "bed", section: "Operations", roles: ["admin"], paths: ["/accommodation"] },
   { href: "/quotations", label: "Quotations", icon: "file", section: "Sales", roles: ["admin", "staff"], paths: ["/quotations"], bar: true },
+  { href: "/invoices", label: "Invoices", icon: "wallet", section: "Sales", roles: ["admin"], paths: ["/invoices"] },
+  { href: "/work-orders", label: "Work orders", icon: "clipboard", section: "Sales", roles: ["admin"], paths: ["/work-orders"] },
+  { href: "/clients", label: "Clients", icon: "building", section: "Sales", roles: ["admin", "staff"], paths: ["/clients"] },
   { href: "/clauses", label: "Clause library", icon: "book", section: "Templates", roles: ["admin", "staff"], paths: ["/clauses"] },
   { href: "/mail-templates", label: "Mail templates", icon: "mail", section: "Templates", roles: ["admin", "staff"], paths: ["/mail-templates"] },
   { href: "/quote-library", label: "Quotation wording", icon: "list", section: "Templates", roles: ["admin", "staff"], paths: ["/quote-library"] },
@@ -36,6 +39,13 @@ export const NAV: NavItem[] = [
 const matches = (path: string, p: string) => (p === "/" ? path === "/" : path === p || path.startsWith(p + "/"));
 export const itemFor = (path: string) => NAV.find((i) => i.paths.some((p) => matches(path, p)));
 export const visibleItems = (role: string | null | undefined) => NAV.filter((i) => !!role && i.roles.includes(role as NavRole));
+/** The role carried in a verified login token (the "app_role" claim added by the database hook), or null when the token has none:
+ *  the hook is not switched on yet, or this is a token issued before it was. Anything that is not a non-empty string is ignored. */
+export function roleFromClaims(claims: unknown): string | null {
+  const v = (claims as { app_role?: unknown } | null | undefined)?.app_role;
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
 export const homeFor = (role: string) => (role === "attendance" || role === "supervisor" || role === "site_engineer" ? "/attendance" : role === "none" ? "/no-access" : "/");
 
 /** May this role open this address? Used by the route guard (middleware). Addresses that are not menu pages (data routes) are for staff and admin only. */

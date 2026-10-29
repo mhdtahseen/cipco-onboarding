@@ -1,20 +1,28 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { BLANK_ITEM, emptyQuote, inr, itemAmount, totals, type QItem, type QLib, type Quote } from "@/lib/quote";
 import { todayISO } from "@/lib/format";
+import { useRole } from "@/lib/roles";
+import { swrDrop } from "@/lib/swr";
+import type { Client } from "@/lib/invoice";
+import type { Project } from "@/lib/types";
 import LineList from "./LineList";
 
-const COLS = ["client_name", "client_short", "client_address", "kind_attn", "subject", "intro", "quote_date", "items", "show_total", "show_gst", "notes", "terms", "include_scope", "scope", "client_supply", "our_supply", "signatory"] as const;
+const COLS = ["client_name", "client_short", "client_address", "kind_attn", "subject", "intro", "quote_date", "items", "show_total", "show_gst", "notes", "terms", "include_scope", "scope", "client_supply", "our_supply", "signatory", "client_id", "project_id"] as const;
 const pick = (q: Quote) => Object.fromEntries(COLS.map((k) => [k, (q as any)[k]]));
 
 export default function QuoteEditor({ id }: { id: string }) {
-  const router = useRouter(); const isNew = id === "new";
+  const router = useRouter(); const isNew = id === "new"; const { admin } = useRole();
+  const [clients, setClients] = useState<Client[]>([]); const [projects, setProjects] = useState<Project[]>([]); const [wo, setWo] = useState<{ id: string; wo_no: string } | null>(null);
   const [q, setQ] = useState<Quote | null>(null); const [lib, setLib] = useState<QLib[]>([]); const [busy, setBusy] = useState(""); const [msg, setMsg] = useState(""); const [dirty, setDirty] = useState(false); const [tag, setTag] = useState("");
   const loadLib = async () => { const { data } = await supabase().from("quote_library").select("*").eq("active", true).order("sort_order"); setLib((data || []) as QLib[]); return (data || []) as QLib[]; };
   useEffect(() => { (async () => {
     const l = await loadLib();
+    const sb = supabase(); const [c, p] = await Promise.all([sb.from("clients").select("*").eq("active", true).order("name"), sb.from("projects").select("*").eq("status", "active").order("name")]); setClients((c.data || []) as Client[]); setProjects((p.data || []) as Project[]);
+    if (!isNew) { const { data: w } = await sb.from("work_orders").select("id,wo_no").eq("quotation_id", id).limit(1); setWo((w as any)?.[0] ?? null); }   // staff cannot see work orders, so this stays empty for them
     if (isNew) { const e = emptyQuote(todayISO()); e.client_supply = l.filter((x) => x.kind === "client_supply" && x.default_on).map((x) => x.body); e.our_supply = l.filter((x) => x.kind === "our_supply" && x.default_on).map((x) => x.body); e.notes = l.filter((x) => x.kind === "note" && x.default_on).map((x) => x.body); setQ(e); return; }
     const { data, error } = await supabase().from("quotations").select("*").eq("id", id).single();
     if (error || !data) { setMsg(error?.message || "Quotation not found"); return; } setQ(data as Quote);
@@ -34,9 +42,23 @@ export default function QuoteEditor({ id }: { id: string }) {
     const res = q!.id ? await supabase().from("quotations").update(row).eq("id", q!.id).select().single() : await supabase().from("quotations").insert(row).select().single();
     setBusy("");
     if (res.error) { setMsg(res.error.message + " — has the quotations SQL migration been run?"); return null; }
-    setQ(res.data as Quote); setDirty(false); setMsg("Saved ✓");
+    swrDrop("quotations"); setQ(res.data as Quote); setDirty(false); setMsg("Saved ✓");
+    await linkProjectToClient(q!.client_id, q!.project_id);
     if (isNew && nav) router.replace(`/quotations/${res.data.id}`);
     return res.data.id;
+  }
+  /** A project picked for a client that has none yet becomes that client's project. */
+  async function linkProjectToClient(cid?: string | null, pid?: string | null) {
+    const pr = projects.find((x) => x.id === pid); if (!cid || !pr || pr.client_id) return;
+    const { error } = await supabase().from("projects").update({ client_id: cid }).eq("id", pr.id); if (!error) setProjects((ps) => ps.map((x) => (x.id === pr.id ? { ...x, client_id: cid } : x)));
+  }
+  function pickClient(cid: string) {
+    const c = clients.find((x) => x.id === cid);
+    setQ((p) => { const n: Quote = { ...p!, client_id: cid || null }; if (c && p!.status !== "issued") { n.client_name = c.name; n.client_short = c.short_name || n.client_short; n.client_address = c.address || n.client_address; } const pr = projects.find((x) => x.id === n.project_id); if (pr?.client_id && cid && pr.client_id !== cid) n.project_id = null; return n; }); setDirty(true);
+  }
+  async function saveLink() {   // for an issued quotation: only the links change, not the text that was issued
+    setBusy("link"); const { error } = await supabase().from("quotations").update({ client_id: q!.client_id ?? null, project_id: q!.project_id ?? null }).eq("id", q!.id); setBusy("");
+    if (error) { setMsg(error.message + " — has the client / project links SQL migration been run?"); return; } await linkProjectToClient(q!.client_id, q!.project_id); swrDrop("quotations", "projects", "clients"); setMsg("Linked ✓");
   }
   async function preview() {
     setBusy("preview"); setMsg("");
@@ -51,14 +73,17 @@ export default function QuoteEditor({ id }: { id: string }) {
     setBusy("issue");
     const r = await fetch("/api/quotations/issue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: sid }) }); const j = await r.json(); setBusy("");
     if (!r.ok) { setMsg(j.error || "Failed"); return; }
-    setQ({ ...q!, id: sid, status: "issued", ref_no: j.ref_no }); setMsg(`Issued ${j.ref_no}`); window.open(`/api/quotations/${sid}/pdf`, "_blank"); if (isNew) router.replace(`/quotations/${sid}`);
+    swrDrop("quotations"); setQ({ ...q!, id: sid, status: "issued", ref_no: j.ref_no }); setMsg(`Issued ${j.ref_no}`); window.open(`/api/quotations/${sid}/pdf`, "_blank"); if (isNew) router.replace(`/quotations/${sid}`);
   }
   async function duplicate() {
     setBusy("dup");
-    const { data, error } = await supabase().from("quotations").insert({ ...pick(q!), quote_date: todayISO(), status: "draft" }).select("id").single(); setBusy("");
+    const { data, error } = await supabase().from("quotations").insert({ ...pick(q!), quote_date: todayISO(), status: "draft" }).select("id").single(); setBusy(""); swrDrop("quotations");
     if (error) { setMsg(error.message); return; } router.push(`/quotations/${data.id}`);
   }
-  async function remove() { if (!q!.id || !confirm("Delete this draft?")) return; await supabase().from("quotations").delete().eq("id", q!.id); router.push("/quotations"); }
+  async function remove() { if (!q!.id || !confirm("Delete this draft?")) return; await supabase().from("quotations").delete().eq("id", q!.id); swrDrop("quotations"); router.push("/quotations"); }
+  const clientSelect = <div><label className="lbl">Client (from your client list)</label><select className="inp" value={q.client_id ?? ""} onChange={(e) => pickClient(e.target.value)}><option value="">Not linked / other</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select><p className="text-xs text-slate-500 mt-1">Not listed? <Link className="underline" href="/clients" target="_blank">Add the client</Link>, then reload this page.</p></div>;
+  const mine = projects.filter((p) => !q.client_id || p.client_id === q.client_id), free = q.client_id ? projects.filter((p) => !p.client_id) : [];
+  const projectSelect = <div><label className="lbl">Project</label><select className="inp" value={q.project_id ?? ""} onChange={(e) => set("project_id", e.target.value || null)}><option value="">Not linked yet</option>{mine.map((p) => <option key={p.id} value={p.id}>{p.name}{p.location ? ` — ${p.location}` : ""}</option>)}{free.length > 0 && <optgroup label="Not linked to a client yet (picking one links it to this client)">{free.map((p) => <option key={p.id} value={p.id}>{p.name}{p.location ? ` — ${p.location}` : ""}</option>)}</optgroup>}</select></div>;
   const payRow = q.terms.findIndex((x) => /payment/i.test(x.label));
   const setTerm = (i: number, p: Partial<{ label: string; value: string }>) => set("terms", q.terms.map((x, j) => (j === i ? { ...x, ...p } : x)));
 
@@ -68,11 +93,16 @@ export default function QuoteEditor({ id }: { id: string }) {
         <h1 className="text-xl font-bold">{q.ref_no ? `Quotation ${q.ref_no.split("/").pop()}` : "New quotation"}</h1>
         <span className={`text-xs rounded-full px-2 py-0.5 ${locked ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-800"}`}>{locked ? `Issued · ${q.ref_no}` : "Draft"}</span>
         {locked && <p className="text-sm text-slate-500 w-full">Issued quotations are locked. Use <b>Duplicate</b> to make a changed copy.</p>}
+        {locked && (wo ? <p className="text-sm w-full"><span className="rounded-full bg-green-50 text-green-800 text-xs px-2 py-0.5 mr-2">Won</span><Link className="underline text-blue-700" href={`/work-orders/${wo.id}`}>Work order {wo.wo_no}</Link></p> : admin && <div className="w-full flex flex-wrap items-center gap-2"><Link className="btn btn-primary" href={`/work-orders/new?quotation=${q.id}`}>Create work order from this quotation</Link><span className="text-xs text-slate-500">Use it when the client sends their PO or work order.</span></div>)}
       </div>
+      {locked && <div className="card space-y-2 fade-in"><h3 className="font-semibold">Client and project</h3>
+        <div className="grid gap-3 sm:grid-cols-2">{clientSelect}{projectSelect}</div>
+        <button className="btn btn-sm" disabled={busy === "link"} onClick={saveLink}>Save link</button><p className="text-xs text-slate-500">Only the link is saved. The wording that was issued stays as it is.</p></div>}
       <fieldset disabled={locked} className="space-y-4 min-w-0">
         <div className="card space-y-3">
           <h3 className="font-semibold">Client &amp; subject</h3>
           <div className="grid gap-3 sm:grid-cols-2">
+            {!locked && <>{clientSelect}{projectSelect}</>}
             <div><label className="lbl">Client name</label><input className="inp" value={q.client_name} onChange={(e) => set("client_name", e.target.value)} placeholder="Man Industries (India) Ltd," /></div>
             <div><label className="lbl">Short name <span className="font-normal text-slate-400">(used where the wording says {"{{client}}"})</span></label><input className="inp" value={q.client_short} onChange={(e) => set("client_short", e.target.value)} placeholder="MAN Industries" /></div>
             <div className="sm:col-span-2"><label className="lbl">Address</label><textarea className="inp" rows={3} value={q.client_address} onChange={(e) => set("client_address", e.target.value)} /></div>

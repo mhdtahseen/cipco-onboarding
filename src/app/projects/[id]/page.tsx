@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { swrDrop } from "@/lib/swr";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { stageLabel } from "@/lib/pipeline";
@@ -10,6 +11,8 @@ import { fmtD, useProjectData } from "@/lib/projectData";
 import ProjectExpenses from "@/components/ProjectExpenses";
 import ProjectDocuments from "@/components/ProjectDocuments";
 import SalaryCost from "@/components/SalaryCost";
+import ProjectCommercial from "@/components/ProjectCommercial";
+import { guessState, STATE_OPTIONS, type Client } from "@/lib/invoice";
 
 type Tab = "overview" | "people" | "expenses" | "documents";
 
@@ -17,17 +20,23 @@ type Tab = "overview" | "people" | "expenses" | "documents";
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const d = useProjectData(id); const { p, r, exps, cats, pdocs, dTypes } = d;
-  const [tab, setTab] = useState<Tab>("overview"); const [edit, setEdit] = useState(false); const [ed, setEd] = useState({ name: "", location: "", description: "" });
+  // The projects list is remembered between visits; drop it if what it shows for this project (people, expenses) changed while you were here.
+  const seen = useRef<{ spent: number; people: number } | null>(null); const latest = useRef({ spent: 0, people: 0 });
+  latest.current = { spent: d.cost.spent, people: d.r.live.length };
+  useEffect(() => { if (!d.loading && !seen.current) seen.current = { ...latest.current }; });
+  useEffect(() => () => { const s = seen.current, l = latest.current; if (s && (s.spent !== l.spent || s.people !== l.people)) swrDrop("projects"); }, []);
+  const [tab, setTab] = useState<Tab>("overview"); const [edit, setEdit] = useState(false); const [ed, setEd] = useState({ name: "", location: "", description: "", client_id: "", state_code: "" }); const [clients, setClients] = useState<Client[]>([]);
+  useEffect(() => { supabase().from("clients").select("*").eq("active", true).order("name").then(({ data }) => setClients((data || []) as Client[])); }, []);
   const [expOpen, setExpOpen] = useState(0); const [docOpen, setDocOpen] = useState(0); const [msg, setMsg] = useState("");
   if (d.loading) return <p className="text-slate-500">Loading…</p>;
   if (d.err || !p) return <p className="warn">{d.err || "Project not found"}</p>;
 
   async function save() {
     const name = ed.name.trim(); if (!name) { setMsg("Enter a project name."); return; }
-    const { error } = await supabase().from("projects").update({ name, location: ed.location.trim(), description: ed.description.trim() }).eq("id", p!.id);
+    const { error } = await supabase().from("projects").update({ name, location: ed.location.trim(), description: ed.description.trim(), client_id: ed.client_id || null, state_code: ed.state_code || guessState(ed.location) || null }).eq("id", p!.id);
     if (error) { setMsg(/duplicate|unique/i.test(error.message) ? "A project with that name already exists." : error.message); return; }
     if (name !== p!.name) await supabase().from("employees").update({ project: name }).eq("project_id", p!.id);   // keep people's project text in step with a rename
-    setEdit(false); setMsg(""); d.loadProject();
+    swrDrop("projects", "clients", "invoices", "workorders"); setEdit(false); setMsg(""); d.loadProject();
   }
   async function setStatus(status: "active" | "closed") {
     if (status === "closed" && !confirm(`Close “${p!.name}”? It disappears from the employee dropdown (people already on it keep it).`)) return;
@@ -45,11 +54,13 @@ export default function ProjectPage() {
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold">{p.name}</h1>
         <span className={`text-xs rounded-full px-2 py-0.5 ${p.status === "active" ? "bg-green-50 text-green-800" : "bg-slate-100 text-slate-600"}`}>{p.status === "active" ? "Active" : `Closed ${fmtD(p.closed_on)}`}</span>
-        <div className="flex gap-2 sm:ml-auto"><Link className="btn btn-primary" href={`/projects/${id}/report`}>Report</Link><button className="btn" onClick={() => { setEd({ name: p.name, location: p.location, description: p.description }); setEdit(!edit); }}>Edit</button>
+        <div className="flex gap-2 sm:ml-auto"><Link className="btn btn-primary" href={`/projects/${id}/report`}>Report</Link><button className="btn" onClick={() => { setEd({ name: p.name, location: p.location, description: p.description, client_id: p.client_id ?? "", state_code: p.state_code ?? "" }); setEdit(!edit); }}>Edit</button>
           {p.status === "active" ? <button className="btn" onClick={() => setStatus("closed")}>Close project</button> : <button className="btn" onClick={() => setStatus("active")}>Reopen</button>}</div>
       </div>
       {edit ? (
         <div className="card space-y-3"><div className="grid gap-3 sm:grid-cols-2"><div><label className="lbl">Project name</label><input className="inp" value={ed.name} onChange={(e) => setEd({ ...ed, name: e.target.value })} /></div><div><label className="lbl">Location</label><input className="inp" value={ed.location} onChange={(e) => setEd({ ...ed, location: e.target.value })} /></div>
+          <div><label className="lbl">Client</label><select className="inp" value={ed.client_id} onChange={(e) => setEd({ ...ed, client_id: e.target.value })}><option value="">Not linked yet</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+          <div><label className="lbl">State of the site <span className="font-normal text-slate-400">(decides CGST + SGST or IGST on invoices)</span></label><select className="inp" value={ed.state_code || guessState(ed.location)} onChange={(e) => setEd({ ...ed, state_code: e.target.value })}><option value="">Choose…</option>{STATE_OPTIONS.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></div>
           <div className="sm:col-span-2"><label className="lbl">Description</label><textarea className="inp" rows={2} value={ed.description} onChange={(e) => setEd({ ...ed, description: e.target.value })} /></div></div>
           <p className="text-xs text-slate-400">Renaming updates the project name on its employees. Changing the location does not change employees already assigned.</p>
           <div className="flex items-center gap-2"><button className="btn btn-primary" onClick={save}>Save</button><button className="btn" onClick={() => { setEdit(false); setMsg(""); }}>Cancel</button>{msg && <span className="text-sm text-red-700">{msg}</span>}</div></div>
@@ -64,6 +75,7 @@ export default function ProjectPage() {
           {card("Documents", d.docErr ? "—" : String(pdocs.length), "letters, JSAs, POs…", () => setTab("documents"))}
           {card("First joining", r.first ? fmtD(r.first) : "—", r.last && r.last !== r.first ? `latest ${fmtD(r.last)}` : undefined, () => setTab("people"))}
         </div>
+        <ProjectCommercial projectId={id} clientId={p.client_id ?? null} stateCode={p.state_code ?? null} />
         <SalaryCost projectId={id} people={r.live} />
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="card space-y-2">

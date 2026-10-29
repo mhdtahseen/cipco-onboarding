@@ -1,5 +1,5 @@
 "use client";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
@@ -11,6 +11,7 @@ import DocsTab from "@/components/DocsTab";
 import MailTab from "@/components/MailTab";
 import PipelineBar from "@/components/PipelineBar";
 import CandidatePanel from "@/components/CandidatePanel";
+import { swrDrop } from "@/lib/swr";
 import { ActivityTab, PayTab } from "@/components/EmployeeWorkTabs";
 import { Icon } from "@/components/NavIcons";
 import { LIST_QS_KEY } from "@/components/employees/EmployeeList";
@@ -33,16 +34,22 @@ function Skeleton() { return <div className="space-y-4"><div className="skeleton
 function EmployeeScreen() {
   const { id } = useParams<{ id: string }>(); const isNew = id === "new"; const back = useBackHref();
   const router = useRouter(); const path = usePathname(); const sp = useSearchParams();
-  const [emp, setEmp] = useState<Employee | null>(null); const [docsKey, setDocsKey] = useState(0); const [panel, setPanel] = useState(false); const [err, setErr] = useState(""); const [missing, setMissing] = useState(false);
+  const [emp, setEmp0] = useState<Employee | null>(null); const [docsKey, setDocsKey] = useState(0); const [panel, setPanel] = useState(false); const [err, setErr] = useState(""); const [missing, setMissing] = useState(false);
   const [counts, setCounts] = useState<{ docs: number; letters: number }>({ docs: 0, letters: 0 });
+  // The employee list is remembered between visits. It is only thrown away if something it shows (a name, stage, project, document count) was changed here.
+  const touched = useRef(false); const firstDocs = useRef<number | null>(null);
+  const setEmp = useCallback((e: Employee) => { touched.current = true; setEmp0(e); }, []);
+  useEffect(() => () => { if (touched.current) swrDrop("employees"); }, []);
   useEffect(() => { if (isNew) return; (async () => {
     const { data, error } = await supabase().from("employees").select("*").eq("id", id).maybeSingle();
-    if (error) setErr(error.message); else if (!data) setMissing(true); else setEmp(data as Employee);
+    if (error) setErr(error.message); else if (!data) setMissing(true); else setEmp0(data as Employee);
   })(); }, [id, isNew]);
   const loadCounts = useCallback(async () => {
     if (isNew) return; const sb = supabase();
     const [d, l] = await Promise.all([sb.from("employee_documents").select("status").eq("employee_id", id).neq("doc_type", "resume"), sb.from("letters").select("id", { count: "exact", head: true }).eq("employee_id", id)]);
-    setCounts({ docs: (d.data || []).filter((x: any) => x.status === "verified" || x.status === "received").length, letters: l.count ?? 0 });
+    const docsN = (d.data || []).filter((x: any) => x.status === "verified" || x.status === "received").length;
+    if (firstDocs.current === null) firstDocs.current = docsN; else if (docsN !== firstDocs.current) touched.current = true;   // the list shows this count
+    setCounts({ docs: docsN, letters: l.count ?? 0 });
   }, [id, isNew]);
   useEffect(() => { loadCounts(); }, [loadCounts, docsKey]);
 

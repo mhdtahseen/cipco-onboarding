@@ -15,7 +15,14 @@ create table if not exists public.form_invites (
 create index if not exists form_invites_employee_idx on public.form_invites (employee_id);
 alter table public.form_invites enable row level security;
 drop policy if exists "auth all" on public.form_invites;
-create policy "auth all" on public.form_invites for all to authenticated using (true) with check (true);
+do $$ begin
+  if to_regproc('public.is_staff') is not null then   -- the roles migration has run: staff only. Re-running this file must NOT reopen the table to everyone.
+    drop policy if exists "staff all" on public.form_invites;
+    create policy "staff all" on public.form_invites for all to authenticated using (public.is_staff()) with check (public.is_staff());
+  else   -- before the roles migration everyone signed in has access
+    create policy "auth all" on public.form_invites for all to authenticated using (true) with check (true);
+  end if;
+end $$;
 
 -- What the candidate sees: details staff already entered (pre-filled) and anything they already submitted.
 -- Sensitive identifiers (Aadhaar, PAN, account no., IFSC, UAN, previous PF no.) are NEVER sent back — only a list of which

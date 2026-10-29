@@ -1,7 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { REMEMBER_COOKIE, withLifetime } from "@/lib/supabase/session";
 import { NextResponse, type NextRequest } from "next/server";
-import { canAccess, homeFor } from "@/lib/nav";
+import { canAccess, homeFor, roleFromClaims } from "@/lib/nav";
+
+// Roles change rarely, but every request needs one. Remembering it for a minute in this server's memory saves a database round trip per request
+// (nothing is stored in the browser, so it cannot be tampered with). The database still enforces every read and write against the real role at once;
+// this only affects which pages a person is sent to, so a role change reaches the page guard within a minute.
+const ROLE_TTL_MS = 60_000; const roleCache = new Map<string, { role: string; at: number }>();
 
 // Keeps the Supabase session fresh and sends logged-out visitors to /login.
 export async function middleware(req: NextRequest) {
@@ -17,17 +22,27 @@ export async function middleware(req: NextRequest) {
       },
     },
   });
-  const { data } = await sb.auth.getUser();
+  // getClaims checks the signed login token on this server against the project's public key (cached after the first call), so there is no round trip to
+  // Supabase on every request. It still refreshes an expired session. (getUser() asked Supabase "who is this?" on every single page and API call.)
+  const { data: claims } = await sb.auth.getClaims(); const uid = (claims?.claims?.sub as string | undefined) || null;
   const isLogin = req.nextUrl.pathname.startsWith("/login");
   const isPublic = req.nextUrl.pathname.startsWith("/apply") || req.nextUrl.pathname.startsWith("/api/apply"); // candidate self-fill links
   if (isPublic) return res;
-  if (!data.user && !isLogin) return NextResponse.redirect(new URL("/login", req.url));
-  if (!data.user) return res;
+  if (!uid && !isLogin) return NextResponse.redirect(new URL("/login", req.url));
+  if (!uid) return res;
 
   // Roles: admin / staff / supervisor / none. If the roles table does not exist yet (migration not run) treat everyone as admin.
   const path = req.nextUrl.pathname; const isApi = path.startsWith("/api/");
-  const { data: rr, error } = await sb.from("user_roles").select("role").eq("user_id", data.user.id).maybeSingle();
-  const role: string = error ? "admin" : rr?.role ?? "none";
+  // Best source first: the role inside the verified login token (the database hook puts it there; see 2026-10-role-in-login-token.sql): no lookup at all.
+  // Without it (hook not switched on, or a token from before it was) fall back to the remembered or looked-up role.
+  let role: string; const claimRole = roleFromClaims(claims?.claims); const hit = roleCache.get(uid);
+  if (claimRole) role = claimRole;
+  else if (hit && Date.now() - hit.at < ROLE_TTL_MS) role = hit.role;
+  else {
+    const { data: rr, error } = await sb.from("user_roles").select("role").eq("user_id", uid).maybeSingle();
+    role = error ? "admin" : rr?.role ?? "none";
+    if (!error) { if (roleCache.size > 500) roleCache.clear(); roleCache.set(uid, { role, at: Date.now() }); }   // never remember a failed lookup
+  }
   const home = homeFor(role);
   if (isLogin) return NextResponse.redirect(new URL(home, req.url));
   if (!canAccess(role, path)) return isApi ? NextResponse.json({ error: "Not allowed" }, { status: 403 }) : NextResponse.redirect(new URL(home, req.url));

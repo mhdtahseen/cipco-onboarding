@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { swrDrop } from "@/lib/swr";
 import Link from "next/link";
 import { stageLabel } from "@/lib/pipeline";
 import { useRouter } from "next/navigation";
@@ -108,7 +109,7 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
     }
     setBusy(false);
     if (res.error) { setMsg(/duplicate key|unique/i.test(res.error.message) ? "A record with the same phone, email, Aadhaar or PAN already exists." : res.error.message); return; }
-    setMsg("Saved ✓"); onSaved?.(res.data);
+    swrDrop("employees"); setMsg("Saved ✓"); onSaved?.(res.data);
     if (!v.id) router.push(`/employees/${res.data.id}`);
   }
   // Sensitive numbers show masked until someone asks to see them (stops shoulder-surfing; they stay fully editable once shown)

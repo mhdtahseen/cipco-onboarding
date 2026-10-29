@@ -4,6 +4,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { ROLE_LABEL, useRole } from "@/lib/roles";
+import { loadMe, peekMe, resetMe } from "@/lib/me";
+import { swrClear } from "@/lib/swr";
 import { NAV_SECTIONS, itemFor, visibleItems, type NavItem } from "@/lib/nav";
 import { Icon } from "./NavIcons";
 
@@ -62,7 +64,7 @@ function Account({ email, name, role }: { email: string; name: string; role: str
     return () => { document.removeEventListener("mousedown", down); document.removeEventListener("keydown", key); };
   }, [open]);
   const who = role ? ROLE_LABEL[role] : "";
-  async function signOut() { await supabase().auth.signOut(); router.push("/login"); router.refresh(); }
+  async function signOut() { await supabase().auth.signOut(); resetMe(); swrClear(); router.push("/login"); router.refresh(); }
   return (
     <div ref={ref} className="relative">
       <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label="Account menu" onClick={() => setOpen(!open)} className="flex items-center gap-2 rounded-full p-1 md:pr-2 hover:bg-slate-100 touch-manipulation min-h-11">
@@ -79,14 +81,14 @@ function Account({ email, name, role }: { email: string; name: string; role: str
 }
 
 function Shell({ path, children }: { path: string; children: React.ReactNode }) {
-  const router = useRouter(); const { role } = useRole(); const [email, setEmail] = useState(""); const [name, setName] = useState(""); const [collapsed, setCollapsed] = useState(false); const [drawer, setDrawer] = useState(false); const [hint, setHint] = useState<"min" | "full">("full");
+  const router = useRouter(); const { role } = useRole(); const [email, setEmail] = useState(peekMe()?.email ?? ""); const [name, setName] = useState(peekMe()?.name ?? ""); const [collapsed, setCollapsed] = useState(false); const [drawer, setDrawer] = useState(false); const [hint, setHint] = useState<"min" | "full">("full");
   const closeRef = useRef<HTMLButtonElement>(null);
   const items = visibleItems(role);
   const minimal = role ? items.length <= 1 : hint === "min";   // a single-purpose login gets no sidebar or bottom bar
   const item = itemFor(path); const title = path === "/no-access" ? "No access" : item?.label ?? "CIPCO Operations";
 
   // the name comes from the Users page; the email shows until one is set
-  useEffect(() => { (async () => { const sb = supabase(); const { data } = await sb.auth.getUser(); setEmail(data.user?.email || ""); if (data.user) { const { data: p } = await sb.from("user_profiles").select("full_name").eq("user_id", data.user.id).maybeSingle(); setName(((p?.full_name as string) || "").trim()); } })(); }, []);
+  useEffect(() => { let alive = true; loadMe().then((me) => { if (alive && me) { setEmail(me.email); setName(me.name); } }).catch(() => { /* the shell still works without a name */ }); return () => { alive = false; }; }, []);
   useEffect(() => { try { setCollapsed(localStorage.getItem("cipco_nav_collapsed") === "1"); if (localStorage.getItem("cipco_nav_min") === "1") setHint("min"); } catch { /* storage unavailable */ } }, []);
   useEffect(() => { if (role) try { localStorage.setItem("cipco_nav_min", items.length <= 1 ? "1" : "0"); } catch { /* ignore */ } }, [role, items.length]);
   useEffect(() => { setDrawer(false); }, [path]);
@@ -98,7 +100,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
     return () => { document.removeEventListener("keydown", key); mq.removeEventListener("change", wide); document.body.style.overflow = ""; };
   }, [drawer]);
 
-  async function signOut() { await supabase().auth.signOut(); router.push("/login"); router.refresh(); }
+  async function signOut() { await supabase().auth.signOut(); resetMe(); swrClear(); router.push("/login"); router.refresh(); }
   const toggleSide = () => { if (window.matchMedia("(min-width: 1280px)").matches) { const v = !collapsed; setCollapsed(v); try { localStorage.setItem("cipco_nav_collapsed", v ? "1" : "0"); } catch { /* ignore */ } } else setDrawer(true); };
   const barItems = items.filter((i) => i.bar).slice(0, 4);
   const crumb = item ? <><span className="text-slate-400 hidden md:inline">{item.section}</span><span className="text-slate-300 hidden md:inline"> › </span><span className="font-semibold text-slate-800">{item.label}</span></> : <span className="font-semibold text-slate-800">{title}</span>;

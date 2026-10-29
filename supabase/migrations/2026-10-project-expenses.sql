@@ -30,7 +30,12 @@ alter table public.project_expenses enable row level security;
 do $$ declare t text; begin
   foreach t in array array['expense_categories','project_expenses'] loop
     execute format('drop policy if exists "auth all" on public.%I', t);
-    execute format('create policy "auth all" on public.%I for all to authenticated using (true) with check (true)', t);
+    if to_regproc('public.is_staff') is not null then   -- the roles migration has run: staff only. Re-running this file must NOT reopen the table to everyone.
+      execute format('drop policy if exists "staff all" on public.%I', t);
+      execute format('create policy "staff all" on public.%I for all to authenticated using (public.is_staff()) with check (public.is_staff())', t);
+    else   -- before the roles migration everyone signed in has access
+      execute format('create policy "auth all" on public.%I for all to authenticated using (true) with check (true)', t);
+    end if;
   end loop;
 end $$;
 

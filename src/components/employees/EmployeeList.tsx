@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { swrDrop, swrGet, swrSet } from "@/lib/swr";
 import { supabase } from "@/lib/supabase/client";
 import type { Project } from "@/lib/types";
 import { STAGES, stageIndex, stageLabel } from "@/lib/pipeline";
@@ -25,18 +26,20 @@ export default function EmployeeList() {
   }, [sp, router, path]);
   useEffect(() => { try { sessionStorage.setItem(LIST_QS_KEY, sp.toString()); } catch { /* storage unavailable */ } }, [sp]);
 
-  const [rows, setRows] = useState<ListRow[]>([]); const [docs, setDocs] = useState<Record<string, number>>({}); const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true); const [err, setErr] = useState(""); const [sel, setSel] = useState<string[]>([]); const [q, setQ] = useState(qParam); const [filters, setFilters] = useState(false);
+  const snap = swrGet<{ rows: ListRow[]; docs: Record<string, number>; projects: Project[] }>("employees");   // last result, shown at once while a fresh one loads
+  const [rows, setRows] = useState<ListRow[]>(snap?.rows ?? []); const [docs, setDocs] = useState<Record<string, number>>(snap?.docs ?? {}); const [projects, setProjects] = useState<Project[]>(snap?.projects ?? []);
+  const [loading, setLoading] = useState(!snap); const [err, setErr] = useState(""); const [sel, setSel] = useState<string[]>([]); const [q, setQ] = useState(qParam); const [filters, setFilters] = useState(false);
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState("");
 
   const load = useCallback(async () => {
-    setLoading(true); setErr(""); const sb = supabase();
-    sb.from("projects").select("*").order("name").then(({ data }) => setProjects((data || []) as Project[]));   // empty until the projects migration has been run
-    const { data, error } = await sb.from("employees").select(LIST_COLUMNS).order("created_at", { ascending: false });
-    if (error) { setErr(error.message); setLoading(false); return; }
-    setRows((data || []) as unknown as ListRow[]);
-    const { data: d } = await sb.from("employee_documents").select("employee_id,status").neq("doc_type", "resume");
-    const c: Record<string, number> = {}; (d || []).forEach((x: any) => { if (x.status === "verified" || x.status === "received") c[x.employee_id] = (c[x.employee_id] || 0) + 1; }); setDocs(c); setLoading(false);
+    if (!swrGet("employees")) setLoading(true); setErr(""); const sb = supabase();   // with something already on screen there is nothing to wait for
+    // the three requests do not depend on each other, so they go together (they used to run one after the other)
+    const [pr, em, dc] = await Promise.all([sb.from("projects").select("*").order("name"), sb.from("employees").select(LIST_COLUMNS).order("created_at", { ascending: false }), sb.from("employee_documents").select("employee_id,status").neq("doc_type", "resume")]);
+    if (em.error) { setErr(em.error.message); setLoading(false); return; }
+    const rw = (em.data || []) as unknown as ListRow[]; const pj = (pr.data || []) as Project[];   // projects are empty until the projects migration has been run
+    const c: Record<string, number> = {}; (dc.data || []).forEach((x: any) => { if (x.status === "verified" || x.status === "received") c[x.employee_id] = (c[x.employee_id] || 0) + 1; });
+    setRows(rw); setProjects(pj); setDocs(c); setLoading(false);
+    swrSet("employees", { rows: rw, docs: c, projects: pj });
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -63,7 +66,7 @@ export default function EmployeeList() {
     setBusy(true); setMsg("");
     const { error } = await supabase().from("employees").update({ ...patch, updated_at: new Date().toISOString() }).in("id", live);
     setBusy(false); if (error) { setMsg(error.message); return; }
-    setRows((rs) => rs.map((r) => (live.includes(r.id) ? { ...r, ...patch, updated_at: new Date().toISOString() } : r))); setMsg(`${done} for ${live.length} ${live.length === 1 ? "person" : "people"} ✓`); setSel([]); setTimeout(() => setMsg(""), 3000);
+    setRows((rs) => rs.map((r) => (live.includes(r.id) ? { ...r, ...patch, updated_at: new Date().toISOString() } : r))); swrDrop("employees"); setMsg(`${done} for ${live.length} ${live.length === 1 ? "person" : "people"} ✓`); setSel([]); setTimeout(() => setMsg(""), 3000);
   }
   const moveStage = (k: string) => k && bulk({ stage: k }, `Moved to ${stageLabel(k)}`, `Move ${live.length} ${live.length === 1 ? "person" : "people"} to ${stageLabel(k)}?${k === "onboarded" ? " They will appear in the Onboarded list." : ""}`);
   const assignProject = (id: string) => { const p = projects.find((x) => x.id === id); if (p) bulk({ project: p.name, project_id: p.id, ...(p.location ? { site_location: p.location } : {}) }, `Assigned to ${p.name}`, `Assign ${live.length} ${live.length === 1 ? "person" : "people"} to ${p.name}? Their work location changes to the project's.`); };

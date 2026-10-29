@@ -8,6 +8,7 @@ export type Quote = {
   items: QItem[]; show_total: boolean; show_gst: boolean; notes: string[]; terms: QTerm[];
   include_scope: boolean; scope: string[]; client_supply: string[]; our_supply: string[]; signatory: string;
   created_at?: string; updated_at?: string;
+  client_id?: string | null; project_id?: string | null;   // links to the client list and the project (optional)
 };
 export type LibKind = "scope" | "client_supply" | "our_supply" | "note" | "payment_terms";
 export type QLib = { id: string; kind: LibKind; tag: string | null; body: string; default_on: boolean; sort_order: number; active: boolean };

@@ -44,7 +44,7 @@ export const DOC_TYPES: { key: string; label: string }[] = [
 
 export type AnnexureSnapshot = { rows: AnnexureRow[]; notes: string[]; name: string; designation: string; department: string };
 
-export type Project = { id: string; name: string; location: string; description: string; status: "active" | "closed"; closed_on: string | null; created_at: string };
+export type Project = { id: string; name: string; location: string; description: string; status: "active" | "closed"; closed_on: string | null; created_at: string; client_id?: string | null; state_code?: string | null };
 export type Department = { id: string; name: string; active: boolean };
 export type ExpenseCategory = { id: string; name: string; active: boolean; sort_order: number };
 export type ProjectExpense = { id: string; project_id: string; category_id: string; expense_date: string; amount: number; description: string; employee_id: string | null; bill_path: string | null; created_at: string; source?: string | null };

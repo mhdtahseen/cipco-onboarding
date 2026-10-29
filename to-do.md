@@ -108,6 +108,30 @@ Roles are now Admin, Site Engineer (sees attendance only) and Supervisor. Every 
   - confirm with your CA first: ₹42,000 is above the usual ESI ceiling of ₹21,000, and ESI coverage runs by contribution period (April to September, October to March).
 - [ ] Refinements listed in docs/PAYROLL_PLAN.md section 13 (two-project employees, back-dated revisions, holidays, final settlement, bank file templates)
 
+## Invoicing (built 2026-10-29; Admin only)
+Scope agreed: running-account (RA) bills against a client's work order, all sites in Maharashtra (CGST + SGST), invoices + PDF + receipts + outstanding, no e-invoicing.
+- [x] Migration `supabase/migrations/2026-10-invoicing.sql` (run AFTER the roles, projects and quotations migrations): clients, work orders + bill of quantities, invoices, items, receipts; number issued by `issue_invoice` (FY series like `CIPCO/26-27/001`, no gaps); an issued invoice is frozen (cancel with a reason only); receipts are voided, never edited
+- [x] Screens: Clients, Work orders (terms + items + bills), Invoices (register, outstanding by client with ageing, CSV for the CA), invoice page (draft editing, issue, receipts with TDS, cancel), PDF
+- [x] Money maths in `src/lib/invoice.ts`: GST on the full value, retention only reduces what is payable now, round-off to the rupee, IGST if the place of supply is another state (not exposed yet)
+- [ ] **Run the migrations in Supabase, in this order:** `2026-10-invoicing.sql`, then `2026-10-client-project-quotation-links.sql`. Then add a client, link it to a project, and raise a test bill
+- [x] Linked chain (built 2026-10-29): Client → Projects → Quotations → Work order (PO / WO) → Invoices. Pick the client and project on a quotation; "Create work order from this quotation" on an issued one prefills the order (client, project, title, items); the quotation then shows "Won". The project overview has a Commercial panel; each client shows its projects and counts. Clients are now visible to staff (they write quotations); work orders and invoices stay Admin only
+- [ ] **Link the existing data** (two ready scripts in `supabase/seed/`, run after both migrations): `2026-10-man-industries-client.sql` adds Man Industries (India) Ltd, links the MAN Industries project and quotations 0104 and 0105 to it; `2026-10-chromeni-po-1909000093.sql` adds Chromeni Steels Limited, links the CSL project and enters PO 1909000093 as a work order. Then add the MAN client's GSTIN on the Clients page (it is not on the quotations)
+- [ ] **Place of supply (important):** both current projects are in Gujarat (Mundra, Anjar). For work on a site the place of supply is the site's state, so bills to those sites charge **IGST**, not CGST + SGST. Each project now has a "State of the site"; a bill cannot be started for a project that has none. The migration pre-fills Gujarat (24) and Maharashtra (27) from the location text; check it. Confirm with your CA whether you need a GST registration in Gujarat
+- [ ] Fill in the bank details in `src/lib/company.ts` (`BANK`); the PDF leaves the bank block off until the account number is set
+- [ ] Confirm with your CA: SAC code and GST rate per work order, how retention and advances are treated, and the invoice wording
+- [ ] Not built yet: credit and debit notes, converting a quotation into a work order, other states (IGST screen), e-invoicing (IRN / QR) if turnover crosses ₹5 crore, GST-TDS for government clients
+
+## Speed and access tidy-ups (2026-10-29)
+- [x] Fewer round trips: the middleware verifies logins locally (no Supabase call per request); the browser fetches "who am I / role / name" once per tab (`src/lib/me.ts`)
+- [x] Lists (employees, projects, clients, quotations, work orders, invoices) are remembered per tab and refreshed in the background (`src/lib/swr.ts`); anything that changes data marks the affected lists stale; memory only, emptied on sign-out or a different user
+- [ ] **Run `2026-10-performance-and-access-tidyups.sql`.** It closes a real hole: `project_expenses` and `expense_categories` were open to every signed-in user (a Supervisor or Site Engineer could read and change expenses by calling the API). It also splits overlapping policies, wraps `auth.uid()` in `(select …)`, and adds the 29 foreign-key indexes. Afterwards sign in as the Supervisor and the Site Engineer once to check Attendance still works, and as Admin to check Users and Projects
+- [ ] **Role in the login token:** run `2026-10-role-in-login-token.sql`, then in the dashboard: Authentication → Hooks → Customize Access Token (JWT) Claims → `public.custom_access_token_hook` → Save. Nothing changes until that second step; people pick the claim up at their next token renewal (within an hour) or sign-in. A role change then reaches the page guard within that time; the database always checks the live role
+- [x] Tidy-up migration run and re-checked 2026-10-29: open expense policies gone, all performance warnings cleared
+- [ ] **Run `2026-10-function-permissions.sql`** (written; previewed read-only against the live database): signed-out users can run only the three candidate-link functions; trigger functions and `sync_payroll_expense` can be run by nobody directly (triggers still fire); `next_ref` refuses non-staff. Afterwards re-run the Security advisor, issue a test quotation and a letter once, and open a candidate self-fill link while signed out. Future public functions must be granted to `anon` on purpose
+- [ ] Turn on leaked-password protection (dashboard → Authentication; may need a paid plan)
+- [ ] Check the Supabase project's region and where the app is hosted: about 0.2 s per call suggests they are far from you. Ideal: both in Mumbai
+- Old migrations no longer reopen tables when re-run (they create "staff all" once the roles migration exists). The 10 "unused index" notices are left alone on purpose
+
 ## Platform roadmap — payroll, invoices, inventory (agreed 2026-10-27)
 
 The app is growing from onboarding into an operations platform. Do these in order; each step makes the next one cheaper.
@@ -132,7 +156,7 @@ The app is growing from onboarding into an operations platform. Do these in orde
 
 ### Step 4 — The new modules
 - [ ] **Payroll** (People): monthly salary run from attendance days + salary structure + daily-wage rates; payslips; advances and deductions; lock and approve a month; change history
-- [ ] **Invoices** (Sales): convert an accepted quotation into an invoice; GST; numbering series; immutable once issued; payment status and receipts
+- [x] **Invoices** (Sales): built 2026-10-29, see "Invoicing" above. Still open: convert an accepted quotation into a work order, credit notes
 - [ ] **Inventory** (Operations; full plan in the "Inventory tracker" section below): items and units, stock in and out with who / when / project, issue to a project, suppliers, low-stock alerts, stock report
 - [ ] Add each module's entry to `src/lib/nav.ts` (the placeholder comment lists where they go)
 

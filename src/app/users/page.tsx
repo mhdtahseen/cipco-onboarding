@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { ROLE_LABEL, useRole } from "@/lib/roles";
+import { resetMe } from "@/lib/me";
 import type { Project } from "@/lib/types";
 
 type U = { user_id: string; email: string; full_name: string; last_sign_in_at: string | null; role: string | null; project_ids: string[] };
@@ -30,6 +31,7 @@ export default function UsersPage() {
       await sb.from("user_projects").delete().eq("user_id", u.user_id);
       if (SITE_ROLES.includes(e.role) && e.projects.length) { const { error: e2 } = await sb.from("user_projects").insert(e.projects.map((project_id) => ({ user_id: u.user_id, project_id }))); if (e2) { setMsg(e2.message); setBusy(""); return; } }
     }
+    resetMe();   // the shell and role checks cache these per tab; a changed name or role must be re-read
     setBusy(""); setMsg(`Saved ${e.name.trim() || u.email} ✓`); load();
   }
   if (!admin) return <p className="text-slate-500">Only admins can manage users.</p>;

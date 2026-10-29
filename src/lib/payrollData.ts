@@ -25,7 +25,7 @@ export function usePayroll(pid: string, ym: string) {
       sb.from("employee_advances").select("*").eq("project_id", pid).order("given_on", { ascending: false }),
       sb.from("payroll_adjustments").select("*").eq("project_id", pid).eq("pay_month", monthStart(ym)).is("voided_at", null),
       sb.from("statutory_payments").select("*").eq("project_id", pid).order("paid_on", { ascending: false }),
-      sb.from("advance_recoveries").select("*"),
+      sb.from("advance_recoveries").select("advance_id,amount,employee_advances!inner(project_id)").eq("employee_advances.project_id", pid),   // this project only (it used to fetch every recovery ever made)
     ]);
     const bad = emp.error || runQ.error || advQ.error || adjQ.error || statQ.error || recQ.error; if (bad) { setErr(bad.message + " — has the accountability SQL migration been run?"); setLoading(false); return; }
     let emps = (emp.data || []) as PayEmp[];
