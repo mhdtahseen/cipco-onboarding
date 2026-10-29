@@ -21,21 +21,33 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 function NavList({ items, path, showLabels, collapsed, onNavigate }: { items: NavItem[]; path: string; showLabels: "always" | "wide"; collapsed?: boolean; onNavigate?: () => void }) {
-  const current = itemFor(path)?.href;
+  // Every section is a group you can fold: the one holding the current page is always open, the others remember what you opened.
+  // In the icon rail nothing folds, so every icon stays reachable.
+  const current = itemFor(path); const [opened, setOpened] = useState<string[]>([]);
+  useEffect(() => { try { setOpened(JSON.parse(localStorage.getItem("cipco_nav_groups") || "[]")); } catch { /* storage unavailable */ } }, []);
+  const toggle = (s: string, open: boolean) => { const next = open ? opened.filter((x) => x !== s) : [...opened, s]; setOpened(next); try { localStorage.setItem("cipco_nav_groups", JSON.stringify(next)); } catch { /* ignore */ } };
   const label = showLabels === "always" ? "" : collapsed ? "hidden" : "hidden xl:inline";
-  const sections = NAV_SECTIONS.filter((s) => items.some((i) => i.section === s));
+  const row = (i: NavItem) => { const on = current?.href === i.href; return (
+    <Link key={i.href} href={i.href} onClick={onNavigate} title={i.label} aria-current={on ? "page" : undefined}
+      className={`flex items-center gap-3 rounded-lg px-3 min-h-11 text-sm ${showLabels === "wide" ? (collapsed ? "justify-center" : "justify-center xl:justify-start") : ""} ${on ? "bg-blue-50 text-blue-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}`}>
+      <Icon name={i.icon} /><span className={label}>{i.label}</span>
+    </Link>); };
+  const divider = <div className={`mx-3 my-2 border-t border-slate-100 ${showLabels === "always" ? "" : collapsed ? "" : "xl:hidden"}`} />;
+  const groups = NAV_SECTIONS.map((s) => ({ s, list: items.filter((i) => i.section === s) })).filter((g) => g.list.length);
   return (
     <nav aria-label="Main" className="space-y-0.5">
-      {sections.map((s, n) => (
-        <div key={s}>
-          {n > 0 && showLabels === "wide" && <div className={`mx-3 my-2 border-t border-slate-100 ${collapsed ? "" : "xl:hidden"}`} />}
-          <div className={`px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 ${n === 0 ? "!pt-1" : ""} ${showLabels === "always" ? "" : collapsed ? "hidden" : "hidden xl:block"}`}>{s}</div>
-          {items.filter((i) => i.section === s).map((i) => { const on = current === i.href; return (
-            <Link key={i.href} href={i.href} onClick={onNavigate} title={i.label} aria-current={on ? "page" : undefined}
-              className={`flex items-center gap-3 rounded-lg px-3 min-h-11 text-sm ${showLabels === "wide" ? (collapsed ? "justify-center" : "justify-center xl:justify-start") : ""} ${on ? "bg-blue-50 text-blue-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}`}>
-              <Icon name={i.icon} /><span className={label}>{i.label}</span>
-            </Link>); })}
-        </div>))}
+      {groups.map(({ s, list }, n) => {
+        const open = opened.includes(s) || current?.section === s; const folded = showLabels === "always" ? !open : !open && !collapsed;
+        return (
+          <div key={s}>
+            {n > 0 && showLabels === "wide" && divider}
+            <button type="button" onClick={() => toggle(s, open)} aria-expanded={open} disabled={current?.section === s}
+              className={`w-full items-center justify-between rounded-lg px-3 min-h-9 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600 disabled:hover:text-slate-400 ${showLabels === "always" ? "flex" : collapsed ? "hidden" : "hidden xl:flex"}`}>
+              {s}<Icon name="chevron-down" className={`h-4 w-4 transition-transform ${open ? "" : "-rotate-90"}`} />
+            </button>
+            <div className={`space-y-0.5 ${folded ? (showLabels === "always" ? "hidden" : "xl:hidden") : ""}`}>{list.map(row)}</div>
+          </div>);
+      })}
     </nav>
   );
 }

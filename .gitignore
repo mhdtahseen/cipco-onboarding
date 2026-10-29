@@ -1,5 +1,6 @@
 node_modules
 .next
 .env.local
+.mcp.json
 next-env.d.ts
 out

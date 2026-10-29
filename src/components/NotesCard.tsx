@@ -9,7 +9,7 @@ const BOXES = [
   { key: "notes", label: "General notes", ph: "Anything else worth remembering" },
 ] as const;
 
-export default function NotesCard({ emp, onChange }: { emp: Employee; onChange: (e: Employee) => void }) {
+export default function NotesCard({ emp, onChange, compact }: { emp: Employee; onChange: (e: Employee) => void; compact?: boolean }) {
   const [saved, setSaved] = useState(""); const [err, setErr] = useState("");
   async function save(key: string, value: string) {
     if (value === ((emp as any)[key] ?? "")) return;
@@ -22,10 +22,10 @@ export default function NotesCard({ emp, onChange }: { emp: Employee; onChange: 
   return (
     <details className="card !py-3" open={has}>
       <summary className="cursor-pointer text-sm font-semibold">Notes <span className="font-normal text-slate-400">— call, interview &amp; general</span>{saved && <span className="ml-3 text-xs font-normal text-green-700">{saved}</span>}</summary>
-      <div className="grid gap-3 mt-3 md:grid-cols-3">
+      <div className={`grid gap-3 mt-3 ${compact ? "" : "md:grid-cols-3"}`}>
         {BOXES.map((b) => (
           <div key={b.key}><label className="lbl">{b.label}</label>
-            <textarea className="inp" rows={5} placeholder={b.ph} defaultValue={(emp as any)[b.key] ?? ""} onBlur={(e) => save(b.key, e.target.value)} /></div>))}
+            <textarea className="inp" rows={compact ? 4 : 5} placeholder={b.ph} defaultValue={(emp as any)[b.key] ?? ""} onBlur={(e) => save(b.key, e.target.value)} /></div>))}
       </div>
       {err && <p className="warn">{err}</p>}
     </details>

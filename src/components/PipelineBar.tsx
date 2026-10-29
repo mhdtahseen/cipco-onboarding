@@ -3,6 +3,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { REJECT_REASONS, STAGES, stageIndex, stageLabel } from "@/lib/pipeline";
 import type { Employee } from "@/lib/types";
+import { Icon } from "./NavIcons";
 
 export default function PipelineBar({ emp, onChange }: { emp: Employee; onChange: (e: Employee) => void }) {
   const [open, setOpen] = useState(false); const [reason, setReason] = useState(REJECT_REASONS[0]); const [note, setNote] = useState(""); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
@@ -13,7 +14,13 @@ export default function PipelineBar({ emp, onChange }: { emp: Employee; onChange
     setBusy(false); if (error) { setErr(error.message + " — has the pipeline SQL migration been run?"); return false; }
     onChange(data as Employee); return true;
   }
-  const setStage = (k: string) => !rejected && k !== emp.stage && patch({ stage: k });
+  const next = !rejected ? STAGES[cur + 1] : undefined;
+  // Moving one step forward is the normal case and needs no question; jumping or going back could be a slip of the finger, so ask first.
+  const setStage = (k: string) => {
+    if (rejected || k === emp.stage) return; const d = stageIndex(k) - cur;
+    if (d !== 1 && !confirm(d < 0 ? `Move back from ${stageLabel(emp.stage)} to ${stageLabel(k)}?` : `Skip ahead from ${stageLabel(emp.stage)} to ${stageLabel(k)}? The steps in between will show as done.`)) return;
+    patch({ stage: k });
+  };
   const reject = async () => { if (await patch({ outcome: "rejected", closed_reason: reason, closed_note: note || null, closed_stage: emp.stage, closed_at: new Date().toISOString() })) { setOpen(false); setNote(""); } };
   const reopen = () => patch({ outcome: "active", closed_reason: null, closed_note: null, closed_stage: null, closed_at: null });
 
@@ -34,7 +41,16 @@ export default function PipelineBar({ emp, onChange }: { emp: Employee; onChange
             <span className={`inline-grid place-items-center h-4 w-4 rounded-full text-[10px] ${on ? "bg-white text-[#1e4fa3]" : done ? "bg-[#1e4fa3] text-white" : "bg-slate-200 text-slate-600"}`}>{done ? "✓" : i + 1}</span>{s.label}
           </button>); })}
       </div>
-      {!rejected && <div><button className="btn btn-danger" onClick={() => setOpen(!open)}>Reject / declined…</button></div>}
+      {!rejected && <div className="flex flex-wrap items-center gap-2">
+        {next && <button className="btn btn-primary" disabled={busy} onClick={() => setStage(next.key)}>Move to {next.label}<Icon name="chevron-right" className="h-4 w-4" /></button>}
+        {!next && <span className="text-sm text-emerald-700">✓ Onboarded — all steps done</span>}
+        <details className="relative ml-auto">
+          <summary className="btn list-none [&::-webkit-details-marker]:hidden" aria-label="More actions"><Icon name="more" className="h-4 w-4" /></summary>
+          <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-lg text-sm">
+            <button className="w-full text-left rounded-lg px-3 py-2 text-red-700 hover:bg-red-50" onClick={(e) => { setOpen(true); e.currentTarget.closest("details")?.removeAttribute("open"); }}>Reject / declined…</button>
+          </div>
+        </details>
+      </div>}
       {open && !rejected && (
         <div className="border border-red-200 bg-red-50/50 rounded-lg p-3 space-y-3">
           <p className="text-sm text-slate-600">Moves this candidate to the Rejected pile. Nothing is deleted — letters, documents and details stay saved, and you can reopen them any time.</p>

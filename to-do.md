@@ -133,7 +133,7 @@ The app is growing from onboarding into an operations platform. Do these in orde
 ### Step 4 — The new modules
 - [ ] **Payroll** (People): monthly salary run from attendance days + salary structure + daily-wage rates; payslips; advances and deductions; lock and approve a month; change history
 - [ ] **Invoices** (Sales): convert an accepted quotation into an invoice; GST; numbering series; immutable once issued; payment status and receipts
-- [ ] **Inventory** (Operations): items and units, stock in and out with who / when / project, issue to a project, suppliers, low-stock alerts, stock report
+- [ ] **Inventory** (Operations; full plan in the "Inventory tracker" section below): items and units, stock in and out with who / when / project, issue to a project, suppliers, low-stock alerts, stock report
 - [ ] Add each module's entry to `src/lib/nav.ts` (the placeholder comment lists where they go)
 
 ### Across all modules
@@ -142,6 +142,50 @@ The app is growing from onboarding into an operations platform. Do these in orde
 - [ ] Global search / jump box (⌘K) in the top bar
 - [ ] Breadcrumbs with real names (Projects › MAN Unit 2), module landing pages
 - [ ] Small count badges in the menu (e.g. people still unmarked on Attendance)
+
+## Inventory tracker (planned 2026-10-29; not started, details of the plan are in chat history)
+Tools live in one container and go out to project sites. Track what is at each site, who took it, and whether it came back. Source list: "Complete Inventory List.pdf" (about 300 lines, roughly 40 categories).
+
+**Approach:** a ledger of movements, not an editable stock number. Locations: Container, each project site, Repair, Written off. Stock is worked out from the movements.
+
+**Three kinds of item**
+- Counted tools (spanners, allen keys, drill bits, clamps): quantity only
+- Tagged assets (welding machines, jacks, chain blocks, torque wrenches, harnesses): one ID and QR per unit
+- Consumables (grinding wheels, electrodes, cable by the metre): issued and used up, with a reorder level
+
+**Two ways out of the container:** day-use (due back today, flagged at end of day) and stays-at-site (back at project close or on recall).
+
+### Phase 1 — catalogue and stock
+- [ ] Categories and items (name, size/spec, type, unit, condition, photo); load the PDF as opening stock
+- [ ] Stock page: total, in container, at sites, damaged, lost; low or zero stock highlighted
+- [ ] Clean the PDF on import: "Ceiling" probably means sling, "Plums" probably plumb bobs, "Wrinch" is wrench; merge repeated sizes (open spanner 17/19, taps, box spanners); items with "-" quantity (damaged harnesses, nylon rope); open spanner 8-9 is 0; the 26 mm hammer drill is broken so load it as damaged
+- [ ] Inventory entry in `src/lib/nav.ts` under Operations (this replaces the "Stock" idea in the roadmap)
+
+### Phase 2 — take out and return
+- [ ] Issue slip: project, who took it, who gave it, date and time, day-use or stays-at-site, lines
+- [ ] Size-grid picker with +/- steppers for spanners, drill bits and similar (no long dropdowns); phone first
+- [ ] Return screen: tick items, partial quantities, condition on return (OK / damaged / lost), "Return all"
+
+### Phase 3 — oversight
+- [ ] Today page like the attendance Day view: out, back, overdue; live updates; optional submit and verify
+- [ ] Views by project (becomes an "Equipment on site" tab on the project page, also the closure checklist) and by person
+- [ ] Site-to-site transfer without going back to the container
+- [ ] Overdue and not-returned list; item history
+
+### Phase 4 — polish
+- [ ] QR tags and scanning for tagged assets
+- [ ] Kits (for example a welding set adds machine, holder, earthing clamp and cable in one tap)
+- [ ] Consumable stock and reorder levels
+- [ ] Inspection and calibration dates (harnesses, torque wrenches, gauges, jacks)
+- [ ] Photos at handover; Excel export
+
+### Questions to settle before phase 1 (defaults in brackets)
+- [ ] Who hands items out? [a storekeeper role]
+- [ ] Is the container the only store? [yes]
+- [ ] Should the receiver confirm on their phone? [no, the storekeeper's record is enough]
+- [ ] Track consumables, or tools only? [both]
+- [ ] QR stickers on heavy items? [yes]
+- [ ] A cost per item, for lost-tool reporting or salary deductions? [no]
 
 ## Pending from earlier work — needs running / deciding
 - [ ] Run in Supabase (in this order, each is safe to re-run):

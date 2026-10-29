@@ -12,6 +12,15 @@ body { background: #f6f7fb; color: #1b2233; font-family: ui-sans-serif, system-u
 .warn { font-size: 12px; color: #b54708; margin-top: 3px; }
 .tab { padding: 8px 14px; font-size: 14px; border-bottom: 2px solid transparent; cursor: pointer; color: #4a5470; }
 .tab-on { border-color: #1e4fa3; color: #1e4fa3; font-weight: 600; }
+/* Small controls shared by the employee list and page (instead of per-use !important overrides) */
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; border: 1px solid #cfd5e3; background: #fff; color: #4a5470; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+.chip:hover { background: #f0f3fa; }
+.chip-on { background: #eaf0fb; border-color: #1e4fa3; color: #173f85; }
+.pill { display: inline-block; font-size: 12px; border-radius: 999px; padding: 2px 10px; background: #eaf0fb; color: #173f85; white-space: nowrap; }
+.skeleton { background: linear-gradient(90deg, #eef0f6 25%, #f6f7fb 50%, #eef0f6 75%); background-size: 200% 100%; animation: sk 1.2s ease-in-out infinite; border-radius: 6px; }
+@keyframes sk { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
 .btn:focus-visible, .tab:focus-visible, a:focus-visible { outline: 2px solid #1e4fa3; outline-offset: 2px; }
 .inp:disabled { background: #f3f4f8; color: #7a8299; }
