@@ -5,8 +5,9 @@ import { ROLE_LABEL, useRole } from "@/lib/roles";
 import { resetMe } from "@/lib/me";
 import type { Project } from "@/lib/types";
 
-type U = { user_id: string; email: string; full_name: string; last_sign_in_at: string | null; role: string | null; project_ids: string[] };
+type U = { user_id: string; email: string; full_name: string; last_sign_in_at: string | null; role: string | null; project_ids: string[]; push_devices?: number; push_last_at?: string | null };
 const fmt = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "never");
+const NEEDS_ALERTS = ["supervisor", "site_engineer", "staff", "attendance"];   // these roles must have reminders on (see NotificationGate)
 const SITE_ROLES = ["supervisor", "site_engineer"];   // these are tied to particular sites
 const norm = (r: string | null) => (r === "attendance" ? "supervisor" : r ?? "none");
 
@@ -34,6 +35,15 @@ export default function UsersPage() {
     resetMe();   // the shell and role checks cache these per tab; a changed name or role must be re-read
     setBusy(""); setMsg(`Saved ${e.name.trim() || u.email} ✓`); load();
   }
+  async function signOutUser(u: U) {
+    if (!confirm(`Sign ${u.full_name || u.email} out now? They will have to sign in again (and will be asked to turn on reminders).`)) return;
+    setBusy(u.user_id); setMsg(""); setErr(""); const { error } = await supabase().rpc("admin_sign_out_user", { p_user: u.user_id }); setBusy("");
+    if (error) { setErr(error.message + " — has 2026-10-notification-enforcement.sql been run?"); return; } setMsg(`${u.full_name || u.email} will be signed out at their next tap ✓`);
+  }
+  // reminders on a phone: shown only where the role is required to have them; "unknown" until the migration adds the count
+  const alertBadge = (u: U) => { if (!NEEDS_ALERTS.includes(norm(u.role)) || u.push_devices === undefined) return null; const n = u.push_devices;
+    return n > 0 ? <span className="text-xs bg-emerald-50 text-emerald-700 rounded-full px-2 py-0.5" title={u.push_last_at ? `Last phone registered ${fmt(u.push_last_at)}` : ""}>Alerts on · {n} {n === 1 ? "phone" : "phones"}</span>
+      : <span className="text-xs bg-amber-50 text-amber-800 rounded-full px-2 py-0.5" title="No phone has reminders switched on. Use Sign out now, or ask them to open the app.">Alerts off</span>; };
   if (!admin) return <p className="text-slate-500">Only admins can manage users.</p>;
   return (
     <div className="space-y-4">
@@ -48,7 +58,7 @@ export default function UsersPage() {
       {users.map((u) => { const e = edit[u.user_id]; if (!e) return null; const mine = u.user_id === me; const legacy = norm(u.role) === "staff";
         const changed = e.role !== norm(u.role) || e.name.trim() !== (u.full_name || "") || JSON.stringify([...e.projects].sort()) !== JSON.stringify([...(u.project_ids || [])].sort()); return (
         <div key={u.user_id} className="card !p-3 space-y-3">
-          <div className="flex flex-wrap items-center gap-2"><span className="font-medium break-all">{u.email}</span>{mine && <span className="text-xs bg-blue-50 text-blue-800 rounded-full px-2 py-0.5">you</span>}<span className="text-xs text-slate-400 sm:ml-auto">last sign-in {fmt(u.last_sign_in_at)}</span></div>
+          <div className="flex flex-wrap items-center gap-2"><span className="font-medium break-all">{u.email}</span>{mine && <span className="text-xs bg-blue-50 text-blue-800 rounded-full px-2 py-0.5">you</span>}{alertBadge(u)}<span className="text-xs text-slate-400 sm:ml-auto">last sign-in {fmt(u.last_sign_in_at)}</span>{!mine && <button className="btn !py-1 !text-xs" disabled={busy === u.user_id} onClick={() => signOutUser(u)}>Sign out now</button>}</div>
           <div className="grid gap-3 sm:grid-cols-[1fr_14rem_auto] items-end">
             <div><label className="lbl">Name <span className="font-normal text-slate-400">(shown on stamps and in the activity trail)</span></label><input className="inp" value={e.name} placeholder="e.g. Ravi Kumar" onChange={(ev) => setEdit({ ...edit, [u.user_id]: { ...e, name: ev.target.value } })} /></div>
             <div><label className="lbl">Role</label><select className="inp" value={e.role} disabled={mine} title={mine ? "You can't change your own role" : ""} onChange={(ev) => setEdit({ ...edit, [u.user_id]: { ...e, role: ev.target.value } })}>

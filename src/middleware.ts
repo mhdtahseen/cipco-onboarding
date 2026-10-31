@@ -8,12 +8,14 @@ import { canAccess, homeFor, roleFromClaims, signedInAtMs } from "@/lib/nav";
 // this only affects which pages a person is sent to, so a role change reaches the page guard within a minute.
 const ROLE_TTL_MS = 60_000; const roleCache = new Map<string, { role: string; at: number }>();
 // "Sign everyone out" (2026-10-force-relogin.sql) saves a moment; a login session that began before it is turned away. Checked at most once a minute per server.
-let reloginCache: { at: number; ms: number | null } | null = null;
-async function reloginBefore(sb: { rpc: (fn: string) => PromiseLike<{ data: unknown; error: unknown }> }): Promise<number | null> {
-  if (reloginCache && Date.now() - reloginCache.at < ROLE_TTL_MS) return reloginCache.ms;
+// It is also per person (admin_sign_out_user), so the answer is remembered per login.
+const reloginCache = new Map<string, { at: number; ms: number | null }>();
+async function reloginBefore(sb: { rpc: (fn: string) => PromiseLike<{ data: unknown; error: unknown }> }, uid: string): Promise<number | null> {
+  const hit = reloginCache.get(uid); if (hit && Date.now() - hit.at < ROLE_TTL_MS) return hit.ms;
   const { data, error } = await sb.rpc("relogin_before"); const ms = !error && typeof data === "string" ? Date.parse(data) : NaN;
-  reloginCache = { at: Date.now(), ms: Number.isFinite(ms) ? ms : null };   // before the migration is run the function does not exist: that simply means nobody is forced out
-  return reloginCache.ms;
+  if (reloginCache.size > 500) reloginCache.clear();
+  reloginCache.set(uid, { at: Date.now(), ms: Number.isFinite(ms) ? ms : null });   // before the migration is run the function does not exist: that simply means nobody is forced out
+  return reloginCache.get(uid)!.ms;
 }
 
 // Keeps the Supabase session fresh and sends logged-out visitors to /login.
@@ -40,7 +42,7 @@ export async function middleware(req: NextRequest) {
   if (!uid) return res;
 
   // Signed in before the "sign everyone out" moment: end that session now (renewing a token quietly does not get around it) and ask for a fresh sign-in.
-  const began = signedInAtMs(claims?.claims), epoch = began === null ? null : await reloginBefore(sb as any);
+  const began = signedInAtMs(claims?.claims), epoch = began === null ? null : await reloginBefore(sb as any, uid);
   if (epoch !== null && began !== null && began < epoch) {
     await sb.auth.signOut();
     if (isLogin) return res;

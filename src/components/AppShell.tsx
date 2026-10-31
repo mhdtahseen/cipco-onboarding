@@ -7,6 +7,7 @@ import { ROLE_LABEL, useRole } from "@/lib/roles";
 import { loadMe, peekMe, resetMe } from "@/lib/me";
 import { dropPush } from "@/lib/pushClient";
 import PermissionPrompt from "./PermissionPrompt";
+import NotificationGate from "./NotificationGate";
 import { swrClear } from "@/lib/swr";
 import { NAV_SECTIONS, itemFor, visibleItems, type NavItem } from "@/lib/nav";
 import { Icon } from "./NavIcons";
@@ -110,6 +111,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
   return (
     <div className={`min-h-screen ${minimal ? "" : "shell-has-bar"}`}>
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[60] focus:bg-white focus:px-3 focus:py-2 focus:rounded-lg focus:shadow">Skip to content</a>
+      <NotificationGate role={role} />
       {!minimal && <PermissionPrompt role={role} />}
 
       {!minimal && <aside aria-label="Sidebar" className={`hidden md:flex flex-col fixed inset-y-0 left-0 z-30 bg-white border-r border-slate-200 print:hidden transition-[width] duration-200 ease-out ${collapsed ? "w-16" : "w-16 xl:w-64"}`}>
