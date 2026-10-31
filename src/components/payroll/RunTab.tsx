@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { computeLine, monthEnd, monthName, monthStart, type LineResult, type Adjustment } from "@/lib/payroll";
 import type { usePayroll, Line } from "@/lib/payrollData";
@@ -14,6 +14,7 @@ export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: 
   const d = P.d!; const run = d.run; const approved = run?.status === "approved";
   const [busy, setBusy] = useState(false); const [err, setErr] = useState(""); const [msg, setMsg] = useState(""); const [open, setOpen] = useState<string | null>(null);
   const [af, setAf] = useState({ kind: "earning", label: "", amount: "", days: "", reason: "" });
+  const exportMenu = useRef<HTMLDetailsElement>(null);
   const note = (m: string) => { setMsg(m); setTimeout(() => setMsg(""), 5000); };
 
   // the fresh calculation for everyone on the project
@@ -55,7 +56,15 @@ export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: 
     <div className="space-y-4" data-run>
       <div className="flex flex-wrap items-center gap-2">{chip}
         <div className="ml-auto flex flex-wrap gap-2">
-          <button className="btn" onClick={csv} disabled={!shown.length}>⬇ CSV</button>
+          <details ref={exportMenu} className="relative">
+            <summary className="btn cursor-pointer list-none select-none">⬇ Export ▾</summary>
+            <div className="absolute right-0 z-20 mt-1 w-44 rounded-xl border border-slate-200 bg-white shadow-lg p-1 text-sm">
+              <button className="block w-full text-left rounded-lg px-3 py-2 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent" disabled={!shown.length} onClick={() => { csv(); exportMenu.current?.removeAttribute("open"); }}>CSV</button>
+              {run && saved.size
+                ? <a className="block rounded-lg px-3 py-2 hover:bg-slate-50" href={`/api/payroll-register?run=${run.id}`} target="_blank" onClick={() => exportMenu.current?.removeAttribute("open")}>PDF{approved ? "" : " (draft)"}</a>
+                : <span className="block rounded-lg px-3 py-2 text-slate-400" title="Calculate the payroll first">PDF</span>}
+            </div>
+          </details>
           {approved && <a className="btn" href={`/api/payslips?run=${run!.id}`} target="_blank">All salary slips (PDF)</a>}
           {approved && <button className="btn btn-danger" disabled={busy} onClick={reopen}>Reopen</button>}
           {!approved && <button className="btn" disabled={busy || !!blockers.length || !fresh.length} onClick={calculate}>{run ? "Recalculate draft" : "Calculate draft"}</button>}
