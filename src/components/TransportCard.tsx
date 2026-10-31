@@ -3,10 +3,11 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { Icon } from "./NavIcons";
 import { LEG_LABEL, fmtTime, istISO, type Leg, type Run, type Vehicle } from "@/lib/attendance";
+import { trackEntry } from "@/lib/geo";
 
 // Transport for the day: did each hired vehicle show up for the pickup and the drop? Stamped with the server's clock.
 // Independent of attendance. Prices and payments are the Admin's, on the Transport page.
-export default function TransportCard({ projectId, date, vehicles, runs, canWrite, today, names, reload }: { projectId: string; date: string; vehicles: Vehicle[]; runs: Run[]; canWrite: boolean; today: boolean; names: Record<string, string>; reload: () => void }) {
+export default function TransportCard({ projectId, date, vehicles, runs, canWrite, today, names, reload, role }: { projectId: string; date: string; vehicles: Vehicle[]; runs: Run[]; canWrite: boolean; today: boolean; names: Record<string, string>; reload: () => void; role?: string | null }) {
   const [busy, setBusy] = useState(""); const [err, setErr] = useState(""); const [editing, setEditing] = useState<string | null>(null); const [hhmm, setHhmm] = useState("");
   const list = vehicles.filter((v) => v.active || runs.some((r) => r.vehicle_id === v.id));
   const find = (v: Vehicle, leg: Leg) => runs.find((r) => r.vehicle_id === v.id && r.leg === leg);
@@ -18,10 +19,10 @@ export default function TransportCard({ projectId, date, vehicles, runs, canWrit
     const { error } = !cur ? await sb.from("transport_runs").insert({ project_id: projectId, work_date: date, leg, vehicle_id: v.id, status, ...(stamp ? { at: stamp } : {}) })
       : cur.status === status ? await sb.from("transport_runs").delete().eq("id", cur.id)   // tapping the chosen one again clears it
       : await sb.from("transport_runs").update({ status, at: stamp }).eq("id", cur.id);
-    setBusy(""); if (error) { setErr(error.message); return; } reload();
+    setBusy(""); if (error) { setErr(error.message); return; } trackEntry(role, projectId, date, "transport", `${v.name} ${leg}`); reload();
   }
   async function saveTime(r: Run) {
-    if (!/^\d{2}:\d{2}$/.test(hhmm)) { setEditing(null); return; } setBusy(r.id); const { error } = await supabase().from("transport_runs").update({ at: istISO(date, hhmm) }).eq("id", r.id); setBusy(""); setEditing(null); if (error) { setErr(error.message); return; } reload();
+    if (!/^\d{2}:\d{2}$/.test(hhmm)) { setEditing(null); return; } setBusy(r.id); const { error } = await supabase().from("transport_runs").update({ at: istISO(date, hhmm) }).eq("id", r.id); setBusy(""); setEditing(null); if (error) { setErr(error.message); return; } trackEntry(role, projectId, date, "transport", "time corrected"); reload();
   }
 
   return (

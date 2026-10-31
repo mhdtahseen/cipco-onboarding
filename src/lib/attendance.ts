@@ -34,9 +34,9 @@ export const rateFor = (rates: MealRate[], vendorId: string | null, meal: Meal, 
 export const daysWorked = (rows: AttRow[]) => rows.reduce((s, r) => s + (r.status === "present" ? 1 : r.status === "half" ? 0.5 : 0), 0);
 
 // ── who may change which day (mirrors the database rule; the database is what really enforces it) ──
-//   Supervisor: that day until 11:00 PM India time.  Site Engineer: that day and the next, until 11:00 PM.  Admin: always.
+//   Supervisor, Site Engineer and Staff: that day until 11:00 PM India time, and nothing at all after that. Only the Admin can change anything later.
 export const isSupervisorRole = (r: string | null | undefined) => r === "supervisor" || r === "attendance";
-export const isLockedFor = (role: string | null | undefined, iso: string) => { if (role === "admin") return false; return istParts() >= `${isSupervisorRole(role) ? iso : addDays(iso, 1)} 23:00:00`; };
+export const isLockedFor = (role: string | null | undefined, iso: string) => { if (role === "admin") return false; return istParts() >= `${iso} 23:00:00`; };
 export const canWriteDay = (role: string | null | undefined, iso: string) => role === "admin" || (!isFuture(iso) && !isLockedFor(role, iso));
 
 // ── transport ──
@@ -46,7 +46,7 @@ export type Vehicle = { id: string; project_id: string | null; name: string; ope
 /** One vehicle, one direction, one day: it showed up (with the time) or it did not. */
 export type Run = { id: string; project_id: string; work_date: string; leg: Leg; vehicle_id: string; status: "showed" | "no_show"; at: string | null; created_by?: string | null; rank?: number; updated_by?: string | null; updated_at?: string | null };
 export type TransportRate = { id: string; vehicle_id: string; price: number; effective_from: string };
-export type DayRow = { project_id: string; work_date: string; submitted_by: string | null; submitted_at: string | null; verified_by: string | null; verified_at: string | null };
+export type DayRow = { project_id: string; work_date: string; submitted_by: string | null; submitted_at: string | null; verified_by: string | null; verified_at: string | null; meal_counts?: { breakfast: number; lunch: number; dinner: number } | null; verified_incomplete?: boolean; verify_note?: string | null };
 export const LEG_LABEL: Record<Leg, string> = { pickup: "Pickup", drop: "Drop" };
 /** "07:42" in India time. */
 export const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" });

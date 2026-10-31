@@ -1,12 +1,20 @@
 import { createServerClient } from "@supabase/ssr";
 import { REMEMBER_COOKIE, withLifetime } from "@/lib/supabase/session";
 import { NextResponse, type NextRequest } from "next/server";
-import { canAccess, homeFor, roleFromClaims } from "@/lib/nav";
+import { canAccess, homeFor, roleFromClaims, signedInAtMs } from "@/lib/nav";
 
 // Roles change rarely, but every request needs one. Remembering it for a minute in this server's memory saves a database round trip per request
 // (nothing is stored in the browser, so it cannot be tampered with). The database still enforces every read and write against the real role at once;
 // this only affects which pages a person is sent to, so a role change reaches the page guard within a minute.
 const ROLE_TTL_MS = 60_000; const roleCache = new Map<string, { role: string; at: number }>();
+// "Sign everyone out" (2026-10-force-relogin.sql) saves a moment; a login session that began before it is turned away. Checked at most once a minute per server.
+let reloginCache: { at: number; ms: number | null } | null = null;
+async function reloginBefore(sb: { rpc: (fn: string) => PromiseLike<{ data: unknown; error: unknown }> }): Promise<number | null> {
+  if (reloginCache && Date.now() - reloginCache.at < ROLE_TTL_MS) return reloginCache.ms;
+  const { data, error } = await sb.rpc("relogin_before"); const ms = !error && typeof data === "string" ? Date.parse(data) : NaN;
+  reloginCache = { at: Date.now(), ms: Number.isFinite(ms) ? ms : null };   // before the migration is run the function does not exist: that simply means nobody is forced out
+  return reloginCache.ms;
+}
 
 // Keeps the Supabase session fresh and sends logged-out visitors to /login.
 export async function middleware(req: NextRequest) {
@@ -26,10 +34,19 @@ export async function middleware(req: NextRequest) {
   // Supabase on every request. It still refreshes an expired session. (getUser() asked Supabase "who is this?" on every single page and API call.)
   const { data: claims } = await sb.auth.getClaims(); const uid = (claims?.claims?.sub as string | undefined) || null;
   const isLogin = req.nextUrl.pathname.startsWith("/login");
-  const isPublic = req.nextUrl.pathname.startsWith("/apply") || req.nextUrl.pathname.startsWith("/api/apply"); // candidate self-fill links
+  const isPublic = req.nextUrl.pathname.startsWith("/apply") || req.nextUrl.pathname.startsWith("/api/apply") || req.nextUrl.pathname.startsWith("/api/cron/");   // candidate self-fill links; the scheduled day check proves itself with a secret
   if (isPublic) return res;
   if (!uid && !isLogin) return NextResponse.redirect(new URL("/login", req.url));
   if (!uid) return res;
+
+  // Signed in before the "sign everyone out" moment: end that session now (renewing a token quietly does not get around it) and ask for a fresh sign-in.
+  const began = signedInAtMs(claims?.claims), epoch = began === null ? null : await reloginBefore(sb as any);
+  if (epoch !== null && began !== null && began < epoch) {
+    await sb.auth.signOut();
+    if (isLogin) return res;
+    const out = req.nextUrl.pathname.startsWith("/api/") ? NextResponse.json({ error: "Please sign in again." }, { status: 401 }) : NextResponse.redirect(new URL("/login", req.url));
+    res.cookies.getAll().forEach((c) => out.cookies.set(c)); return out;
+  }
 
   // Roles: admin / staff / supervisor / none. If the roles table does not exist yet (migration not run) treat everyone as admin.
   const path = req.nextUrl.pathname; const isApi = path.startsWith("/api/");
@@ -48,4 +65,4 @@ export async function middleware(req: NextRequest) {
   if (!canAccess(role, path)) return isApi ? NextResponse.json({ error: "Not allowed" }, { status: 403 }) : NextResponse.redirect(new URL(home, req.url));
   return res;
 }
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|branding/).*)"] };
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|branding/|icons/|sw.js|manifest.webmanifest).*)"] };

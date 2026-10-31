@@ -132,6 +132,16 @@ Scope agreed: running-account (RA) bills against a client's work order, all site
 - [ ] Check the Supabase project's region and where the app is hosted: about 0.2 s per call suggests they are far from you. Ideal: both in Mumbai
 - Old migrations no longer reopen tables when re-run (they create "staff all" once the roles migration exists). The 10 "unused index" notices are left alone on purpose
 
+## Day rules, reminders and quiet location tags (built 2026-10-31; NOT yet live: needs the SQL below)
+What it does: a day can only be submitted (Supervisor) and verified (Site Engineer) when attendance and transport are complete; meals are watched, never required; Supervisor, Site Engineer and Staff are locked out at 23:00 the same day (only Admin after that); automatic reminders and a "Notify supervisor" button reach the phone; every Supervisor / Site Engineer entry saves the phone's location for the Admin (shown nowhere).
+- [ ] **1. Deploy the new app**, with these settings added to your hosting (the values are in your local `.env.local`; copy them, never commit them): `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (must be set before the build), `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CRON_SECRET`, and `SUPABASE_SERVICE_ROLE_KEY` (Supabase dashboard → Project Settings → API; server only, never in the browser). Until the SQL is run the app falls back to the old behaviour, so deploying first is safe
+- [ ] **2. Run in the Supabase SQL editor, in this order:** `2026-10-day-rules.sql`, `2026-10-entry-geo.sql`, `2026-10-push-and-reminders.sql`
+- [ ] **3. Give the scheduled job its two values** (see the top of `2026-10-push-and-reminders.sql`): `update public.app_settings set value = 'https://YOUR-APP/api/cron/day-watch' where key = 'cron_url';` and `... set value = '<the CRON_SECRET>' where key = 'cron_secret';`. If pg_cron / pg_net could not be switched on from SQL, enable them under Database → Extensions and run the last block of that file again (or point any scheduler at the URL every 5 minutes with header `x-cron-secret`)
+- [ ] **4. Run `2026-10-force-relogin.sql` LAST**: signs everyone out so each person signs in again and the phone asks for notification and location. On iPhones notifications only work once the app is added to the Home Screen
+- [ ] **5. Try it on a test project:** submit with a vehicle's drop missing (should be refused), complete it and submit, verify as Site Engineer, press Notify supervisor, check a phone receives it; after 23:00 try to change something as a Supervisor (should be locked); then read the location rows as Admin (query at the top of `2026-10-entry-geo.sql`)
+- [ ] Decide how long to keep location rows (the file suggests 12 months). Tell the Supervisors and Site Engineers about location capture before you rely on it (it is personal data under the DPDP Act); the app deliberately says nothing about it for now
+- [ ] Not built, on purpose: a screen to view location tags (read them in Supabase for now), WhatsApp/SMS fallback for people whose phones cannot receive push
+
 ## Platform roadmap — payroll, invoices, inventory (agreed 2026-10-27)
 
 The app is growing from onboarding into an operations platform. Do these in order; each step makes the next one cheaper.

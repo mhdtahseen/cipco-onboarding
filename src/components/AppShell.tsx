@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { ROLE_LABEL, useRole } from "@/lib/roles";
 import { loadMe, peekMe, resetMe } from "@/lib/me";
+import { dropPush } from "@/lib/pushClient";
+import PermissionPrompt from "./PermissionPrompt";
 import { swrClear } from "@/lib/swr";
 import { NAV_SECTIONS, itemFor, visibleItems, type NavItem } from "@/lib/nav";
 import { Icon } from "./NavIcons";
@@ -64,7 +66,7 @@ function Account({ email, name, role }: { email: string; name: string; role: str
     return () => { document.removeEventListener("mousedown", down); document.removeEventListener("keydown", key); };
   }, [open]);
   const who = role ? ROLE_LABEL[role] : "";
-  async function signOut() { await supabase().auth.signOut(); resetMe(); swrClear(); router.push("/login"); router.refresh(); }
+  async function signOut() { await dropPush(); await supabase().auth.signOut(); resetMe(); swrClear(); router.push("/login"); router.refresh(); }
   return (
     <div ref={ref} className="relative">
       <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label="Account menu" onClick={() => setOpen(!open)} className="flex items-center gap-2 rounded-full p-1 md:pr-2 hover:bg-slate-100 touch-manipulation min-h-11">
@@ -100,7 +102,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
     return () => { document.removeEventListener("keydown", key); mq.removeEventListener("change", wide); document.body.style.overflow = ""; };
   }, [drawer]);
 
-  async function signOut() { await supabase().auth.signOut(); resetMe(); swrClear(); router.push("/login"); router.refresh(); }
+  async function signOut() { await dropPush(); await supabase().auth.signOut(); resetMe(); swrClear(); router.push("/login"); router.refresh(); }
   const toggleSide = () => { if (window.matchMedia("(min-width: 1280px)").matches) { const v = !collapsed; setCollapsed(v); try { localStorage.setItem("cipco_nav_collapsed", v ? "1" : "0"); } catch { /* ignore */ } } else setDrawer(true); };
   const barItems = items.filter((i) => i.bar).slice(0, 4);
   const crumb = item ? <><span className="text-slate-400 hidden md:inline">{item.section}</span><span className="text-slate-300 hidden md:inline"> › </span><span className="font-semibold text-slate-800">{item.label}</span></> : <span className="font-semibold text-slate-800">{title}</span>;
@@ -108,6 +110,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
   return (
     <div className={`min-h-screen ${minimal ? "" : "shell-has-bar"}`}>
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[60] focus:bg-white focus:px-3 focus:py-2 focus:rounded-lg focus:shadow">Skip to content</a>
+      {!minimal && <PermissionPrompt role={role} />}
 
       {!minimal && <aside aria-label="Sidebar" className={`hidden md:flex flex-col fixed inset-y-0 left-0 z-30 bg-white border-r border-slate-200 print:hidden transition-[width] duration-200 ease-out ${collapsed ? "w-16" : "w-16 xl:w-64"}`}>
         <div className={`h-14 shrink-0 flex items-center gap-2 border-b border-slate-100 px-3 ${collapsed ? "justify-center" : "justify-center xl:justify-between"}`}>

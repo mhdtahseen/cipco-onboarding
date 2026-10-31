@@ -5,6 +5,7 @@ import { useMedia } from "@/lib/useMedia";
 import { Icon } from "./NavIcons";
 import TransportCard from "./TransportCard";
 import DayBar from "./DayBar";
+import { trackEntry } from "@/lib/geo";
 import { MEALS, STATUS_LABEL, addDays, canWriteDay, dayName, effectiveStatus, fmtTime, isFuture, isLocked, isSupervisorRole, isWeeklyOff, istToday, type AttRow, type DayRow, type Meal, type Person, type Run, type Status, type Vehicle, type Vendor } from "@/lib/attendance";
 
 const WORK: { s: Status; label: string }[] = [{ s: "present", label: "Present" }, { s: "absent", label: "Absent" }, { s: "half", label: "Half-day" }, { s: "off", label: "Off" }];
@@ -81,6 +82,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
     const { data, error } = await sb().from("attendance").upsert(rec({ employee_id: p.employee_id, ...patch }), { onConflict: "employee_id,work_date" }).select().single(); inflight.current--;
     if (error) { setErr(error.message); setRows((r) => { const c = { ...r }; if (cur) c[p.employee_id] = cur; else delete c[p.employee_id]; return c; }); return; }
     setRows((r) => ({ ...r, [p.employee_id]: data as AttRow }));
+    trackEntry(role, projectId, date, Object.keys(patch).some((k) => k.endsWith("_vendor_id")) ? "meal" : "attendance", p.employee_id);   // the location, saved quietly for the Admin
   }
   // Bulk actions: save, then re-read what is really stored, so the screen can never disagree with the database.
   async function bulk(updates: Upd[], done: string, nothing = "Nothing to change.") {
@@ -92,6 +94,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
     const saved = await load(true); if (!saved) { setMsg(""); return; }
     const missing = updates.filter((u) => !saved[u.employee_id]).length;
     if (missing) { setMsg(""); setErr(`Only ${updates.length - missing} of ${updates.length} were saved. Please refresh and try again.`); return; }
+    trackEntry(role, projectId, date, "bulk", `${updates.length} people`);
     setMsg(`${done} (${updates.length})`); setTimeout(() => setMsg(""), 4000);
   }
   // Admin, with Override on: remove one person's record for this day (attendance and meals), e.g. someone marked on the wrong project, so they drop off this project's sheet and monthly view
@@ -157,7 +160,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
       <span className={`text-sm min-w-0 flex-1 ${override ? "text-amber-900" : "text-slate-600"}`}>{override ? "Override is on. Your changes are stamped as Admin and replace what the Supervisor or Site Engineer entered." : "View only. Tap Override to change anything on this day."}</span>
       <button type="button" onClick={() => setOverride(!override)} aria-pressed={override} className={`btn ${override ? "" : "btn-primary"}`}>{override ? "Done" : "Override"}</button>
     </div>);
-  const extras = !loading && people.length > 0 && <div className="space-y-3"><DayBar projectId={projectId} date={date} role={role} day={day} names={names} people={people} rows={rows} vehicles={vehicles} runs={runs} canWrite={!viewOnly && (!future || admin)} reload={() => load(true)} /><TransportCard projectId={projectId} date={date} vehicles={vehicles} runs={runs} canWrite={!locked} today={date === istToday()} names={names} reload={() => load(true)} /></div>;
+  const extras = !loading && people.length > 0 && <div className="space-y-3"><DayBar projectId={projectId} date={date} role={role} day={day} names={names} people={people} rows={rows} vehicles={vehicles} runs={runs} canWrite={!viewOnly && (!future || admin)} reload={() => load(true)} /><TransportCard role={role} projectId={projectId} date={date} vehicles={vehicles} runs={runs} canWrite={!locked} today={date === istToday()} names={names} reload={() => load(true)} /></div>;
   const vName = (id: string) => vendors.find((v) => v.id === id)?.name ?? "?";
   const shownVendors = (cur: string | null) => vendors.filter((v) => v.active || v.id === cur);
 

@@ -39,6 +39,15 @@ export const NAV: NavItem[] = [
 const matches = (path: string, p: string) => (p === "/" ? path === "/" : path === p || path.startsWith(p + "/"));
 export const itemFor = (path: string) => NAV.find((i) => i.paths.some((p) => matches(path, p)));
 export const visibleItems = (role: string | null | undefined) => NAV.filter((i) => !!role && i.roles.includes(role as NavRole));
+/** When this login session began, in ms: the latest sign-in time recorded in the token ("amr"), which stays the same when the token is quietly renewed,
+ *  else the token's own issue time. null when the token says neither. Used to sign out everyone who signed in before a chosen moment. */
+export function signedInAtMs(claims: unknown): number | null {
+  const c = claims as { amr?: { timestamp?: unknown }[]; iat?: unknown } | null | undefined;
+  const stamps = (Array.isArray(c?.amr) ? c!.amr! : []).map((a) => a?.timestamp).filter((x): x is number => typeof x === "number" && Number.isFinite(x));
+  const s = stamps.length ? Math.max(...stamps) : typeof c?.iat === "number" ? c.iat : null;
+  return s === null ? null : s * 1000;
+}
+
 /** The role carried in a verified login token (the "app_role" claim added by the database hook), or null when the token has none:
  *  the hook is not switched on yet, or this is a token issued before it was. Anything that is not a non-empty string is ignored. */
 export function roleFromClaims(claims: unknown): string | null {
