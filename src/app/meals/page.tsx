@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { MEALS, addDays, istToday, rateFor, type MealRate, type Person, type Vendor } from "@/lib/attendance";
 import type { Project } from "@/lib/types";
@@ -8,6 +8,7 @@ import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
 import { uploadBill } from "@/lib/billUpload";
 import PaymentBill from "@/components/PaymentBill";
 import VendorSettings from "@/components/VendorSettings";
+import BillBreakdown from "@/components/BillBreakdown";
 
 type MealRow = { employee_id: string; work_date: string; breakfast_vendor_id: string | null; lunch_vendor_id: string | null; dinner_vendor_id: string | null };
 type Pay = { id: string; bill_path?: string | null; vendor_id: string; paid_on: string; amount: number; reference: string; note: string; voided_at: string | null };
@@ -151,14 +152,15 @@ export default function Meals() {
               <button className="text-xs text-blue-700 underline" onClick={() => pickVendorForBill(v.id)}>+ Record a bill</button></div>
             {bs.length > 0 && <div className="overflow-x-auto"><table className="w-full text-sm min-w-[40rem]"><thead className="text-[11px] uppercase tracking-wide text-slate-400"><tr><th className="text-left py-1">Days</th><th className="text-right">Meals recorded</th><th className="text-right">Vendor's bill</th><th className="text-right">Difference</th><th className="text-left pl-3">Status</th><th></th></tr></thead>
               <tbody className="divide-y divide-slate-100">{bs.map((b) => { const r = rangeOf(v.id, b.bill_from, b.bill_to); const diff = b.bill_amount - r.cost; return (
-                <tr key={b.id} className="align-top" data-bill-row><td className="py-2 font-medium whitespace-nowrap">{period(b)}</td><td className="text-right tabular-nums">₹{inr(r.cost)}<div className="text-[11px] text-slate-400">{r.count} meals</div></td>
+                <Fragment key={b.id}><tr className="align-top" data-bill-row><td className="py-2 font-medium whitespace-nowrap">{period(b)}</td><td className="text-right tabular-nums">₹{inr(r.cost)}<div className="text-[11px] text-slate-400">{r.count} meals</div></td>
                   <td className="text-right tabular-nums">₹{inr(b.bill_amount)}{b.bill_no && <div className="text-[11px] text-slate-400">{b.bill_no}</div>}</td>
                   <td className={`text-right tabular-nums ${Math.abs(diff) >= 1 ? (diff > 0 ? "text-rose-700 font-medium" : "text-emerald-700") : "text-slate-400"}`}>{Math.abs(diff) < 1 ? "Matches" : `${diff > 0 ? "+" : "−"}₹${inr(Math.abs(diff))}`}{Math.abs(diff) >= 1 && <div className="text-[11px] font-normal">{diff > 0 ? "charged more" : "charged less"}</div>}</td>
                   <td className="pl-3">{b.status === "approved" ? <><span className="rounded-full bg-emerald-50 text-emerald-700 text-[11px] px-2 py-0.5">Approved ₹{inr(b.approved_amount ?? 0)}</span><div className="text-[11px] text-slate-400">meals then ₹{inr(b.computed_amount ?? 0)}</div></> : <span className="rounded-full bg-amber-50 text-amber-800 text-[11px] px-2 py-0.5">Waiting for approval</span>}</td>
                   <td className="text-right pl-2 space-x-2 whitespace-nowrap">{b.status === "received" && <><button className="btn !py-0.5 !px-2 !text-xs btn-primary" onClick={() => approveBill(b, b.bill_amount)}>Approve bill</button><button className="btn !py-0.5 !px-2 !text-xs" disabled={!r.cost} onClick={() => approveBill(b, r.cost)}>Approve meals</button><button className="text-xs text-blue-700 underline" onClick={() => approveCustom(b)}>Other…</button></>}
                     {b.status === "approved" && <button className="text-xs text-blue-700 underline" onClick={() => reopenBill(b)}>Reopen</button>}
                     {b.bill_path && <a className="text-xs text-blue-700 underline" href={`/api/docs/view?path=${encodeURIComponent(b.bill_path)}`} target="_blank">Bill file</a>}
-                    <button className="text-xs text-slate-500 underline" onClick={() => { setStmtVendor(v.id); setStmtFrom(b.bill_from); setStmtTo(b.bill_to); setTab("reports"); }}>See the meals</button><button className="text-xs text-red-700 underline" onClick={() => voidBill(b)}>Void</button></td></tr>); })}</tbody></table></div>}
+                    <button className="text-xs text-slate-500 underline" onClick={() => { setStmtVendor(v.id); setStmtFrom(b.bill_from); setStmtTo(b.bill_to); setTab("reports"); }}>See the meals</button><button className="text-xs text-red-700 underline" onClick={() => voidBill(b)}>Void</button></td></tr>
+                <tr><td colSpan={6} className="pb-2"><BillBreakdown projectId={pid} vendorId={v.id} from={b.bill_from} to={b.bill_to} rows={meals} rates={rates} people={people} billId={b.id} billed={b.bill_amount} /></td></tr></Fragment>); })}</tbody></table></div>}
           </div>); })}
         {!pv.length && <p className="text-sm text-slate-400">No vendors for this project yet.</p>}
         <p className="text-[11px] text-slate-400 flex flex-wrap gap-x-3"><span><span className="inline-block h-2 w-2 rounded-sm bg-emerald-500 align-middle" /> approved</span><span><span className="inline-block h-2 w-2 rounded-sm bg-amber-400 align-middle" /> waiting for approval</span><span><span className="inline-block h-2 w-2 rounded-sm bg-slate-300 align-middle" /> meals but no bill yet</span></p>
@@ -196,6 +198,7 @@ export default function Meals() {
         <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3"><button className="btn" disabled={!stmtRows.length} onClick={() => download(`${stmtV?.name} statement ${sFrom} to ${sTo}`, [["Date", ...MEALS.map((m) => m.label), "Amount"], ...stmtRows.map((r) => [r.d, ...r.c, r.amt])])}>⬇ Statement CSV</button>
           <button className="btn" disabled={!rows.length} onClick={() => download(`food summary ${month}`, [["Vendor", ...MEALS.map((m) => m.label), "This month", "Billed (all)", "Paid", "Due"], ...rows.map((o) => [o.v.name, ...o.counts, o.month, o.billed, o.paid, o.due])])}>⬇ Food summary CSV</button>
           <button className="btn" disabled={!perPerson.length} onClick={() => download(`meals per person ${month}`, [["Name", "Emp no.", ...MEALS.map((m) => m.label), "Cost"], ...perPerson.map((o) => [o.p.full_name, o.p.emp_no ?? "", ...o.c, o.cost])])}>⬇ Per-person CSV</button></div>
+        {stmtV && stmtRows.length > 0 && <BillBreakdown key={`${stmtV.id}${sFrom}${sTo}`} projectId={pid} vendorId={stmtV.id} from={sFrom} to={sTo} rows={meals} rates={rates} people={people} />}
         <p className="text-xs text-slate-400">The statement lists the meals recorded for the vendor, day by day, with the amount at the price in force. It is what to check a vendor's bill against.</p></section>}
     </div>
   );

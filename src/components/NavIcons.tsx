@@ -1,6 +1,6 @@
 import type { IconName } from "@/lib/nav";
 
-export type AnyIcon = IconName | "menu" | "x" | "chevron-left" | "chevron-right" | "chevron-down" | "logout" | "grid" | "phone" | "chat" | "download" | "more" | "eye" | "copy" | "arrow-up" | "arrow-down";
+export type AnyIcon = IconName | "menu" | "x" | "chevron-left" | "chevron-right" | "chevron-down" | "logout" | "grid" | "phone" | "chat" | "download" | "more" | "eye" | "eye-off" | "copy" | "arrow-up" | "arrow-down";
 const P: Record<AnyIcon, React.ReactNode> = {
   users: <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>,
   clipboard: <><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="m9 14 2 2 4-4" /></>,
@@ -21,6 +21,7 @@ const P: Record<AnyIcon, React.ReactNode> = {
   download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /><path d="M12 15V3" /></>,
   more: <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>,
   eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></>,
+  "eye-off": <><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20C5 20 1 12 1 12a18.5 18.5 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" /><path d="m1 1 22 22" /></>,
   copy: <><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>,
   "arrow-up": <path d="M12 19V5M5 12l7-7 7 7" />,
   "arrow-down": <path d="M12 5v14M19 12l-7 7-7-7" />,
