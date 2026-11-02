@@ -36,6 +36,7 @@ export const PAYROLL_GROUP: { title: string; fields: FieldDef[] } = { title: "Pa
   { key: "left_on", label: "Last working day (when they leave)", type: "date", hint: "Pay and the attendance sheet stop after this date. Leave blank while they are working." },
   { key: "pay_mode", label: "Paid by", type: "select", options: ["bank", "upi", "cash"] },
   { key: "upi_id", label: "UPI ID (if paid by UPI)" },
+  { key: "esic_no", label: "ESIC insurance (IP) number (optional)", hint: "The 10-digit Insurance No. on the ESIC e-Pehchan card. Leave blank if they are not covered." },
 ] };
 export const EMPTY: Record<string, any> = { father_spouse_type: "Father", base_location: "Pune, Maharashtra", employment_type: "Employee", probation_months: 6, week_off: "Sunday", status: "onboarding" };
 
@@ -46,6 +47,7 @@ export function validate(e: Record<string, any>): Record<string, string> {
   if (e.ifsc && !/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(e.ifsc)) w.ifsc = "IFSC format looks wrong";
   if (e.uan && !/^\d{12}$/.test(e.uan.replace(/\s/g, ""))) w.uan = "UAN should be 12 digits";
   if (e.phone && !/^\d{10}$/.test(e.phone.replace(/\s/g, ""))) w.phone = "Phone should be 10 digits";
+  if (e.esic_no && !/^\d{10}$/.test(String(e.esic_no).replace(/\s/g, ""))) w.esic_no = "ESIC insurance number is 10 digits";
   if (e.pin && !/^\d{6}$/.test(e.pin)) w.pin = "PIN should be 6 digits";
   return w;
 }

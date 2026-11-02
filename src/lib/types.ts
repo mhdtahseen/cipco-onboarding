@@ -10,7 +10,7 @@ export type Employee = {
   emergency_name: string | null; emergency_phone: string | null;
   designation: string | null; department: string | null; project: string | null; project_id?: string | null; site_location: string | null; base_location: string | null;
   employment_type: string | null; join_date: string | null; probation_months: number | null; monthly_ctc: number | null; salary: Partial<SalaryCfg> | null;
-  week_off: string | null; left_on?: string | null; pay_mode?: string | null; upi_id?: string | null; status: string | null; notes: string | null;
+  week_off: string | null; left_on?: string | null; pay_mode?: string | null; upi_id?: string | null; esic_no?: string | null; status: string | null; notes: string | null;
   call_notes: string | null; interview_notes: string | null;
   stage: string; outcome: "active" | "rejected"; closed_reason: string | null; closed_note: string | null; closed_stage: string | null; closed_at: string | null;
 };
@@ -32,9 +32,11 @@ export const DOC_TYPES: { key: string; label: string }[] = [
   { key: "pan", label: "PAN card" },
   { key: "bank", label: "Bank passbook / cancelled cheque" },
   { key: "uan", label: "UAN / previous PF details" },
+  { key: "esic_card", label: "ESIC e-Pehchan card" },
   { key: "photo", label: "Passport-size photographs" },
   { key: "form32", label: "Medical Form 32" },
   { key: "form33", label: "Medical Form 33" },
+  { key: "esic_medical", label: "ESIC medical acceptance card" },
   { key: "pcc", label: "Police Clearance Certificate (PCC)" },
   { key: "offer_signed", label: "Signed offer letter" },
   { key: "joining_signed", label: "Signed joining form" },

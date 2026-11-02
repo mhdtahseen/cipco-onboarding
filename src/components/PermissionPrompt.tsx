@@ -15,7 +15,7 @@ export default function PermissionPrompt({ role }: { role: string | null }) {
       if (pushSupported() && notifPermission() === "granted") void subscribePush();   // already allowed: keep this phone registered
       try { if (sessionStorage.getItem("cipco_perm_later") === "1") return; } catch { /* storage unavailable */ }
       const notif = !isTagged(role) && pushSupported() && notifPermission() === "default";   // Supervisors and Site Engineers are asked by NotificationGate, which cannot be skipped
-      const geo = isTagged(role) && geoSupported() && (await geoPermission()) === "prompt";
+      const geo = false;   // Supervisors and Site Engineers (the only ones who are located) are asked by NotificationGate, which cannot be skipped
       const iosHint = !isTagged(role) && isIOS() && !isStandalone() && !pushSupported();
       if (alive && (notif || geo || iosHint)) setNeed({ notif, geo, iosHint });
     })();
