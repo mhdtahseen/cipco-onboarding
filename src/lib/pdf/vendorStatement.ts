@@ -1,10 +1,10 @@
-import { rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { embedFonts, newDoc, wrapPlain } from "./common";
 import { COMPANY } from "../company";
 import { MEALS } from "../attendance";
 import { fmtMoney, spanLabel, type Breakdown } from "../mealStatement";
 
-export type StatementInput = { vendorName: string; projectName: string; b: Breakdown; billNo?: string; billed?: number; verified: Record<string, "ok" | "incomplete">; includeNames: boolean };
+export type StatementInput = { vendorName: string; projectName: string; b: Breakdown; billNo?: string; billed?: number; verified: Record<string, "ok" | "incomplete">; includeNames: boolean; billFile?: Uint8Array | null };
 
 const W = 595.28, H = 841.89, M = 40, BOTTOM = 54;
 const ink = rgb(0.1, 0.1, 0.12), mute = rgb(0.4, 0.42, 0.48), rule = rgb(0.82, 0.84, 0.88), blue = rgb(0.12, 0.31, 0.64), soft = rgb(0.95, 0.96, 0.98), red = rgb(0.7, 0.15, 0.15), green = rgb(0.05, 0.5, 0.35), amber = rgb(0.72, 0.4, 0.05);
@@ -78,5 +78,19 @@ export async function buildVendorStatement(s: StatementInput): Promise<Uint8Arra
     const right = `${dmy(new Date().toISOString().slice(0, 10))}  ·  Page ${i + 1} of ${pages.length}`;
     p.drawText(right, { x: W - M - f.reg.widthOfTextAtSize(right, 7.5), y: 14, size: 7.5, font: f.reg, color: mute });
   });
+  if (s.billFile) await appendBill(doc, s.billFile, f);
   return doc.save();
+}
+
+
+/** The vendor's own bill goes in after the statement: its pages if it is a PDF, otherwise the photo on a page of its own. A file that cannot be read is skipped, so the statement still goes out. */
+async function appendBill(doc: PDFDocument, bytes: Uint8Array, f: { reg: PDFFont; bold: PDFFont }) {
+  const isPdf = bytes[0] === 0x25 && bytes[1] === 0x50, isPng = bytes[0] === 0x89 && bytes[1] === 0x50;
+  try {
+    if (isPdf) { const src = await PDFDocument.load(bytes, { ignoreEncryption: true }); (await doc.copyPages(src, src.getPageIndices())).forEach((pg) => doc.addPage(pg)); return; }
+    const img = isPng ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+    const page = doc.addPage([W, H]); page.drawText("Vendor's bill", { x: M, y: H - M - 6, size: 12, font: f.bold, color: blue });
+    const boxW = W - 2 * M, boxH = H - 2 * M - 30, k = Math.min(boxW / img.width, boxH / img.height, 1), w = img.width * k, h = img.height * k;
+    page.drawImage(img, { x: M + (boxW - w) / 2, y: H - M - 30 - h, width: w, height: h });
+  } catch { /* unreadable bill file: leave it out */ }
 }

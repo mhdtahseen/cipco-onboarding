@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { serverClient } from "@/lib/supabase/server";
 import { buildBreakdown, type MealRowLite, type Who } from "@/lib/mealStatement";
 import { buildVendorStatement } from "@/lib/pdf/vendorStatement";
+import { r2Get } from "@/lib/r2";
 import type { MealRate } from "@/lib/attendance";
 
 // The meal statement of one vendor for a stretch of days (usually the days of a bill), as a PDF to send to the vendor. It is worked out here from the database,
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
   const [{ data: v }, { data: proj }, { data: rates }, { data: bill }, { data: days }] = await Promise.all([
     sb.from("food_vendors").select("id, name, project_id").eq("id", vendor).maybeSingle(), sb.from("projects").select("name").eq("id", project).maybeSingle(),
     sb.from("meal_rates").select("*").eq("vendor_id", vendor),
-    billId ? sb.from("vendor_bills").select("vendor_id, bill_no, bill_amount, bill_from, bill_to, voided_at").eq("id", billId).maybeSingle() : Promise.resolve({ data: null }),
+    billId ? sb.from("vendor_bills").select("vendor_id, bill_path, bill_no, bill_amount, bill_from, bill_to, voided_at").eq("id", billId).maybeSingle() : Promise.resolve({ data: null }),
     sb.from("attendance_days").select("work_date, verified_incomplete").eq("project_id", project).gte("work_date", from).lte("work_date", to).not("verified_at", "is", null),
   ]);
   if (!v || v.project_id !== project) return new NextResponse("Not found", { status: 404 });
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
   if (!b.count) return new NextResponse("No meals are recorded for this vendor on these days.", { status: 404 });
   // the vendor copy only says whether a day was signed off; the internal "verified though incomplete" note stays inside
   const verified = Object.fromEntries(((days || []) as { work_date: string }[]).map((d) => [d.work_date, "ok"] as const));
-  const pdf = await buildVendorStatement({ vendorName: v.name, projectName: proj?.name ?? "", b, billNo: bill?.bill_no || undefined, billed: bill ? Number(bill.bill_amount) : undefined, verified, includeNames: names });
+  const billFile = bill?.bill_path ? await r2Get(bill.bill_path) : null;
+  const pdf = await buildVendorStatement({ vendorName: v.name, projectName: proj?.name ?? "", b, billNo: bill?.bill_no || undefined, billed: bill ? Number(bill.bill_amount) : undefined, verified, includeNames: names, billFile });
   return new NextResponse(Buffer.from(pdf), { headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="${v.name} meal statement ${from} to ${to}.pdf"` } });
 }
