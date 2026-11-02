@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { calcSalary } from "@/lib/salary";
 import { monthName } from "@/lib/payroll";
+import { istToday } from "@/lib/attendance";
 import type { Employee } from "@/lib/types";
 
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
@@ -19,7 +20,7 @@ export default function SalaryCost({ projectId, people }: { projectId: string; p
       setPay({ month: run.pay_month.slice(0, 7), status: run.status, net: ((l.data || []) as { net: number }[]).reduce((s, x) => s + Number(x.net), 0), paid: ((p.data || []) as { amount: number }[]).reduce((s, x) => s + Number(x.amount), 0) });
     } catch { /* payroll migration not run yet */ }
   })(); }, [projectId]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = istToday();
   const x = useMemo(() => {
     const active = people.filter((e) => !e.left_on || e.left_on >= today); const rows = active.map((e) => ({ e, c: calcSalary((e.salary ?? {}) as any, e.gender) }));
     const sal = rows.filter((r) => r.c && !r.c.daily), dw = rows.filter((r) => r.c?.daily), none = rows.filter((r) => !r.c);

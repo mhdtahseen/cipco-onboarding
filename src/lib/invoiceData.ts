@@ -3,7 +3,7 @@ import { istToday } from "./attendance";
 import { addDays, COMPANY_STATE_CODE } from "./invoice";
 import { swrDrop } from "./swr";
 
-export const fmtD = (iso: string | null | undefined) => (iso ? new Date(iso.length === 10 ? iso + "T00:00:00" : iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—");
+export const fmtD = (iso: string | null | undefined) => (iso ? new Date(iso.length === 10 ? iso + "T00:00:00+05:30" : iso).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" }) : "—");
 
 /**
  * Start the next running bill for a work order: a draft with every line of the order at "nothing more billed yet" (to date = earlier).

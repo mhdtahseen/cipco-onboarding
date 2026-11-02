@@ -18,7 +18,7 @@ export function dmyParts(d?: string | null) {
   const [y, m, dd] = d.split("-");
   return { dd, mm: m, yyyy: y };
 }
-export function todayISO() { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+export function todayISO() { return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Kolkata" }); }   // India's date, on a phone or on the server
 
 const ONES = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
 const TENS = ["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];

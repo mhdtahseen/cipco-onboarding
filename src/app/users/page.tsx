@@ -6,7 +6,7 @@ import { resetMe } from "@/lib/me";
 import type { Project } from "@/lib/types";
 
 type U = { user_id: string; email: string; full_name: string; last_sign_in_at: string | null; role: string | null; project_ids: string[]; push_devices?: number; push_last_at?: string | null };
-const fmt = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "never");
+const fmt = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" }) : "never");
 const NEEDS_ALERTS = ["supervisor", "site_engineer", "staff", "attendance"];   // these roles must have reminders on (see NotificationGate)
 const SITE_ROLES = ["supervisor", "site_engineer"];   // these are tied to particular sites
 const norm = (r: string | null) => (r === "attendance" ? "supervisor" : r ?? "none");

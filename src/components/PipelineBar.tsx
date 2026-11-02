@@ -29,7 +29,7 @@ export default function PipelineBar({ emp, onChange }: { emp: Employee; onChange
       {rejected ? (
         <div className="flex flex-wrap items-center gap-3 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2">
           <span className="font-semibold text-red-800">Closed — {emp.closed_reason}</span>
-          <span className="text-red-700">at {stageLabel(emp.closed_stage)} stage{emp.closed_at ? ` · ${new Date(emp.closed_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}` : ""}</span>
+          <span className="text-red-700">at {stageLabel(emp.closed_stage)} stage{emp.closed_at ? ` · ${new Date(emp.closed_at).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" })}` : ""}</span>
           {emp.closed_note && <span className="text-red-700 w-full">“{emp.closed_note}”</span>}
           <button className="btn ml-auto" disabled={busy} onClick={reopen}>Reopen candidate</button>
         </div>

@@ -8,7 +8,7 @@ import SalarySlip from "./SalarySlip";
 
 type P = ReturnType<typeof usePayroll>;
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
-const fmtD = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
+const fmtD = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" }) : "");
 
 export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: string; ym: string; today: string; projectName: string }) {
   const d = P.d!; const run = d.run; const approved = run?.status === "approved";

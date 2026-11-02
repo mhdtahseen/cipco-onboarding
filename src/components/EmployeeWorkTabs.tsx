@@ -7,7 +7,7 @@ import { STATUS_LABEL, daysWorked, istToday, type AttRow, type Status } from "@/
 import type { Employee } from "@/lib/types";
 
 const inr = (n: number | null | undefined) => (n || n === 0 ? n.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }) : "—");
-const fmt = (iso: string) => new Date(iso.length === 10 ? iso + "T00:00:00" : iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+const fmt = (iso: string) => new Date(iso.length === 10 ? iso + "T00:00:00+05:30" : iso).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" });
 const monthEnd = (ym: string) => { const [y, m] = ym.split("-").map(Number); return `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`; };
 
 /** Pay and attendance for one onboarded person: this is a read-only summary; the sheets and payroll runs stay on their own pages. */

@@ -37,7 +37,7 @@ export default function QuotationsPage() {
     && (!fOutcome || (fOutcome === "won" ? !!(r.id && won[r.id]) : r.status === "issued" && !(r.id && won[r.id]))) && (r.client_name + " " + r.subject + " " + (r.ref_no || "")).toLowerCase().includes(q.toLowerCase()));
   const shown = sortRows(filtered, (r) => ({ created: r.created_at ?? "", date: r.quote_date, ref: r.ref_no, client: r.client_name, amount: (r.items || []).reduce((s, i) => s + itemAmount(i), 0), project: r.project_id ? projects[r.project_id] ?? "" : "", status: r.status === "issued" ? 0 : 1 } as Record<QSort, string | number | null>)[sort.key], sort.dir, (a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
   const amt = (r: Quote) => inr((r.items || []).reduce((s, i) => s + itemAmount(i), 0));
-  const date = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const date = (d: string) => new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" });
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">

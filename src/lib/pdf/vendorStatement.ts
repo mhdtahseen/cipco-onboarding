@@ -1,7 +1,7 @@
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { embedFonts, newDoc, wrapPlain } from "./common";
 import { COMPANY } from "../company";
-import { MEALS } from "../attendance";
+import { MEALS, istToday } from "../attendance";
 import { fmtMoney, spanLabel, type Breakdown } from "../mealStatement";
 
 export type StatementInput = { vendorName: string; projectName: string; b: Breakdown; billNo?: string; billed?: number; verified: Record<string, "ok" | "incomplete">; includeNames: boolean; billFile?: Uint8Array | null };
@@ -75,7 +75,7 @@ export async function buildVendorStatement(s: StatementInput): Promise<Uint8Arra
     p.drawText("CIPCO Operations", { x: M, y: 27, size: 8, font: f.bold, color: blue });
     const lead = f.bold.widthOfTextAtSize("CIPCO Operations", 8);
     p.drawText("  ·  Attendance, meals, payroll and site records in one place  ·  ops.cipcogroup.com", { x: M + lead, y: 27, size: 8, font: f.reg, color: mute });
-    const right = `${dmy(new Date().toISOString().slice(0, 10))}  ·  Page ${i + 1} of ${pages.length}`;
+    const right = `${dmy(istToday())}  ·  Page ${i + 1} of ${pages.length}`;
     p.drawText(right, { x: W - M - f.reg.widthOfTextAtSize(right, 7.5), y: 14, size: 7.5, font: f.reg, color: mute });
   });
   if (s.billFile) await appendBill(doc, s.billFile, f);

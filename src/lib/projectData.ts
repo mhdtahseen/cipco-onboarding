@@ -4,7 +4,7 @@ import { supabase } from "./supabase/client";
 import { pileOf, STAGES } from "./pipeline";
 import type { DocType, Employee, ExpenseCategory, Project, ProjectDocument, ProjectExpense } from "./types";
 
-export const fmtD = (d: string | null | undefined) => (d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—");
+export const fmtD = (d: string | null | undefined) => (d ? new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" }) : "—");
 export const tally = (xs: string[]) => Object.entries(xs.reduce<Record<string, number>>((m, x) => ((m[x] = (m[x] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]);
 
 // Everything one project's screens need (overview and report share this): the project, its people, expenses, documents and the derived numbers.

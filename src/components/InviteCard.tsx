@@ -7,7 +7,7 @@ import type { Employee } from "@/lib/types";
 const LABEL: Record<string, string> = Object.fromEntries(FIELD_GROUPS.flatMap((g) => g.fields).map((f) => [f.key, f.label]));
 const DOC_LABEL: Record<string, string> = { aadhaar: "Aadhaar card", pan: "PAN card", bank: "Bank passbook / cheque", uan: "UAN / PF details", photo: "Photograph", resume: "Resume" };
 type Invite = { id: string; token: string; status: "sent" | "submitted" | "applied" | "revoked"; expires_at: string; submitted_at: string | null; submission: Record<string, string>; files: Record<string, string> };
-const fmt = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+const fmt = (d: string) => new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" });
 const clean = (k: string, x: string) => k === "phone" || k === "alt_phone" || k === "nominee_phone" || k === "emergency_phone" ? (() => { const d = x.replace(/\D/g, ""); return d.length > 10 && d.startsWith("91") ? d.slice(-10) : d; })() : k === "email" ? x.trim().toLowerCase() : k === "aadhaar" || k === "uan" ? x.replace(/\s|-/g, "") : k === "pan" || k === "ifsc" ? x.replace(/\s/g, "").toUpperCase() : x.trim();
 
 // Per-candidate self-fill link: create it, share it, then review what the candidate submitted before it touches the record.

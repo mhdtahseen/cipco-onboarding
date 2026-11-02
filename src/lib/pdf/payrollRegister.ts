@@ -8,7 +8,7 @@ export type RegisterInput = { projectName: string; payMonth: string; approved: b
 const W = 841.89, H = 595.28, M = 40;
 const ink = rgb(0.1, 0.1, 0.12), mute = rgb(0.4, 0.42, 0.48), rule = rgb(0.82, 0.84, 0.88), blue = rgb(0.12, 0.31, 0.64), soft = rgb(0.95, 0.96, 0.98), amber = rgb(0.72, 0.4, 0.05), green = rgb(0.05, 0.5, 0.35);
 const monthLabel = (iso: string) => new Date(iso.slice(0, 7) + "-01T00:00:00").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
-const dmy = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+const dmy = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" });
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
 const days = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 const COLS: { h: string; x: number; right?: boolean }[] = [
