@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { istToday } from "@/lib/attendance";
+import PayeeBank from "@/components/PayeeBank";
 import { RENT_GRACE_DAY, ROOM_TYPE, addMonths, billedIn, isActive, monthLabel, monthOf, monthsBilled, rentFor, type Rent, type Room, type RoomPayment } from "@/lib/accommodation";
 import type { Project } from "@/lib/types";
 import { uploadBill } from "@/lib/billUpload";
@@ -94,7 +95,7 @@ export default function Accommodation() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold sm:mr-auto">Accommodation</h1>
+      <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold sm:mr-auto">Accommodation</h1><a className="text-xs text-blue-700 underline" href="/payments-due">Payments due report →</a>
         {projects.length > 0 && <select className="inp w-full sm:!w-auto max-w-full" aria-label="Project" value={pid} onChange={(e) => { setPid(e.target.value); setPf((f) => ({ ...f, room_id: "" })); }}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.location ? ` — ${p.location}` : ""}</option>)}</select>}</div>
       <div role="tablist" className="flex border-b border-slate-200 overflow-x-auto">{([["overview", "Overview"], ["rooms", "Rooms"], ["rent", "Rent & payments"]] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab whitespace-nowrap ${tab === k ? "tab-on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>
       {err && <p className="warn">{err}</p>}{msg && <p className="text-sm text-green-700">{msg}</p>}{loading && <p className="text-slate-500">Loading…</p>}
@@ -122,7 +123,7 @@ export default function Accommodation() {
           <div className="overflow-x-auto"><table className="w-full text-sm min-w-[52rem]"><thead className="text-[11px] uppercase tracking-wide text-slate-400"><tr><th className="text-left py-1">Room</th><th className="text-left">Type</th><th className="text-right">Beds</th><th className="text-left pl-3">Landlord</th><th className="text-right">Rent / month</th><th></th></tr></thead>
             <tbody className="divide-y divide-slate-100">{rooms.map((r) => <tr key={r.id} className={isActive(r, today) ? "" : "opacity-60"}><td className="py-2 font-medium">{r.name}{!isActive(r, today) && <span className="text-xs text-slate-400 font-normal"> (vacated {r.vacated_on})</span>}<div className="text-xs font-normal text-slate-400">from {r.rented_from}</div></td><td>{ROOM_TYPE[r.room_type]}</td>
               <td className="text-right"><input className="inp !w-16 !py-1 text-right" type="number" min="0" aria-label={`Beds in ${r.name}`} defaultValue={r.capacity || ""} placeholder="set" onBlur={(e) => { const v = parseInt(e.target.value) || 0; if (v !== r.capacity) patchRoom(r, { capacity: v }); }} /></td>
-              <td className="pl-3"><input className="inp !w-40 !py-1" aria-label={`Landlord of ${r.name}`} defaultValue={r.landlord} placeholder="who is paid" onBlur={(e) => { if (e.target.value.trim() !== r.landlord) patchRoom(r, { landlord: e.target.value.trim() }); }} /></td>
+              <td className="pl-3"><input className="inp !w-40 !py-1" aria-label={`Landlord of ${r.name}`} defaultValue={r.landlord} placeholder="who is paid" onBlur={(e) => { if (e.target.value.trim() !== r.landlord) patchRoom(r, { landlord: e.target.value.trim() }); }} /><PayeeBank kind="room" refId={r.id} label="Landlord bank details" /></td>
               <td className="text-right"><div className="flex items-center justify-end gap-1.5"><span className="tabular-nums">₹{inr(rentFor(rents, r.id, thisMonth))}</span><input className="inp !w-20 !py-1" inputMode="decimal" placeholder="new" aria-label={`New rent for ${r.name}`} value={rentIn[r.id] ?? ""} onChange={(e) => setRentIn((s) => ({ ...s, [r.id]: e.target.value }))} /><button className="btn !min-h-8" onClick={() => setRent(r)}>Set</button></div></td>
               <td className="text-right pl-2">{isActive(r, today) ? <button className="text-xs text-red-700 underline" onClick={() => vacate(r)}>Vacate</button> : <button className="text-xs text-blue-700 underline" onClick={() => patchRoom(r, { vacated_on: null })}>Reopen</button>}</td></tr>)}</tbody></table></div>
           {!rooms.length && <p className="text-sm text-slate-400">No rooms yet. Add them below.</p>}

@@ -9,7 +9,7 @@ import { dropPush } from "@/lib/pushClient";
 import PermissionPrompt from "./PermissionPrompt";
 import NotificationGate from "./NotificationGate";
 import { swrClear } from "@/lib/swr";
-import { NAV_SECTIONS, itemFor, visibleItems, type NavItem } from "@/lib/nav";
+import { NAV_SECTIONS, itemFor, visibleItems, type NavItem, type NavRole } from "@/lib/nav";
 import { Icon } from "./NavIcons";
 
 // The frame around every signed-in page.
@@ -42,11 +42,11 @@ function NavList({ items, path, showLabels, collapsed, onNavigate }: { items: Na
   return (
     <nav aria-label="Main" className="space-y-0.5">
       {groups.map(({ s, list }, n) => {
-        const open = opened.includes(s) || current?.section === s; const folded = showLabels === "always" ? !open : !open && !collapsed;
+        const few = items.length <= 6; const open = few || opened.includes(s) || current?.section === s; const folded = showLabels === "always" ? !open : !open && !collapsed;
         return (
           <div key={s}>
             {n > 0 && showLabels === "wide" && divider}
-            <button type="button" onClick={() => toggle(s, open)} aria-expanded={open} disabled={current?.section === s}
+            <button type="button" onClick={() => toggle(s, open)} aria-expanded={open} disabled={few || current?.section === s}
               className={`w-full items-center justify-between rounded-lg px-3 min-h-9 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600 disabled:hover:text-slate-400 ${showLabels === "always" ? "flex" : collapsed ? "hidden" : "hidden xl:flex"}`}>
               {s}<Icon name="chevron-down" className={`h-4 w-4 transition-transform ${open ? "" : "-rotate-90"}`} />
             </button>
@@ -105,7 +105,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
 
   async function signOut() { await dropPush(); await supabase().auth.signOut(); resetMe(); swrClear(); router.push("/login"); router.refresh(); }
   const toggleSide = () => { if (window.matchMedia("(min-width: 1280px)").matches) { const v = !collapsed; setCollapsed(v); try { localStorage.setItem("cipco_nav_collapsed", v ? "1" : "0"); } catch { /* ignore */ } } else setDrawer(true); };
-  const barItems = items.filter((i) => i.bar).slice(0, 4);
+  const barItems = items.filter((i) => i.bar === true || (Array.isArray(i.bar) && !!role && i.bar.includes(role as NavRole))).slice(0, 4);
   const crumb = item ? <><span className="text-slate-400 hidden md:inline">{item.section}</span><span className="text-slate-300 hidden md:inline"> › </span><span className="font-semibold text-slate-800">{item.label}</span></> : <span className="font-semibold text-slate-800">{title}</span>;
 
   return (

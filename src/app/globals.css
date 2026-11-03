@@ -48,6 +48,23 @@ body { overflow-x: clip; }   /* clip (not hidden) so the sticky nav keeps workin
 @media (max-width: 1023px), (pointer: coarse) { .att .inp { font-size: 16px; min-height: 44px; } .att .btn { min-height: 44px; } }   /* thumbs get big targets; a mouse gets compact controls */
 .att input[type="date"].inp, .att input[type="month"].inp { display: block; min-width: 0; -webkit-appearance: none; appearance: none; }
 
+/* Gas cylinders and Hired equipment (.mob): used on phones by Supervisors and Site Engineers. Same idea as .att: 16px text so iOS never zooms, 44px tap targets,
+   and every field of a form takes the full width (two to a row for dates and times) instead of the fixed desktop widths. */
+.mob .inp { font-size: 14px; min-height: 36px; }
+.mob .btn { min-height: 36px; }
+.mob input[type="date"].inp, .mob input[type="month"].inp, .mob input[type="time"].inp { display: block; min-width: 0; -webkit-appearance: none; appearance: none; }
+.mob .tlink { color: #1e4fa3; text-decoration: underline; font-size: 12px; }
+@media (max-width: 1023px), (pointer: coarse) { .mob .inp { font-size: 16px; min-height: 44px; } .mob textarea.inp { min-height: 0; } .mob .btn { min-height: 44px; } .mob input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; } }
+@media (max-width: 640px) {
+  .mob .items-end > div { flex: 1 1 100%; min-width: 0; }
+  .mob .items-end > div:has(> input[type="date"], > input[type="time"]) { flex: 1 1 calc(50% - 0.25rem); }
+  .mob .items-end .inp { width: 100% !important; }
+  .mob .items-end > .btn, .mob .form-actions .btn { width: 100%; justify-content: center; }
+  .mob .form-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .mob .tlink { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 12px; border: 1px solid #cfd5e3; border-radius: 8px; background: #fff; text-decoration: none; font-size: 13px; font-weight: 500; }
+  .mob .tlink-danger { color: #b42318; border-color: #f1b8b2; }
+  .mob .tabs-scroll { margin-left: -16px; margin-right: -16px; padding-left: 8px; padding-right: 8px; }
+}
 /* App shell: on phones the bottom tab bar is fixed, so page-level bars that stick to the bottom sit just above it. */
 .shell-has-bar { --bottom-nav-h: 0px; }
 @media (max-width: 767px) { .shell-has-bar { --bottom-nav-h: calc(56px + env(safe-area-inset-bottom, 0px)); } }

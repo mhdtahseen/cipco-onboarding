@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { loadMe, peekMe } from "./me";
 
 export type Role = "admin" | "staff" | "site_engineer" | "supervisor" | "none";
-export const ROLE_LABEL: Record<string, string> = { admin: "Admin", staff: "Staff", site_engineer: "Site Engineer", supervisor: "Supervisor", attendance: "Supervisor", none: "No access" };
+export const ROLE_LABEL: Record<string, string> = { admin: "Admin", staff: "Operations", site_engineer: "Site Engineer", supervisor: "Supervisor", attendance: "Supervisor", none: "No access" };
 // Higher roles overrule lower ones and a lower role cannot change what a higher role set.
 export const roleRank = (r: string | null | undefined) => (r === "admin" ? 3 : r === "site_engineer" || r === "staff" ? 2 : r === "supervisor" || r === "attendance" ? 1 : 0);
 

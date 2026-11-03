@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { uploadBill } from "@/lib/billUpload";
 import PaymentBill from "@/components/PaymentBill";
+import PayeeBank from "@/components/PayeeBank";
 import { supabase } from "@/lib/supabase/client";
 import { istToday, tripRate, type Billing, type Run, type TransportRate, type Vehicle } from "@/lib/attendance";
 import type { Project } from "@/lib/types";
@@ -64,7 +65,7 @@ export default function TransportPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold sm:mr-auto">Transport</h1>
+      <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold sm:mr-auto">Transport</h1><a className="text-xs text-blue-700 underline" href="/payments-due">Payments due report →</a>
         {projects.length > 0 && <select className="inp w-full sm:!w-auto max-w-full" aria-label="Project" value={pid} onChange={(e) => { setPid(e.target.value); setPf((f) => ({ ...f, vehicle_id: "" })); setEf((f) => ({ ...f, vehicle_id: "" })); }}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.location ? ` — ${p.location}` : ""}</option>)}</select>}</div>
       {err && <p className="warn">{err}</p>}{loading && <p className="text-slate-500">Loading…</p>}
       {!loading && <>
@@ -84,7 +85,7 @@ export default function TransportPage() {
         <section className="card space-y-3"><div className="flex items-center gap-3"><h2 className="font-medium">Vehicles on this project</h2><label className="ml-auto text-xs text-slate-500 flex items-center gap-2">Month<input type="month" className="inp !w-40" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} /></label></div>
           <div className="overflow-x-auto"><table className="w-full text-sm min-w-[52rem]"><thead className="text-[11px] uppercase tracking-wide text-slate-400"><tr><th className="text-left py-1">Vehicle</th><th className="text-left">Billing</th><th className="text-right">Price</th><th className="text-right">Showed</th><th className="text-right">No-show</th><th className="text-right">This month</th><th className="text-right">Due (all)</th></tr></thead>
             <tbody className="divide-y divide-slate-100">{rows.map((o) => { const cur = tripRate(rates, o.v.id, istToday()); return (
-              <tr key={o.v.id}><td className="py-2"><div className="font-medium">{o.v.name}{!o.v.active && <span className="text-xs text-slate-400"> (inactive)</span>}</div><div className="text-xs text-slate-400">{o.v.operator || "—"}</div></td>
+              <tr key={o.v.id}><td className="py-2"><div className="font-medium">{o.v.name}{!o.v.active && <span className="text-xs text-slate-400"> (inactive)</span>}</div><div className="text-xs text-slate-400">{o.v.operator || "—"}</div><PayeeBank kind="vehicle" refId={o.v.id} label="Operator bank details" /></td>
                 <td><select className="inp !w-28 !py-1" aria-label={`Billing for ${o.v.name}`} value={o.v.billing} onChange={(e) => setBilling(o.v, e.target.value as Billing)}><option value="per_trip">Per trip</option><option value="monthly">Monthly</option></select></td>
                 <td className="text-right"><div className="flex items-center justify-end gap-1.5"><span className="tabular-nums">{cur === null ? "not set" : `₹${inr(cur)}`}</span><span className="text-xs text-slate-400">{BILL[o.v.billing]}</span><input className="inp !w-20 !py-1" inputMode="decimal" placeholder="new" aria-label={`New price for ${o.v.name}`} value={rateIn[o.v.id] ?? ""} onChange={(e) => setRateIn((s) => ({ ...s, [o.v.id]: e.target.value }))} /><button className="btn !min-h-8" onClick={() => setRate(o.v.id)}>Set</button></div></td>
                 <td className="text-right tabular-nums">{o.showed}</td><td className={`text-right tabular-nums ${o.missed ? "text-rose-700 font-medium" : ""}`}>{o.missed}</td>

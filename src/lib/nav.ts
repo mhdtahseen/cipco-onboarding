@@ -2,7 +2,7 @@
 // so adding a module (Payroll, Invoices, Inventory…) means adding an entry here and nothing else.
 // Pure data + helpers (no React), so the server-side route guard can import it too.
 export type NavRole = "admin" | "staff" | "site_engineer" | "supervisor" | "attendance";   // "attendance" = the old name for Supervisor, kept so the app still works before the migration renames it
-export type IconName = "users" | "clipboard" | "folder" | "file" | "book" | "mail" | "list" | "sliders" | "shield" | "building" | "truck" | "utensils" | "bed" | "wallet" | "pin";
+export type IconName = "users" | "clipboard" | "folder" | "file" | "book" | "mail" | "list" | "sliders" | "shield" | "building" | "truck" | "utensils" | "bed" | "wallet" | "pin" | "cylinder";
 export type NavItem = {
   href: string;            // where the link goes
   label: string;
@@ -10,10 +10,16 @@ export type NavItem = {
   section: string;         // heading in the sidebar (see NAV_SECTIONS for the order)
   roles: NavRole[];        // who sees it AND who may open it (admin may always open everything)
   paths: string[];         // addresses that belong to this item; "/" matches only the home page, others match themselves and anything under them
-  bar?: boolean;           // also shown on the phone's bottom bar (the first four that a role can see)
+  bar?: boolean | NavRole[];   // also shown on the phone's bottom bar (the first four that a role can see): true for every role, or only for the listed roles
 };
 
-export const NAV_SECTIONS = ["People", "Operations", "Sales", "Templates", "Admin"] as const;
+export const NAV_SECTIONS = ["People", "Operations", "Site consumables", "Sales", "Templates", "Admin"] as const;
+
+// Gas cylinders and Hired equipment are built for Supervisors and Site Engineers too (phone layout, bottom bar, their own limited views) but are switched off for them for now.
+// To open them up, set this to true: the menu, the phone bottom bar, the page guard and the gas routes all follow it. Operations and Admin always have both.
+const SITE_ROLES_GET_CONSUMABLES = false;
+const CONSUMABLES_ROLES: NavRole[] = SITE_ROLES_GET_CONSUMABLES ? ["admin", "staff", "site_engineer", "supervisor", "attendance"] : ["admin", "staff"];
+const CONSUMABLES_BAR: NavRole[] = SITE_ROLES_GET_CONSUMABLES ? ["site_engineer", "supervisor", "attendance"] : [];
 
 export const NAV: NavItem[] = [
   { href: "/", label: "Employees", icon: "users", section: "People", roles: ["admin", "staff"], paths: ["/", "/employees"], bar: true },
@@ -24,6 +30,9 @@ export const NAV: NavItem[] = [
   { href: "/transport", label: "Transport", icon: "truck", section: "Operations", roles: ["admin"], paths: ["/transport"] },
   { href: "/meals", label: "Meals", icon: "utensils", section: "Operations", roles: ["admin"], paths: ["/meals"] },
   { href: "/accommodation", label: "Accommodation", icon: "bed", section: "Operations", roles: ["admin"], paths: ["/accommodation"] },
+  { href: "/gas", label: "Gas cylinders", icon: "cylinder", section: "Site consumables", roles: CONSUMABLES_ROLES, paths: ["/gas", "/api/gas"], bar: CONSUMABLES_BAR },
+  { href: "/equipment", label: "Hired equipment", icon: "truck", section: "Site consumables", roles: CONSUMABLES_ROLES, paths: ["/equipment"], bar: CONSUMABLES_BAR },
+  { href: "/payments-due", label: "Payments due", icon: "wallet", section: "Operations", roles: ["admin"], paths: ["/payments-due"] },
   { href: "/quotations", label: "Quotations", icon: "file", section: "Sales", roles: ["admin", "staff"], paths: ["/quotations"], bar: true },
   { href: "/invoices", label: "Invoices", icon: "wallet", section: "Sales", roles: ["admin"], paths: ["/invoices"] },
   { href: "/work-orders", label: "Work orders", icon: "clipboard", section: "Sales", roles: ["admin"], paths: ["/work-orders"] },

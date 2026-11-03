@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import type { Project } from "@/lib/types";
+import PayeeBank from "@/components/PayeeBank";
 import { MEALS, istToday, rateFor, type Meal, type MealRate, type Vendor } from "@/lib/attendance";
 
 // Food vendors and what each meal costs. Vendors belong to a project: each project has its own vendors and prices, and a meal on the attendance sheet records which vendor the person ate with.
@@ -40,6 +41,7 @@ export default function VendorSettings({ projectId }: { projectId?: string } = {
       {vendors.filter((v) => v.project_id === pid).map((v) => (
         <div key={v.id} className={`card !p-3 space-y-2 ${v.active ? "" : "opacity-60"}`}>
           <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{v.name}</span><button className="btn !py-1 sm:ml-auto" onClick={() => rename(v)}>Rename</button><button className="btn !py-1" onClick={() => toggle(v)}>{v.active ? "Hide" : "Show"}</button></div>
+          <PayeeBank kind="food_vendor" refId={v.id} />
           <div className="flex flex-wrap items-end gap-3">{MEALS.map((m) => <div key={m.key}><label className="lbl">{m.label} (₹)</label><input className="inp !w-28" type="number" inputMode="decimal" min="0" step="0.01" value={inputs[key(v.id, m.key)] ?? ""} onChange={(e) => setInputs({ ...inputs, [key(v.id, m.key)]: e.target.value })} placeholder="not set" /></div>)}
             <button className="btn btn-primary" onClick={() => savePrices(v)}>Save prices</button></div>
         </div>))}
