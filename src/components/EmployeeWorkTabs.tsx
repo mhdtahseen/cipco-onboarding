@@ -12,7 +12,7 @@ const monthEnd = (ym: string) => { const [y, m] = ym.split("-").map(Number); ret
 
 /** Pay and attendance for one onboarded person: this is a read-only summary; the sheets and payroll runs stay on their own pages. */
 export function PayTab({ emp }: { emp: Employee }) {
-  const { admin } = useRole(); const [ym, setYm] = useState(istToday().slice(0, 7));
+  const { see: admin } = useRole(); const [ym, setYm] = useState(istToday().slice(0, 7));
   const [att, setAtt] = useState<AttRow[] | null>(null); const [hist, setHist] = useState<{ id: string; effective_from: string; monthly_ctc: number | null; note: string }[] | null>(null);
   useEffect(() => { (async () => {
     const sb = supabase(); setAtt(null);

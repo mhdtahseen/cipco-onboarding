@@ -95,6 +95,8 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
   useEffect(() => { try { setCollapsed(localStorage.getItem("cipco_nav_collapsed") === "1"); if (localStorage.getItem("cipco_nav_min") === "1") setHint("min"); } catch { /* storage unavailable */ } }, []);
   useEffect(() => { if (role) try { localStorage.setItem("cipco_nav_min", items.length <= 1 ? "1" : "0"); } catch { /* ignore */ } }, [role, items.length]);
   useEffect(() => { setDrawer(false); }, [path]);
+  const viewOnly = role === "viewer";   // the read-only role: edit controls are hidden everywhere (globals.css) and anything that slips through is refused (supabase/client.ts)
+  useEffect(() => { document.documentElement.toggleAttribute("data-readonly", viewOnly); return () => document.documentElement.removeAttribute("data-readonly"); }, [viewOnly]);
   useEffect(() => {   // slide-out menu: Escape closes, the page behind does not scroll, and it closes if the window grows to desktop size
     if (!drawer) return;
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") setDrawer(false); };
@@ -130,6 +132,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
           <div className="min-w-0 flex-1 truncate text-sm">{crumb}</div>
           <Account email={email} name={name} role={role} />
         </header>
+        {viewOnly && <div role="status" className="print:hidden bg-blue-50 border-b border-blue-100 text-blue-900 text-xs sm:text-sm px-4 py-2 text-center">👁 View-only access: you can look at everything, but nothing can be changed.</div>}
         <main id="main" className="max-w-6xl mx-auto px-4 py-4 sm:py-6">{children}</main>
         {!minimal && <div className="md:hidden h-[var(--bottom-nav-h,0px)]" aria-hidden />}
       </div>

@@ -36,7 +36,7 @@ export async function middleware(req: NextRequest) {
   // Supabase on every request. It still refreshes an expired session. (getUser() asked Supabase "who is this?" on every single page and API call.)
   const { data: claims } = await sb.auth.getClaims(); const uid = (claims?.claims?.sub as string | undefined) || null;
   const isLogin = req.nextUrl.pathname.startsWith("/login");
-  const isPublic = req.nextUrl.pathname.startsWith("/apply") || req.nextUrl.pathname.startsWith("/api/apply") || req.nextUrl.pathname.startsWith("/api/cron/");   // candidate self-fill links; the scheduled day check proves itself with a secret
+  const isPublic = req.nextUrl.pathname.startsWith("/apply") || req.nextUrl.pathname.startsWith("/api/apply") || req.nextUrl.pathname.startsWith("/api/cron/") || req.nextUrl.pathname.startsWith("/api/slip/");   // candidate self-fill links; the scheduled day check proves itself with a secret; a salary slip link proves itself with its signed, expiring token
   if (isPublic) return res;
   if (!uid && !isLogin) return NextResponse.redirect(new URL("/login", req.url));
   if (!uid) return res;
@@ -64,7 +64,7 @@ export async function middleware(req: NextRequest) {
   }
   const home = homeFor(role);
   if (isLogin) return NextResponse.redirect(new URL(home, req.url));
-  if (!canAccess(role, path)) return isApi ? NextResponse.json({ error: "Not allowed" }, { status: 403 }) : NextResponse.redirect(new URL(home, req.url));
+  if (!canAccess(role, path, req.method)) return isApi ? NextResponse.json({ error: "Not allowed" }, { status: 403 }) : NextResponse.redirect(new URL(home, req.url));
   return res;
 }
 export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|branding/|icons/|sw.js|manifest.webmanifest).*)"] };

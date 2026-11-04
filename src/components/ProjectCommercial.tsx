@@ -11,7 +11,7 @@ type Wo = { id: string; wo_no: string; title: string; status: string; quotation_
 
 /** The commercial chain of one project: client → quotations → work orders (POs) → billing. Work orders and invoices are Admin only, so staff see the first two. */
 export default function ProjectCommercial({ projectId, clientId, stateCode }: { projectId: string; clientId: string | null; stateCode: string | null }) {
-  const { admin } = useRole();
+  const { see: admin } = useRole();
   const [client, setClient] = useState<Client | null>(null); const [quotes, setQuotes] = useState<Quote[]>([]); const [wos, setWos] = useState<Wo[]>([]); const [bill, setBill] = useState({ billed: 0, outstanding: 0, count: 0 }); const [err, setErr] = useState("");
   useEffect(() => { (async () => {
     const sb = supabase();

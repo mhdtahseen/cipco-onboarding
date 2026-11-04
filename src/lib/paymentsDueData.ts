@@ -3,6 +3,7 @@ import { istToday, tripRate, type TransportRate } from "./attendance";
 import { monthOf, monthsBilled, rentFor, type Rent, type Room } from "./accommodation";
 import { creditWindow, monthName, statDue, statutoryTotals } from "./payroll";
 import type { Bank, NotIncluded, Payee, ProjectDues } from "./pdf/paymentsDue";
+import { bankFor } from "./payee";
 
 export type KeyedPayee = Payee & { key: string };
 export type PaymentsDue = { projects: (Omit<ProjectDues, "payees"> & { id: string; payees: KeyedPayee[] })[]; notIncluded: NotIncluded };
@@ -79,6 +80,10 @@ export async function loadPaymentsDue(sb: SupabaseClient): Promise<PaymentsDue> 
 
   // Gas and hired equipment: approved site bills only; payments are applied to the oldest bill first. Not created until the consumables migration is run: then there is simply nothing here.
   const soft = async <T,>(q: () => any): Promise<T[]> => { try { return await all<T>(q); } catch { return []; } };
+  // people whose salary goes into another employee's account (the column exists once 2026-11-pay-to-account.sql is run)
+  const linked = await soft<{ id: string; pay_to_employee_id: string }>(() => sb.from("employees").select("id, pay_to_employee_id").not("pay_to_employee_id", "is", null));
+  const linkTargets = linked.length ? await soft<any>(() => sb.from("employees").select("id, full_name, bank_name, bank_branch, account_no, ifsc").in("id", [...new Set(linked.map((x) => x.pay_to_employee_id))])) : [];
+  const linkPool = [...linked.map((x) => ({ id: x.id, full_name: "", pay_to_employee_id: x.pay_to_employee_id })), ...linkTargets];
   const [gvendors, sbills, spayments, gterms] = await Promise.all([
     soft<{ id: string; name: string; kind: string }>(() => sb.from("gas_vendors").select("id, name, kind")),
     soft<any>(() => sb.from("site_bills").select("id, kind, vendor_id, project_id, bill_no, bill_date, period_from, period_to, bill_amount, approved_amount, status").is("voided_at", null).order("bill_date")),
@@ -103,8 +108,9 @@ export async function loadPaymentsDue(sb: SupabaseClient): Promise<PaymentsDue> 
     if (l.held) { notIncluded.push({ label: `${pname.get(l.project_id) ?? "—"} · ${l.snapshot?.name ?? "Employee"}: salary ${monthName(ym)} is on hold`, amount: net - paid }); return; }
     const k = `${l.employee_id}:${l.project_id}`; const e = person.get(k) ?? { pid: l.project_id, sn: l.snapshot ?? {}, mode: l.pay_mode, total: 0, paid: 0, months: [] as string[], draft: false }; e.total += net; e.paid += paid; e.months.push(ym); if (run.status !== "approved") e.draft = true; person.set(k, e);
   });
-  person.forEach((e, k) => { const ms = e.months.sort(), sn = e.sn; const bank: Bank | null = e.mode === "upi" ? (sn.upi_id ? { upi: sn.upi_id } : null) : e.mode === "bank" ? (sn.account_no ? { bank: sn.bank_name, accountNo: sn.account_no, ifsc: sn.ifsc } : null) : null;
-    add(e.pid, { key: `salary:${k}`, category: "salary", name: sn.name ?? "Employee", forWhat: `Salary ${ms.map((m) => monthName(m).replace(/ \d{4}$/, "")).join(", ")}${sn.designation ? ` · ${sn.designation}` : ""}`, total: e.total, paid: e.paid, oldestDue: creditWindow(ms[0]).to, draft: e.draft, bank, mode: e.mode === "cash" ? "cash" : e.mode === "upi" ? "upi" : "bank" }); });
+  person.forEach((e, k) => { const ms = e.months.sort(), sn = e.sn; const via = e.mode === "bank" ? bankFor(k.split(":")[0], sn, linkPool as any) : null; const acct = via && via.via ? via : null;
+    const bank: Bank | null = e.mode === "upi" ? (sn.upi_id ? { upi: sn.upi_id } : null) : e.mode === "bank" ? (acct ? (acct.account ? { holder: acct.holder, bank: acct.bank, branch: acct.branch, accountNo: acct.account, ifsc: acct.ifsc } : null) : sn.account_no ? { bank: sn.bank_name, accountNo: sn.account_no, ifsc: sn.ifsc } : null) : null;
+    add(e.pid, { key: `salary:${k}`, category: "salary", name: sn.name ?? "Employee", forWhat: `Salary ${ms.map((m) => monthName(m).replace(/ \d{4}$/, "")).join(", ")}${sn.designation ? ` · ${sn.designation}` : ""}${acct ? ` · paid into ${acct.via}'s account` : ""}`, total: e.total, paid: e.paid, oldestDue: creditWindow(ms[0]).to, draft: e.draft, bank, mode: e.mode === "cash" ? "cash" : e.mode === "upi" ? "upi" : "bank" }); });
 
   // PF, ESI and Professional Tax for approved payroll months, against what has been remitted.
   const KIND = { pf: "Provident fund (EPFO)", esi: "ESI (ESIC)", pt: "Professional tax" } as const;

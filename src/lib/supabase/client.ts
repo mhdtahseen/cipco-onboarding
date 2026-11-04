@@ -1,9 +1,11 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { REMEMBER_COOKIE, withLifetime } from "./session";
+import { guard } from "./readOnly";
+export { setReadOnly, VIEW_ONLY_MESSAGE } from "./readOnly";
 
 const read = () => document.cookie.split("; ").filter(Boolean).map((c) => { const i = c.indexOf("="); return { name: c.slice(0, i), value: decodeURIComponent(c.slice(i + 1)) }; });
 
-export const supabase = () =>
+export const supabase = () => guard(
   createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     cookies: {
       getAll: read,
@@ -19,6 +21,6 @@ export const supabase = () =>
         });
       },
     },
-  });
+  }));
 
 export const setRemember = (on: boolean) => { document.cookie = `${REMEMBER_COOKIE}=${on ? "1" : "0"}; path=/; samesite=lax${on ? "; max-age=31536000" : ""}`; };

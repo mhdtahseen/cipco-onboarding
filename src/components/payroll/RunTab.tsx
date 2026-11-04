@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase/client";
 import { computeLine, monthEnd, monthName, monthStart, type LineResult, type Adjustment } from "@/lib/payroll";
 import type { usePayroll, Line } from "@/lib/payrollData";
 import SalarySlip from "./SalarySlip";
+import SlipSender from "./SlipSender";
 
 type P = ReturnType<typeof usePayroll>;
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
@@ -51,6 +52,18 @@ export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: 
   const chip = !run ? <span className="rounded-full bg-slate-100 text-slate-600 text-xs px-2.5 py-1">Not started</span> : approved ? <span className="rounded-full bg-emerald-50 text-emerald-700 text-xs px-2.5 py-1">Approved {fmtD(run.approved_at)}</span> : stale ? <span className="rounded-full bg-amber-50 text-amber-800 text-xs px-2.5 py-1">Draft · out of date</span> : <span className="rounded-full bg-blue-50 text-blue-800 text-xs px-2.5 py-1">Draft saved</span>;
   const card = (l: string, v: string, sub?: string) => <div className="rounded-2xl bg-white border border-slate-200/80 p-3"><div className="text-xs text-slate-400">{l}</div><div className="text-lg font-medium tabular-nums">{v}</div>{sub && <div className="text-[11px] text-slate-400">{sub}</div>}</div>;
   const adjFor = (id: string) => d.adjs.filter((a) => a.employee_id === id && !a.voided_at);
+  // salaried people whose off days count as LOP this month (chosen here; daily-wage workers are paid per day worked, so they are not listed)
+  const offSel = new Set(d.adjs.filter((a) => a.kind === "off_lop" && !a.voided_at).map((a) => a.employee_id));
+  const salariedRows = inRun.filter((x) => x.r.line && x.r.line.kind === "salaried");
+  const [offErr, setOffErr] = useState("");   // shown inside the panel, where the tick was made (the page-level message is easy to miss from here)
+  async function setOffLop(ids: string[], on: boolean) {
+    setErr(""); setOffErr(""); const sb = supabase();
+    if (on) { const rows = ids.filter((i) => !offSel.has(i)).map((i) => ({ project_id: pid, employee_id: i, pay_month: monthStart(ym), kind: "off_lop", label: "Off days counted as LOP", reason: "", amount: 0 })); if (!rows.length) return;
+      const { error } = await sb.from("payroll_adjustments").insert(rows); if (error) { setOffErr(/off_lop|check constraint|violates/i.test(error.message) ? "Couldn't save the tick: the database has not had the payroll migration yet. Run 2026-11-payroll-off-lop.sql in Supabase, then try again." : error.message); return; } }
+    else { const adjIds = d.adjs.filter((a) => a.kind === "off_lop" && !a.voided_at && ids.includes(a.employee_id)).map((a) => a.id); if (!adjIds.length) return;
+      const { error } = await sb.from("payroll_adjustments").update({ voided_at: new Date().toISOString() }).in("id", adjIds); if (error) { setOffErr(error.message); return; } }
+    note(on ? "Marked. Recalculate to apply it." : "Cleared. Recalculate to apply it."); P.load();
+  }
 
   return (
     <div className="space-y-4" data-run>
@@ -77,6 +90,14 @@ export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: 
         {stale && !blockers.length && <div className="text-amber-900">Something changed since the draft was saved (attendance, salary or an adjustment). Recalculate before approving.</div>}</section>}
       {noDate.length > 0 && <p className="text-xs text-amber-800">No joining date, so not in the payroll: {noDate.map((x) => x.e.full_name).join(", ")}.</p>}
       {next.length > 0 && <p className="text-xs text-slate-500" data-next>Joined after the 20th, so paid in the next run: {next.map((x) => `${x.e.full_name} (${new Date(x.e.join_date! + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })})`).join(", ")}.</p>}
+      {salariedRows.length > 0 && (!approved || offSel.size > 0) && <details className="card !p-3" open={offSel.size > 0}><summary className="cursor-pointer text-sm font-medium">Off days as LOP{offSel.size > 0 ? ` · ${offSel.size} of ${salariedRows.length} salaried selected` : ""}</summary>
+        <p className="text-xs text-slate-500 mt-1">Tick the salaried people whose off days (a marked Off and the weekly off) are unpaid this month and count as LOP. Everyone else is paid for off days as usual. Daily-wage workers are not affected.</p>
+        {offErr && <p className="warn mt-2" role="alert">{offErr}</p>}
+        <div className="mt-2 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">{salariedRows.map((x) => { const offs = (x.r.line!.snapshot?.counts?.off ?? 0) as number; const on = offSel.has(x.e.id); return (
+          <label key={x.e.id} className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-sm ${on ? "border-blue-300 bg-blue-50/60" : "border-slate-200"} ${approved ? "opacity-70" : "cursor-pointer"}`}>
+            <input type="checkbox" checked={on} disabled={approved} onChange={(ev) => setOffLop([x.e.id], ev.target.checked)} /><span className="flex-1 min-w-0 truncate">{x.e.full_name}</span><span className="text-xs text-slate-500 whitespace-nowrap">{on ? `${offs} off day${offs === 1 ? "" : "s"} → LOP` : `${offs} off day${offs === 1 ? "" : "s"}`}</span></label>); })}</div>
+        {!approved && <div className="mt-2 flex flex-wrap gap-2"><button className="btn btn-sm" onClick={() => setOffLop(salariedRows.map((x) => x.e.id), true)}>Select all salaried</button><button className="btn btn-sm" disabled={!offSel.size} onClick={() => setOffLop([...offSel], false)}>Clear all</button></div>}</details>}
+      {approved && run && d.lines.length > 0 && <SlipSender runId={run.id} month={monthName(ym)} project={projectName} people={d.lines.map((l) => ({ lineId: l.id, name: String(l.snapshot?.name ?? "Employee"), phone: d.emps.find((e) => e.id === l.employee_id)?.phone ?? null })).sort((a, b) => a.name.localeCompare(b.name))} />}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">{card("People", String(shown.length))}{card("Gross", `₹${inr(sum("gross"))}`)}{card("Deductions", `₹${inr(sum("deductions"))}`)}{card("Net to pay", `₹${inr(sum("net"))}`)}{card("Cost to company", `₹${inr(sum("gross") + sum("er_total"))}`, `incl. employer PF / ESI ₹${inr(sum("er_total"))}`)}</div>
       <div className="card !p-0 overflow-x-auto"><table className="w-full text-sm min-w-[52rem]" data-lines><thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="text-left p-2.5">Employee</th><th className="text-left">Type</th><th className="text-right">P / ½ / A / Off</th><th className="text-right">LOP</th><th className="text-right">Gross</th><th className="text-right">Deductions</th><th className="text-right">Net</th><th className="text-left pl-3">Pay by</th><th></th></tr></thead>
         <tbody className="divide-y divide-slate-100">{shown.map((x) => { const c = (x.line.snapshot?.counts ?? {}) as Record<string, number>; const isOpen = open === x.id; return (<>
@@ -87,7 +108,7 @@ export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: 
           {isOpen && <tr key={x.id + "-d"} className="bg-slate-50/60"><td colSpan={9} className="p-3"><div className="fade-in grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <div onClick={(e) => e.stopPropagation()}><SalarySlip projectName={projectName} payMonth={monthStart(ym)} line={x.line} draft={!approved} /></div>
             <div className="space-y-2"><div className="text-xs font-medium text-slate-500">Adjustments for {monthName(ym)}</div>
-              {adjFor(x.id).map((a) => <div key={a.id} className="flex items-center gap-2 text-sm"><span className="flex-1">{a.kind === "deduction" ? "−" : "+"} {a.label}{a.kind === "lop_waiver" ? ` (${a.days} days)` : ` ₹${inr(a.amount)}`}{a.reason ? <span className="text-xs text-slate-400"> · {a.reason}</span> : null}</span>{!approved && <button className="text-xs text-red-700 underline" onClick={(e) => { e.stopPropagation(); voidAdj(a.id); }}>Void</button>}</div>)}
+              {adjFor(x.id).map((a) => <div key={a.id} className="flex items-center gap-2 text-sm"><span className="flex-1">{a.kind === "off_lop" ? "" : a.kind === "deduction" ? "− " : "+ "}{a.label}{a.kind === "off_lop" ? "" : a.kind === "lop_waiver" ? ` (${a.days} days)` : ` ₹${inr(a.amount)}`}{a.reason ? <span className="text-xs text-slate-400"> · {a.reason}</span> : null}</span>{!approved && <button className="text-xs text-red-700 underline" onClick={(e) => { e.stopPropagation(); voidAdj(a.id); }}>Void</button>}</div>)}
               {!adjFor(x.id).length && <div className="text-xs text-slate-400">None.</div>}
               {!approved && <div className="flex flex-wrap gap-1.5 items-end" onClick={(e) => e.stopPropagation()}>
                 <select className="inp !w-32 !py-1" aria-label="Adjustment type" value={af.kind} onChange={(e) => setAf({ ...af, kind: e.target.value })}><option value="earning">Bonus / earning</option><option value="deduction">Deduction / fine</option><option value="lop_waiver">Waive LOP days</option></select>

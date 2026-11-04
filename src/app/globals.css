@@ -65,6 +65,9 @@ body { overflow-x: clip; }   /* clip (not hidden) so the sticky nav keeps workin
   .mob .tlink-danger { color: #b42318; border-color: #f1b8b2; }
   .mob .tabs-scroll { margin-left: -16px; margin-right: -16px; padding-left: 8px; padding-right: 8px; }
 }
+/* The read-only role (Viewer): hide the controls that save, send, approve or delete. Anything that slips through is refused by the database and by supabase/client.ts. */
+[data-readonly] .btn-primary, [data-readonly] .btn-danger, [data-readonly] .tlink-danger, [data-readonly] input[type="file"],
+[data-readonly] button.text-red-700, [data-readonly] button.text-rose-700, [data-readonly] button.text-red-600 { display: none !important; }
 /* App shell: on phones the bottom tab bar is fixed, so page-level bars that stick to the bottom sit just above it. */
 .shell-has-bar { --bottom-nav-h: 0px; }
 @media (max-width: 767px) { .shell-has-bar { --bottom-nav-h: calc(56px + env(safe-area-inset-bottom, 0px)); } }

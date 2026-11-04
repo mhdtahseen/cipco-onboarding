@@ -57,7 +57,8 @@ export default function UsersPage() {
     <div className="space-y-4">
       <div><h1 className="text-xl font-semibold">Users &amp; roles</h1>
         <p className="text-sm text-slate-500">Create the login in Supabase (Authentication → Add user), then name it and set what it can do here. Everyone needs their own login, because every attendance change is stamped with who made it.</p></div>
-      <div className="grid gap-2 sm:grid-cols-4 text-xs text-slate-500">
+      <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5 text-xs text-slate-500">
+        <div className="card !p-3"><b className="text-slate-700">Viewer</b><br />Looks at everything for overview and monitoring: every page, every figure, bank details and documents. Cannot change, approve, send or delete anything. Starts on Sites today.</div>
         <div className="card !p-3"><b className="text-slate-700">Operations</b><br />Every site and the money side (rates, bills, approvals) of operations modules such as Gas. Not payroll, users or bank details.</div>
         <div className="card !p-3"><b className="text-slate-700">Admin</b><br />Everything, every site, the activity trail, transport rates and payments, and changing any day.</div>
         <div className="card !p-3"><b className="text-slate-700">Site Engineer</b><br />Attendance only, for their sites. Can overrule the Supervisor, correct yesterday, and verify the day.</div>
@@ -71,7 +72,7 @@ export default function UsersPage() {
           <div className="grid gap-3 sm:grid-cols-[1fr_14rem_auto] items-end">
             <div><label className="lbl">Name <span className="font-normal text-slate-400">(shown on stamps and in the activity trail)</span></label><input className="inp" value={e.name} placeholder="e.g. Ravi Kumar" onChange={(ev) => setEdit({ ...edit, [u.user_id]: { ...e, name: ev.target.value } })} /></div>
             <div><label className="lbl">Role</label><select className="inp" value={e.role} disabled={mine} title={mine ? "You can't change your own role" : ""} onChange={(ev) => setEdit({ ...edit, [u.user_id]: { ...e, role: ev.target.value } })}>
-              {["admin", "staff", "site_engineer", "supervisor", "none"].map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select></div>
+              {["admin", "staff", "viewer", "site_engineer", "supervisor", "none"].map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select></div>
             <button className="btn btn-primary" disabled={!changed || busy === u.user_id} onClick={() => save(u)}>{busy === u.user_id ? "Saving…" : "Save"}</button>
           </div>
           {SITE_ROLES.includes(e.role) && <div className="space-y-1"><div className="lbl">Sites this {ROLE_LABEL[e.role].toLowerCase()} can work on</div><div className="flex flex-wrap gap-x-4 gap-y-1">{projects.map((p) => <label key={p.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={e.projects.includes(p.id)} onChange={(ev) => setEdit({ ...edit, [u.user_id]: { ...e, projects: ev.target.checked ? [...e.projects, p.id] : e.projects.filter((x) => x !== p.id) } })} />{p.name}</label>)}{!projects.length && <span className="text-sm text-slate-400">No active projects.</span>}</div></div>}

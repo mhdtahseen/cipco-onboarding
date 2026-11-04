@@ -15,7 +15,7 @@ const LIMIT = 5000;
 // Admin only: where the Supervisors' and Site Engineers' entries were made, project by project, on an OpenStreetMap map. The phone supplies the coordinates, so treat them
 // as evidence, not proof. Entries with no location are listed separately: "no location" is itself worth seeing.
 export default function Locations() {
-  const { admin } = useRole(); const today = istToday();
+  const { see: admin } = useRole(); const today = istToday();
   const [from, setFrom] = useState(addDays(today, -6)); const [to, setTo] = useState(today);
   const [rows, setRows] = useState<Row[]>([]); const [names, setNames] = useState<Record<string, string>>({}); const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [project, setProject] = useState(""); const [person, setPerson] = useState(""); const [action, setAction] = useState(""); const [joined, setJoined] = useState(false); const [sel, setSel] = useState<string | null>(null); const [more, setMore] = useState(1);

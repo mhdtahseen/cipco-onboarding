@@ -5,9 +5,9 @@ import { fmtMoney } from "../mealStatement";
 
 export type GasOrderPdf = {
   orderNo: string; orderedOn: string; neededBy: string | null; projectName: string; projectLocation: string;
-  vendor: { name: string; contact: string; phone: string; gstin: string };
+  vendor: { name: string; contact: string; phone: string; gstin: string; address?: string };
   lines: { product: string; capacity: string; qty: number; rate: number; gst: number }[];
-  terms: { deposit: number; rent: number; postRent: number; graceDays: number; loss: number; dueFirst: number; dueSecond: number; note: string; noticeHours: number; freeMin: number } | null;
+  terms: { deposits: { product: string; amount: number }[]; rent: number; postRent: number; graceDays: number; loss: number; damage: number; chargesGst: number; transport: number; dueFirst: number; dueSecond: number; note: string; noticeHours: number; freeMin: number } | null;
 };
 
 const W = 595.28, H = 841.89, M = 40, BOTTOM = 60;
@@ -30,6 +30,7 @@ export async function buildGasOrder(o: GasOrderPdf): Promise<Uint8Array> {
   text("To", M, { size: 8, color: mute }); text("Date", M + 330, { size: 8, color: mute }); y -= 12;
   text(o.vendor.name, M, { size: 11, font: f.bold }); text(dmy(o.orderedOn), M + 330, { size: 10 }); y -= 13;
   const contact = [o.vendor.contact, o.vendor.phone].filter(Boolean).join("  ·  "); if (contact) { text(contact, M, { size: 9, color: mute }); y -= 12; }
+  if (o.vendor.address) { text(o.vendor.address, M, { size: 9, color: mute }); y -= 12; }
   if (o.vendor.gstin) { text(`GSTIN ${o.vendor.gstin}`, M, { size: 9, color: mute }); y -= 12; }
   y -= 6; text("Deliver to", M, { size: 8, color: mute }); text("Needed by", M + 330, { size: 8, color: mute }); y -= 12;
   text(o.projectName, M, { size: 10, font: f.bold }); text(o.neededBy ? dmy(o.neededBy) : "As soon as possible", M + 330, { size: 10 }); y -= 12;
@@ -48,19 +49,21 @@ export async function buildGasOrder(o: GasOrderPdf): Promise<Uint8Array> {
   });
   y += 8; hr(); y -= 16;
   const sum = (label: string, v: string, bold = false) => { need(16); text(label, cx.gst + 20, { right: true, font: bold ? f.bold : f.reg, color: bold ? ink : mute }); text(v, cx.amt, { right: true, font: bold ? f.bold : f.reg }); y -= 15; };
-  sum(`Cylinders ordered: ${cyl}   ·   Amount before GST`, `₹${fmtMoney(sub)}`); sum("GST", `₹${fmtMoney(gst)}`); sum("Order total", `₹${fmtMoney(sub + gst)}`, true);
+  const m2 = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  sum(`Cylinders ordered: ${cyl}   ·   Amount before GST`, `₹${m2(sub)}`); sum("GST", `₹${m2(gst)}`); sum("Order total", `₹${m2(sub + gst)}`, true);
   y -= 8;
 
   const t = o.terms;
   if (t) {
     need(40); text("Terms of supply", M, { size: 10.5, font: f.bold, color: blue }); y -= 8; hr(); y -= 14;
     const rows: string[] = [];
-    if (t.deposit > 0) rows.push(`Cylinder deposit ₹${fmtMoney(t.deposit)} per cylinder, refundable when the cylinders are returned in the same condition.`);
-    rows.push(`Please give us at least ${t.noticeHours} hours' notice before cylinders are needed. Delivery is free from ${t.freeMin} cylinders in one order.`);
+    if (t.deposits.length) rows.push(`Cylinder deposit (refundable when the cylinders are returned in the same condition): ${t.deposits.map((d) => `${d.product} ₹${fmtMoney(d.amount)}`).join(", ")} per cylinder.`);
+    if (t.noticeHours > 0 || t.freeMin > 0) rows.push(`${t.noticeHours > 0 ? `Please give us at least ${t.noticeHours} hours' notice before cylinders are needed. ` : ""}${t.freeMin > 0 ? `Delivery is free from ${t.freeMin} cylinders in one order.` : ""}`.trim());
+    if (t.transport > 0) rows.push(`Transportation is charged at ₹${fmtMoney(t.transport)} per trip${t.chargesGst > 0 ? `, plus ${t.chargesGst}% GST` : ""}.`);
     if (t.rent > 0) rows.push(`Cylinder rent of ₹${fmtMoney(t.rent)} per cylinder per day applies to a cylinder not rotated often enough in a month, as per your quotation.`);
     if (t.postRent > 0) rows.push(`When the project is over, cylinders are returned within ${t.graceDays} days; after that ₹${fmtMoney(t.postRent)} per cylinder per day is payable as rent.`);
-    if (t.loss > 0) rows.push(`A cylinder lost or damaged is charged at ₹${fmtMoney(t.loss)} per cylinder.`);
-    rows.push(`Payment is made against each invoice in full: invoices dated the 1st to the 15th by the ${t.dueFirst}th of the same month, and invoices dated the 16th onwards by the ${t.dueSecond}th of the next month.`);
+    if (t.loss > 0) rows.push(`A cylinder lost on site is charged at ₹${fmtMoney(t.loss)}${t.chargesGst > 0 ? ` + ${t.chargesGst}% GST` : ""}.`);
+    if (t.damage > 0) rows.push(`A cylinder whose valve and cap are damaged on site is charged at ₹${fmtMoney(t.damage)}${t.chargesGst > 0 ? ` + ${t.chargesGst}% GST` : ""}.`);
     rows.push("The rates above are those in force when this order was approved. Please quote this order number on every challan and invoice.");
     for (const r of rows) { need(14); text("•", M + 2); const ls = wrapPlain(f.reg, r, 9, W - 2 * M - 14); ls.forEach((l, i) => { need(13); text(l, M + 12, { size: 9 }); y -= 12.5; if (i === ls.length - 1) y -= 2; }); }
     if (t.note.trim()) { y -= 4; para(t.note.trim(), 9, mute); }

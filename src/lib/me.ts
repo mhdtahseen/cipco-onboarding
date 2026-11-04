@@ -1,5 +1,5 @@
 "use client";
-import { supabase } from "./supabase/client";
+import { setReadOnly, supabase } from "./supabase/client";
 import type { Role } from "./roles";
 import { swrClear } from "./swr";
 
@@ -18,7 +18,8 @@ async function fetchMe(uid: string, email: string): Promise<Me> {
   const [r, p] = await Promise.all([sb.from("user_roles").select("role").eq("user_id", uid).maybeSingle(), sb.from("user_profiles").select("full_name").eq("user_id", uid).maybeSingle()]);
   // If the roles table does not exist yet (migration not run) everyone is treated as admin, so nobody is locked out.
   const raw = r.error ? "admin" : ((r.data?.role as string) ?? "none");
-  return { userId: uid, email, name: ((p.data?.full_name as string) || "").trim(), role: (raw === "attendance" ? "supervisor" : raw) as Role };
+  const role = (raw === "attendance" ? "supervisor" : raw) as Role; setReadOnly(role === "viewer");   // a Viewer cannot change anything: see supabase/client.ts
+  return { userId: uid, email, name: ((p.data?.full_name as string) || "").trim(), role };
 }
 
 /** The signed-in user, or null if nobody is. Repeated calls share one fetch. */
@@ -39,5 +40,5 @@ export async function loadMe(): Promise<Me | null> {
 export const peekMe = (): Me | null => resolved;
 
 /** Forget what is cached (after a role or name changes) so the next read fetches it again. */
-export const resetMe = () => { cache = null; resolved = null; };
+export const resetMe = () => { cache = null; resolved = null; setReadOnly(false); };
 

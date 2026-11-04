@@ -19,7 +19,7 @@ export default function QuotationsPage() {
   const snap = swrGet<QSnap>("quotations");   // last result, shown at once while a fresh one loads
   const [projects, setProjects] = useState<Record<string, string>>(snap?.projects ?? {}); const [won, setWon] = useState<Record<string, string>>(snap?.won ?? {});
   const [sort, setSort] = useSortState<QSort>("cipco_sort_quotations", { key: "created", dir: "desc" }, Q_SORT);
-  const { admin } = useRole(); const [clients, setClients] = useState<Client[]>(snap?.clients ?? []);
+  const { see: admin } = useRole(); const [clients, setClients] = useState<Client[]>(snap?.clients ?? []);
   const [fStatus, setFStatus] = useState(""); const [fClient, setFClient] = useState(""); const [fProject, setFProject] = useState(""); const [fOutcome, setFOutcome] = useState(""); const [fFy, setFFy] = useState("");
   const [rows, setRows] = useState<Quote[]>(snap?.rows ?? []); const [q, setQ] = useState(""); const [err, setErr] = useState(""); const [loading, setLoading] = useState(!snap);
   useEffect(() => { (async () => {

@@ -24,7 +24,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
     document.addEventListener("mousedown", down); document.addEventListener("keydown", key); return () => { document.removeEventListener("mousedown", down); document.removeEventListener("keydown", key); };
   }, [qm]);
   const overrideRef = useRef(false); const [override, setOverride] = useState(false); useEffect(() => { setOverride(false); setStale(false); pendingRef.current = null; }, [projectId, date]);   // an Admin sees a day view-only until they choose Override, so nothing is changed by accident
-  const viewOnly = admin && !override; overrideRef.current = override;
+  const viewOnly = (admin && !override) || role === "viewer"; overrideRef.current = override;   // an Admin sees a day view-only until they Override; a Viewer always does
   const future = isFuture(date), verifiedLock = isSupervisorRole(role) && !!day?.verified_at, lockedByRules = !canWriteDay(role, date) || verifiedLock, locked = lockedByRules || viewOnly;
   const sb = () => supabase();
 

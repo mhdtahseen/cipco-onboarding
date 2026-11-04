@@ -13,7 +13,7 @@ const dayDiff = (from: string, to: string) => Math.round((Date.parse(to + "T00:0
 // Admin only: everything the company owes, project by project, in one place: total billed, paid so far (advances shown apart) and pending.
 // Untick anyone to leave them out, then download the PDF. The PDF is built on the server from the same figures (/api/payments-due/pdf).
 export default function PaymentsDuePage() {
-  const { admin } = useRole(); const today = istToday();
+  const { see: admin } = useRole(); const today = istToday();
   const [d, setD] = useState<PaymentsDue | null>(null); const [err, setErr] = useState(""); const [off, setOff] = useState<Set<string>>(new Set()); const [project, setProject] = useState("");
   useEffect(() => { if (!admin) return; (async () => { const r = await fetch("/api/payments-due"); if (!r.ok) { setErr(await r.text()); return; } setD(await r.json()); })(); }, [admin]);
   const shown = useMemo(() => (d?.projects ?? []).filter((p) => !project || p.id === project), [d, project]);
