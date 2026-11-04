@@ -51,6 +51,10 @@ export async function buildGasOrder(o: GasOrderPdf): Promise<Uint8Array> {
   const sum = (label: string, v: string, bold = false) => { need(16); text(label, cx.gst + 20, { right: true, font: bold ? f.bold : f.reg, color: bold ? ink : mute }); text(v, cx.amt, { right: true, font: bold ? f.bold : f.reg }); y -= 15; };
   const m2 = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   sum(`Cylinders ordered: ${cyl}   ·   Amount before GST`, `₹${m2(sub)}`); sum("GST", `₹${m2(gst)}`); sum("Order total", `₹${m2(sub + gst)}`, true);
+  if (o.terms && o.terms.transport > 0) {   // not part of the cylinder total: it is charged for each delivery trip, so the vendor and the site both see it before the first delivery
+    const tg = o.terms.transport * (1 + o.terms.chargesGst / 100); need(16);
+    text(`Plus transport: ₹${m2(o.terms.transport)} per delivery trip${o.terms.chargesGst > 0 ? ` + ${o.terms.chargesGst}% GST = ₹${m2(tg)}` : ""}, charged on delivery`, cx.amt, { right: true, size: 8.5, color: mute }); y -= 14;
+  }
   y -= 8;
 
   const t = o.terms;

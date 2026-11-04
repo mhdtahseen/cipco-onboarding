@@ -1,4 +1,5 @@
 "use client";
+import GasCostCard from "@/components/GasCostCard";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
@@ -56,6 +57,7 @@ export default function ProjectExpenses({ project, cats, setCats, expenses, peop
 
   return (
     <div className="card space-y-4" id="expense-form">
+      <GasCostCard projectId={project.id} />
       <div className="flex items-center gap-3"><h3 className="font-semibold">Expenses</h3><span className="hidden sm:inline text-xs text-slate-400">Meal, transport and rent payments post here by themselves: <a className="underline" href="/meals">meals</a> · <a className="underline" href="/transport">transport</a> · <a className="underline" href="/accommodation">accommodation</a></span>{!open && <button className="btn btn-primary ml-auto" onClick={() => setOpen(true)}>+ Add expense</button>}{!open && msg && <span className="text-sm text-green-700">{msg}</span>}</div>
       {open && <div className="rounded-xl border border-slate-200 p-3 space-y-3">
         <div className="text-sm font-medium">{editId ? "Edit expense" : "Add an expense"}</div>

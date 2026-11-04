@@ -7,6 +7,8 @@ import { keepProject, rememberedProject } from "@/lib/lastProject";
 import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
 import PayeeBank from "@/components/PayeeBank";
 import SiteBills, { type Computed } from "@/components/SiteBills";
+import GasCostCard from "@/components/GasCostCard";
+import { countTrips, gasCost, type GMove, type GOrder } from "@/lib/gas";
 import GasDepositsRent from "@/components/GasDepositsRent";
 
 type Project = { id: string; name: string; location?: string | null; status?: string; closed_on?: string | null };
@@ -21,7 +23,8 @@ type Pricing = { line_id: string; rate: number; gst_pct: number };
 type Tab = "overview" | "orders" | "moves" | "bills" | "deposits" | "setup";
 
 const STATUS: Record<string, [string, string]> = { requested: ["Waiting for approval", "bg-amber-50 text-amber-800"], approved: ["Approved", "bg-blue-50 text-blue-800"], sent: ["Sent to vendor", "bg-blue-50 text-blue-800"], partly_delivered: ["Partly delivered", "bg-violet-50 text-violet-800"], delivered: ["Delivered", "bg-green-50 text-green-800"], closed: ["Closed", "bg-slate-100 text-slate-600"], rejected: ["Rejected", "bg-rose-50 text-rose-800"], cancelled: ["Cancelled", "bg-slate-100 text-slate-500"] };
-const KIND: Record<string, string> = { delivery: "Delivered (full)", return: "Returned (empty)", lost: "Lost", damaged: "Damaged (valve / cap)" };
+const KIND: Record<string, string> = { delivery: "Delivered (new, full)", return: "Picked up (empties)", lost: "Lost", damaged: "Damaged (valve / cap)" };
+const FORM_KIND: Record<string, string> = { trip: "Delivery trip: new cylinders in, empties out", lost: "Lost", damaged: "Damaged (valve / cap)" };
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const dmy = (iso: string) => new Date(iso.length === 10 ? iso + "T00:00:00" : iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: iso.length === 10 ? undefined : "Asia/Kolkata" });
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(to + "T00:00:00") - Date.parse(from + "T00:00:00")) / 86400000);
@@ -87,20 +90,8 @@ export default function Gas() {
   // for the bills and deposits tabs (Operations / Admin): what the recorded deliveries come to for a vendor between two dates
   const termsOf = (vid: string) => terms.find((t) => t.vendor_id === vid);
   const compute = (vendorId: string, from: string, to: string): Computed => {
-    const lines: string[] = []; let amount = 0, unpriced = 0;
-    const dl = live.filter((m) => m.vendor_id === vendorId && m.kind === "delivery" && m.moved_on >= from && m.moved_on <= to);
-    products.filter((p) => p.vendor_id === vendorId).forEach((p) => { let qty = 0, sum = 0; dl.filter((m) => m.product_id === p.id).forEach((m) => {
-      let pr: { rate: number; gst_pct: number } | undefined; const o = m.order_id ? orders.find((x) => x.id === m.order_id) : undefined; const ol = o?.gas_order_lines.find((l) => l.product_id === p.id); if (ol) pr = priceOf(ol);
-      if (!pr) { const r = rates.filter((x) => x.product_id === p.id && x.valid_from <= m.moved_on).sort((a, b) => b.valid_from.localeCompare(a.valid_from))[0]; if (r) pr = { rate: r.rate, gst_pct: r.gst_pct }; }
-      if (!pr) { unpriced += m.qty; return; } qty += m.qty; sum += m.qty * pr.rate * (1 + pr.gst_pct / 100); });
-      if (qty) { lines.push(`${qty} × ${prodLabel(p.id)} delivered → ₹${inr(sum)} incl. GST`); amount += sum; } });
-    const t = termsOf(vendorId); const inP = (m: Move) => m.vendor_id === vendorId && m.moved_on >= from && m.moved_on <= to; const gstF = 1 + (t?.charges_gst_pct ?? 0) / 100;
-    const lost = live.filter((m) => inP(m) && m.kind === "lost").reduce((s, m) => s + m.qty, 0), dmg = live.filter((m) => inP(m) && m.kind === "damaged").reduce((s, m) => s + m.qty, 0), trips = live.filter((m) => inP(m) && m.kind === "delivery").length;
-    if (lost && t && t.loss_charge_per_cylinder > 0) { const c = lost * t.loss_charge_per_cylinder * gstF; lines.push(`${lost} lost × ₹${inr(t.loss_charge_per_cylinder)} + ${t.charges_gst_pct}% GST → ₹${inr(c)}`); amount += c; }
-    if (dmg && t && t.damage_charge_per_cylinder > 0) { const c = dmg * t.damage_charge_per_cylinder * gstF; lines.push(`${dmg} with valve / cap damaged × ₹${inr(t.damage_charge_per_cylinder)} + ${t.charges_gst_pct}% GST → ₹${inr(c)}`); amount += c; }
-    if (trips && t && t.transport_per_trip > 0) { const c = trips * t.transport_per_trip * gstF; lines.push(`${trips} delivery trip${trips === 1 ? "" : "s"} × ₹${inr(t.transport_per_trip)} transport + ${t.charges_gst_pct}% GST → ₹${inr(c)}`); amount += c; }
-    const rent = rentBilled.filter((r) => r.vendor_id === vendorId && r.period_to >= from && r.period_to <= to).reduce((s, r) => s + r.amount, 0); if (rent) { lines.push(`Rent the vendor charged (entered under Deposits & rent) → ₹${inr(rent)}`); amount += rent; }
-    return { amount: Math.round(amount * 100) / 100, lines, warn: unpriced ? `${unpriced} delivered cylinders have no rate set, so they are not counted` : "" };
+    const c = gasCost({ moves: moves as GMove[], orders: orders as GOrder[], pricing, rates, products, terms, rent: rentBilled, vendorId, from, to, label: prodLabel });   // the same rules as the order cards and the project's gas cost (src/lib/gas.ts)
+    return { amount: Math.round(c.total * 100) / 100, lines: c.lines, warn: c.unpriced ? `${c.unpriced} delivered cylinders have no rate set, so they are not counted` : "" };
   };
   const heldByVendor = useMemo(() => { const o: Record<string, number> = {}; products.forEach((p) => { const h = held.get(p.id)?.qty ?? 0; if (h) o[p.vendor_id] = (o[p.vendor_id] ?? 0) + h; }); return o; }, [products, held]);
   const depositExpected = useMemo(() => { const o: Record<string, number> = {}; products.forEach((p) => { const h = held.get(p.id)?.qty ?? 0; const d = p.deposit_per_cylinder || termsOf(p.vendor_id)?.deposit_per_cylinder || 0; if (h && d) o[p.vendor_id] = (o[p.vendor_id] ?? 0) + h * d; }); return o; }, [products, held, terms]);
@@ -132,18 +123,37 @@ export default function Gas() {
   function cancel(o: Order) { if (confirm(`Cancel order ${o.order_no}?`)) setStatus(o, "cancelled"); }
 
   // ---------- deliveries and returns ----------
-  const [mf, setMf] = useState({ kind: "delivery", product_id: "", qty: "", moved_on: today, order_id: "", challan_no: "", serials: "", note: "" }); const [photo, setPhoto] = useState<File | null>(null); const [showMove, setShowMove] = useState(false);
+  const [mf, setMf] = useState({ kind: "trip", product_id: "", qty: "", moved_on: today, order_id: "", challan_no: "", serials: "", note: "" }); const [tr, setTr] = useState<Record<string, { inQ: string; outQ: string; sIn: string; sOut: string }>>({}); const [photo, setPhoto] = useState<File | null>(null); const [showMove, setShowMove] = useState(false);
   const moveProducts = projectProducts.filter((p) => p.active || held.has(p.id));
   const openOrders = orders.filter((o) => ["approved", "sent", "partly_delivered"].includes(o.status));
+  const serialList = (t: string) => [...new Set(t.split(/[\s,;]+/).map((x) => x.trim().toUpperCase()).filter(Boolean))];
+  const uploadPhoto = async (): Promise<{ path: string | null } | { error: string }> => {
+    if (!photo) return { path: null }; const file = await prepareUpload(photo); if (file.size > MAX_UPLOAD) return { error: "The photo is larger than 5 MB: please send a smaller photo." };
+    const fd = new FormData(); fd.set("file", file); fd.set("projectId", pid); const r = await fetch("/api/gas/upload", { method: "POST", body: fd }); if (!r.ok) return { error: await r.text() }; return { path: (await r.json()).path };
+  };
+  const addMove = async (row: Record<string, unknown>, serials: string[]) => {
+    const sb = supabase(); const { data, error } = await sb.from("gas_movements").insert(row).select("id").single(); if (error) return error.message;
+    if (serials.length) { const s2 = await sb.from("gas_movement_serials").insert(serials.map((serial) => ({ movement_id: data!.id, serial }))); if (s2.error) return "the serial numbers were not saved: " + s2.error.message; } return "";
+  };
+  // a lost or damaged cylinder: one entry
   async function saveMove() {
     const qty = parseInt(mf.qty, 10); const prod = pName(mf.product_id); if (!prod || !(qty > 0)) { setErr("Choose the product and enter how many cylinders."); return; }
-    const serials = [...new Set(mf.serials.split(/[\s,;]+/).map((s) => s.trim().toUpperCase()).filter(Boolean))]; if (serials.length > qty) { setErr(`You entered ${serials.length} serial numbers for ${qty} cylinders.`); return; }
-    setBusy(true); setErr(""); let photo_path: string | null = null;
-    if (photo) { const file = await prepareUpload(photo); if (file.size > MAX_UPLOAD) { setErr("The photo is larger than 5 MB: please send a smaller photo."); setBusy(false); return; } const fd = new FormData(); fd.set("file", file); fd.set("projectId", pid); const r = await fetch("/api/gas/upload", { method: "POST", body: fd }); if (!r.ok) { setErr(await r.text()); setBusy(false); return; } photo_path = (await r.json()).path; }
-    const sb = supabase(); const { data, error } = await sb.from("gas_movements").insert({ project_id: pid, vendor_id: prod.vendor_id, product_id: prod.id, order_id: mf.kind === "delivery" && mf.order_id ? mf.order_id : null, kind: mf.kind, qty, moved_on: mf.moved_on, challan_no: mf.challan_no.trim(), photo_path, note: mf.note.trim() }).select("id").single();
-    if (error) { setErr(error.message); setBusy(false); return; }
-    if (serials.length) { const s = await sb.from("gas_movement_serials").insert(serials.map((serial) => ({ movement_id: data!.id, serial }))); if (s.error) { setErr("Saved, but the serial numbers were not: " + s.error.message); setBusy(false); loadProject(); return; } }
-    setBusy(false); setPhoto(null); setMf({ ...mf, qty: "", challan_no: "", serials: "", note: "" }); note(`${KIND[mf.kind]}: ${qty} recorded ✓`); loadProject();
+    const serials = serialList(mf.serials); if (serials.length > qty) { setErr(`You entered ${serials.length} serial numbers for ${qty} cylinders.`); return; }
+    setBusy(true); setErr(""); const up = await uploadPhoto(); if ("error" in up) { setErr(up.error); setBusy(false); return; }
+    const e = await addMove({ project_id: pid, vendor_id: prod.vendor_id, product_id: prod.id, order_id: null, kind: mf.kind, qty, moved_on: mf.moved_on, challan_no: mf.challan_no.trim(), photo_path: up.path, note: mf.note.trim() }, serials);
+    setBusy(false); if (e) { setErr(e); loadProject(); return; } setPhoto(null); setMf({ ...mf, qty: "", challan_no: "", serials: "", note: "" }); note(`${KIND[mf.kind]}: ${qty} recorded ✓`); loadProject();
+  }
+  // a delivery trip: the new cylinders coming in and the empties going back are the same visit, so they are saved together with one date, challan number and photo
+  async function saveTrip() {
+    const rows = moveProducts.map((p) => { const t = tr[p.id]; return { p, i: parseInt(t?.inQ || "", 10) || 0, o: parseInt(t?.outQ || "", 10) || 0, sIn: serialList(t?.sIn || ""), sOut: serialList(t?.sOut || "") }; }).filter((r) => r.i > 0 || r.o > 0);
+    if (!rows.length) { setErr("Enter how many new cylinders came in and/or how many empties went back, for at least one product."); return; }
+    for (const r of rows) { if (r.sIn.length > r.i) { setErr(`${prodLabel(r.p.id)}: ${r.sIn.length} serial numbers for ${r.i} new cylinders.`); return; } if (r.sOut.length > r.o) { setErr(`${prodLabel(r.p.id)}: ${r.sOut.length} serial numbers for ${r.o} empties.`); return; }
+      const have = (held.get(r.p.id)?.qty ?? 0) + r.i; if (r.o > have) { setErr(`${prodLabel(r.p.id)}: only ${have} cylinders are here (including this delivery), so ${r.o} cannot be taken back.`); return; } }
+    setBusy(true); setErr(""); const up = await uploadPhoto(); if ("error" in up) { setErr(up.error); setBusy(false); return; }
+    const base = { project_id: pid, moved_on: mf.moved_on, challan_no: mf.challan_no.trim(), photo_path: up.path, note: mf.note.trim() };
+    for (const r of rows.filter((x) => x.i > 0)) { const e = await addMove({ ...base, vendor_id: r.p.vendor_id, product_id: r.p.id, order_id: mf.order_id || null, kind: "delivery", qty: r.i }, r.sIn); if (e) { setErr(`${prodLabel(r.p.id)} delivery: ${e}. Nothing after it was saved.`); setBusy(false); loadProject(); return; } }
+    for (const r of rows.filter((x) => x.o > 0)) { const e = await addMove({ ...base, vendor_id: r.p.vendor_id, product_id: r.p.id, order_id: null, kind: "return", qty: r.o }, r.sOut); if (e) { setErr(`${prodLabel(r.p.id)} pick-up: ${e}. The deliveries above were saved.`); setBusy(false); loadProject(); return; } }
+    setBusy(false); setPhoto(null); setTr({}); setMf({ ...mf, challan_no: "", note: "", order_id: "" }); note(`Trip recorded ✓ (${rows.filter((x) => x.i > 0).map((x) => `${x.i} ${prodLabel(x.p.id)} in`).concat(rows.filter((x) => x.o > 0).map((x) => `${x.o} ${prodLabel(x.p.id)} out`)).join(", ")})`); loadProject();
   }
   async function voidMove(m: Move) {
     if (!confirm(`Void this ${KIND[m.kind].toLowerCase()} entry of ${m.qty}? It stays in the list, marked void, and the count is corrected.`)) return;
@@ -179,7 +189,7 @@ export default function Gas() {
       {!loading && !projects.length && !err && <p className="text-slate-500">No active projects{role === "supervisor" || role === "site_engineer" ? " assigned to you" : ""}.</p>}
 
       {tab === "overview" && pid && <div className="space-y-3">
-        {projectProducts.length > 0 && <div className="grid gap-2 sm:flex"><button className="btn btn-primary justify-center !min-h-14 !text-base !font-semibold" onClick={() => { setTab("moves"); setShowMove(true); setMf((f) => ({ ...f, product_id: f.product_id || moveProducts[0]?.id || "" })); }}>+ Record a delivery or return</button>{canOrder && myVendors.length > 0 && <button className="btn justify-center !min-h-14 !text-base" onClick={() => { setTab("orders"); startOrder(); }}>New order</button>}</div>}
+        {projectProducts.length > 0 && <div className="grid gap-2 sm:flex"><button className="btn btn-primary justify-center !min-h-14 !text-base !font-semibold" onClick={() => { setTab("moves"); setShowMove(true); setMf((f) => ({ ...f, product_id: f.product_id || moveProducts[0]?.id || "" })); }}>+ Record a delivery trip</button>{canOrder && myVendors.length > 0 && <button className="btn justify-center !min-h-14 !text-base" onClick={() => { setTab("orders"); startOrder(); }}>New order</button>}</div>}
         {!projectProducts.length && <p className="text-sm text-slate-500">No gas vendor is set up for {proj?.name ?? "this project"} yet.{money ? " Add one under Rates & terms." : " Ask Operations or the Admin."}</p>}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{projectProducts.map((p) => { const h = held.get(p.id); const t = totals(p.id); const age = h?.oldest ? daysBetween(h.oldest, today) : 0; return (
           <div key={p.id} className="card !p-3 space-y-2"><div><div className="font-medium">{p.name}{p.capacity ? ` · ${p.capacity}` : ""}</div><div className="text-xs text-slate-400">{vName(p.vendor_id)}</div></div>
@@ -209,7 +219,7 @@ export default function Gas() {
           <div key={o.id} className="card !p-3 space-y-2">
             <div className="flex flex-wrap items-center gap-2"><b>{o.order_no}</b>{badge(o.status)}<span className="text-xs text-slate-400 sm:ml-auto">raised {dmy(o.created_at)} by {who(o.requested_by)}</span></div>
             <ul className="text-sm space-y-0.5">{o.gas_order_lines.map((l) => { const got = received(o, l.product_id); const pr = money ? priceOf(l) : undefined; return <li key={l.id}>{l.qty} × {prodLabel(l.product_id)}{["approved", "sent", "partly_delivered", "delivered", "closed"].includes(o.status) && <span className="text-slate-500"> · delivered {got} of {l.qty}</span>}{pr && <span className="text-slate-500"> · ₹{inr(pr.rate)} + {pr.gst_pct}% GST</span>}</li>; })}</ul>
-            <div className="text-xs text-slate-500">{vName(o.vendor_id)}{o.needed_by ? ` · needed by ${dmy(o.needed_by)}` : ""}{o.note ? ` · ${o.note}` : ""}{total > 0 ? ` · order total ₹${inr(total)} incl. GST` : ""}</div>
+            <div className="text-xs text-slate-500">{vName(o.vendor_id)}{o.needed_by ? ` · needed by ${dmy(o.needed_by)}` : ""}{o.note ? ` · ${o.note}` : ""}{total > 0 ? ` · order total ₹${inr(total)} incl. GST` : ""}{(() => { const t = money ? termsOf(o.vendor_id) : undefined; if (!t || !(t.transport_per_trip > 0)) return null; const per = t.transport_per_trip * (1 + t.charges_gst_pct / 100); const n = countTrips(live.filter((m) => m.order_id === o.id)); return <span className="text-amber-800"> · plus transport ₹{inr(per)} per trip (₹{inr(t.transport_per_trip)} + {t.charges_gst_pct}% GST), not in the total{n > 0 ? `; ${n} trip${n === 1 ? "" : "s"} so far = ₹${inr(n * per)}` : ""}</span>; })()}</div>
             {o.status === "rejected" && <p className="text-xs text-rose-700">Rejected by {who(o.decided_by)}: {o.reject_reason}</p>}
             {(o.status === "approved" || o.status === "sent" || o.status === "partly_delivered" || o.status === "delivered" || o.status === "closed") && o.decided_by && <p className="text-xs text-slate-400">Approved by {who(o.decided_by)}{o.decided_at ? ` on ${dmy(o.decided_at)}` : ""}</p>}
             <div className="flex flex-wrap gap-2">
@@ -224,18 +234,26 @@ export default function Gas() {
       </div>}
 
       {tab === "moves" && pid && <div className="space-y-3">
-        {!showMove && <div><button className="btn btn-primary" onClick={() => { setShowMove(true); setMf((f) => ({ ...f, product_id: f.product_id || moveProducts[0]?.id || "" })); }} disabled={!moveProducts.length}>Record a delivery or return</button></div>}
+        {!showMove && <div><button className="btn btn-primary" onClick={() => { setShowMove(true); setMf((f) => ({ ...f, product_id: f.product_id || moveProducts[0]?.id || "" })); }} disabled={!moveProducts.length}>Record a delivery trip</button></div>}
         {showMove && <div className="card !p-3 space-y-3"><div className="font-medium">Record for {proj?.name}</div>
-          <div className="grid gap-3 sm:grid-cols-4"><div><label className="lbl">What happened</label><select className="inp" value={mf.kind} onChange={(e) => setMf({ ...mf, kind: e.target.value })}>{Object.entries(KIND).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
-            <div className="sm:col-span-2"><label className="lbl">Product</label><select className="inp" value={mf.product_id} onChange={(e) => setMf({ ...mf, product_id: e.target.value })}>{moveProducts.map((p) => <option key={p.id} value={p.id}>{p.name}{p.capacity ? ` (${p.capacity})` : ""} · {vName(p.vendor_id)}</option>)}</select></div>
-            <div><label className="lbl">Cylinders</label><input className="inp" inputMode="numeric" value={mf.qty} onChange={(e) => setMf({ ...mf, qty: e.target.value.replace(/\D/g, "") })} /></div>
+          <div className="grid gap-3 sm:grid-cols-4"><div className="sm:col-span-2"><label className="lbl">What happened</label><select className="inp" value={mf.kind} onChange={(e) => setMf({ ...mf, kind: e.target.value })}>{Object.entries(FORM_KIND).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
             <div><label className="lbl">Date</label><input type="date" className="inp" max={today} value={mf.moved_on} onChange={(e) => setMf({ ...mf, moved_on: e.target.value })} /></div>
             <div><label className="lbl">Vendor's challan no.</label><input className="inp" value={mf.challan_no} onChange={(e) => setMf({ ...mf, challan_no: e.target.value })} /></div>
-            {mf.kind === "delivery" && <div><label className="lbl">For order (optional)</label><select className="inp" value={mf.order_id} onChange={(e) => setMf({ ...mf, order_id: e.target.value })}><option value="">Not linked to an order</option>{openOrders.map((o) => <option key={o.id} value={o.id}>{o.order_no}</option>)}</select></div>}
-            <div><label className="lbl">Challan photo (optional)</label><input type="file" accept="image/*,application/pdf" className="text-xs" onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} /></div></div>
-          <div><label className="lbl">Cylinder serial numbers (optional)</label><textarea className="inp" rows={2} value={mf.serials} onChange={(e) => setMf({ ...mf, serials: e.target.value })} placeholder="Separate with commas, spaces or new lines" /></div>
+            {mf.kind === "trip" && <div className="sm:col-span-2"><label className="lbl">For order (optional)</label><select className="inp" value={mf.order_id} onChange={(e) => setMf({ ...mf, order_id: e.target.value })}><option value="">Not linked to an order</option>{openOrders.map((o) => <option key={o.id} value={o.id}>{o.order_no}</option>)}</select></div>}
+            <div className={mf.kind === "trip" ? "sm:col-span-2" : "sm:col-span-4"}><label className="lbl">Challan photo (optional)</label><input type="file" accept="image/*,application/pdf" className="text-xs" onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} /></div></div>
+          {mf.kind === "trip" ? <div className="space-y-2">
+            <p className="text-xs text-slate-500">One trip: the new cylinders coming in and the empties going back on the same visit. Enter both here. The vendor's trip charge is counted once per challan, however many products are on it, and the pick-up is part of the trip.</p>
+            <div className="hidden sm:grid grid-cols-[1fr_8rem_8rem] gap-2 text-xs font-semibold text-slate-600"><span>Product</span><span>New (full) in</span><span>Empties out</span></div>
+            {moveProducts.map((p) => { const t = tr[p.id] ?? { inQ: "", outQ: "", sIn: "", sOut: "" }; const up = (k: "inQ" | "outQ" | "sIn" | "sOut", v: string) => setTr({ ...tr, [p.id]: { ...t, [k]: v } }); return (
+              <div key={p.id} className="rounded-lg border border-slate-200 p-2 space-y-2"><div className="grid gap-2 sm:grid-cols-[1fr_8rem_8rem] items-center"><div className="text-sm font-medium">{prodLabel(p.id)}<div className="text-xs font-normal text-slate-400">{vName(p.vendor_id)} · {held.get(p.id)?.qty ?? 0} here now</div></div>
+                <div><label className="lbl sm:hidden">New (full) in</label><input className="inp" inputMode="numeric" placeholder="0" value={t.inQ} onChange={(e) => up("inQ", e.target.value.replace(/\D/g, ""))} /></div>
+                <div><label className="lbl sm:hidden">Empties out</label><input className="inp" inputMode="numeric" placeholder="0" value={t.outQ} onChange={(e) => up("outQ", e.target.value.replace(/\D/g, ""))} /></div></div>
+                <details className="text-xs text-slate-500"><summary className="cursor-pointer text-blue-700">Serial numbers (optional)</summary><div className="mt-1 grid gap-2 sm:grid-cols-2"><textarea className="inp" rows={2} placeholder="New cylinders in: comma or space separated" value={t.sIn} onChange={(e) => up("sIn", e.target.value)} /><textarea className="inp" rows={2} placeholder="Empties out: comma or space separated" value={t.sOut} onChange={(e) => up("sOut", e.target.value)} /></div></details></div>); })}</div>
+          : <div className="grid gap-3 sm:grid-cols-4"><div className="sm:col-span-3"><label className="lbl">Product</label><select className="inp" value={mf.product_id} onChange={(e) => setMf({ ...mf, product_id: e.target.value })}>{moveProducts.map((p) => <option key={p.id} value={p.id}>{p.name}{p.capacity ? ` (${p.capacity})` : ""} · {vName(p.vendor_id)}</option>)}</select></div>
+            <div><label className="lbl">Cylinders</label><input className="inp" inputMode="numeric" value={mf.qty} onChange={(e) => setMf({ ...mf, qty: e.target.value.replace(/\D/g, "") })} /></div>
+            <div className="sm:col-span-4"><label className="lbl">Cylinder serial numbers (optional)</label><textarea className="inp" rows={2} value={mf.serials} onChange={(e) => setMf({ ...mf, serials: e.target.value })} placeholder="Separate with commas, spaces or new lines" /></div></div>}
           <div><label className="lbl">Note (optional)</label><input className="inp" value={mf.note} onChange={(e) => setMf({ ...mf, note: e.target.value })} /></div>
-          <div className="flex gap-2 form-actions"><button className="btn btn-primary" disabled={busy} onClick={saveMove}>{busy ? "Saving…" : "Save"}</button><button className="btn" onClick={() => setShowMove(false)}>Close</button></div></div>}
+          <div className="flex gap-2 form-actions"><button className="btn btn-primary" disabled={busy} onClick={mf.kind === "trip" ? saveTrip : saveMove}>{busy ? "Saving…" : mf.kind === "trip" ? "Save trip" : "Save"}</button><button className="btn" onClick={() => setShowMove(false)}>Close</button></div></div>}
         {!moves.length && <p className="text-sm text-slate-500">Nothing recorded for this project yet.</p>}
         <div className="space-y-2">{moves.map((m) => <div key={m.id} className={`card !p-3 text-sm ${m.voided_at ? "opacity-60" : ""}`}>
           <div className="flex flex-wrap items-center gap-2"><b className={m.voided_at ? "line-through" : ""}>{KIND[m.kind]}: {m.qty} × {prodLabel(m.product_id)}</b>{m.voided_at && <span className="text-[11px] rounded-full bg-slate-100 text-slate-600 px-2 py-0.5">void</span>}<span className="text-xs text-slate-400 sm:ml-auto">{dmy(m.moved_on)} · entered by {who(m.entered_by)}</span></div>
@@ -244,6 +262,7 @@ export default function Gas() {
           <div className="flex flex-wrap gap-2 mt-1.5">{m.photo_path && <a className="tlink" href={`/api/gas/file?path=${encodeURIComponent(m.photo_path)}`} target="_blank" rel="noreferrer">Challan photo</a>}{!m.voided_at && <button className="tlink tlink-danger" onClick={() => voidMove(m)}>Void</button>}</div></div>)}</div>
       </div>}
 
+      {tab === "bills" && money && pid && <GasCostCard projectId={pid} />}
       {tab === "bills" && money && pid && <SiteBills kind="gas" projectId={pid} vendors={myVendors.length ? myVendors : vendors.filter((v) => links.some((l) => l.project_id === pid && l.vendor_id === v.id))} compute={compute} />}
       {tab === "deposits" && money && pid && <GasDepositsRent projectId={pid} closedOn={proj?.status === "closed" ? proj.closed_on ?? null : null} vendors={vendors.filter((v) => links.some((l) => l.project_id === pid && l.vendor_id === v.id))} terms={terms} heldByVendor={heldByVendor} depositExpected={depositExpected} lostByVendor={lostByVendor} />}
 
