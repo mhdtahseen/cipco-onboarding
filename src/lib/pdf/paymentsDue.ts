@@ -4,7 +4,7 @@ import { COMPANY } from "../company";
 import { istToday } from "../attendance";
 import { fmtMoney } from "../mealStatement";
 
-import { CATEGORY_LABEL, type Category } from "../paymentsDueLabels";
+import { CATEGORY_LABEL, type Category, type DueItem } from "../paymentsDueLabels";
 export { CATEGORY_LABEL, type Category };
 const ORDER: Category[] = ["food", "transport", "accommodation", "gas", "equipment", "salary", "statutory"];
 export type Bank = { holder?: string; bank?: string; branch?: string; accountNo?: string; ifsc?: string; upi?: string };
@@ -15,10 +15,12 @@ export type Payee = {
   mode?: "bank" | "upi" | "cash" | "portal";   // portal = PF / ESI / tax paid on a government site, so no bank details are expected
   held?: boolean; draft?: boolean;   // draft = from a payroll that is not approved yet, so the amount can still change
   lines?: { label: string; total: number; paid: number }[];
+  items?: DueItem[];   // every amount behind the totals, month by month (the report page picks which to show)
+  running?: number;    // what is still building this month and not billed yet: shown beside the payee, not counted as owed
 };
 export type ProjectDues = { name: string; payees: Payee[] };
 export type NotIncluded = { label: string; amount?: number }[];
-export type PaymentsDueInput = { projects: ProjectDues[]; asOf?: string; preparedBy?: string; notIncluded?: NotIncluded; leftOut?: number };
+export type PaymentsDueInput = { projects: ProjectDues[]; asOf?: string; preparedBy?: string; notIncluded?: NotIncluded; leftOut?: number; title?: string };
 
 const W = 595.28, H = 841.89, M = 40, BOTTOM = 56, CW = W - 2 * M;
 const ink = rgb(0.1, 0.1, 0.12), mute = rgb(0.4, 0.42, 0.48), rule = rgb(0.82, 0.84, 0.88), blue = rgb(0.12, 0.31, 0.64), soft = rgb(0.95, 0.96, 0.98), red = rgb(0.7, 0.15, 0.15), green = rgb(0.05, 0.5, 0.35), amber = rgb(0.72, 0.42, 0.02), amberSoft = rgb(1, 0.97, 0.88);
@@ -49,7 +51,7 @@ export async function buildPaymentsDue(s: PaymentsDueInput): Promise<Uint8Array>
   // ---- page 1: the whole picture
   newPage();
   text(COMPANY.name, M, { size: 16, font: f.bold, color: blue }); text("PAYMENTS DUE REPORT", W - M, { size: 12, font: f.bold, right: true }); y -= 13;
-  text(COMPANY.line1.replace("Office Address : ", ""), M, { size: 8, color: mute }); text(`As of ${dmy(today)}`, W - M, { size: 9, color: mute, right: true }); y -= 8; hr(); y -= 22;
+  text(COMPANY.line1.replace("Office Address : ", ""), M, { size: 8, color: mute }); text(`${s.title ? `${s.title}  ·  ` : ""}As of ${dmy(today)}`, W - M, { size: s.title ? 8.5 : 9, font: s.title ? f.bold : f.reg, color: s.title ? blue : mute, right: true }); y -= 8; hr(); y -= 22;
 
   const all = s.projects.flatMap((p) => p.payees); const tot = sum(all);
   const kpi = (x: number, w: number, label: string, v: number, c: ReturnType<typeof rgb>, sub?: string) => { box(x, y, w, 58); text(label.toUpperCase(), x + 12, { size: 7.5, font: f.bold, color: mute, yy: y - 16 }); text(rs(v), x + 12, { size: 17, font: f.bold, color: c, yy: y - 38 }); if (sub) text(sub, x + 12, { size: 7.5, color: mute, yy: y - 51 }); };
@@ -57,7 +59,7 @@ export async function buildPaymentsDue(s: PaymentsDueInput): Promise<Uint8Array>
   y -= 78;
 
   // reading guide, for people who do not live in the app
-  const guide = wrapPlain(f.reg, "Billed = the total we owe. Paid = what has been paid against it. Pending = what is still to be paid. Advance = money paid beyond what was billed so far; it is a credit that covers the next bill.", 7.5, CW - 20);
+  const guide = wrapPlain(f.reg, "Billed = the total we owe. Paid = what has been paid against it. Pending = what is still to be paid. Advance = money paid beyond what was billed so far; it is a credit that covers the next bill." + (s.projects.some((p) => p.payees.some((x) => x.running)) ? " Running = what this month has cost so far and is not billed yet: shown for information, not counted as owed." : ""), 7.5, CW - 20);
   box(M, y, CW, 26 + guide.length * 10, amberSoft); text("How to read this report", M + 10, { size: 8, font: f.bold, color: amber, yy: y - 14 }); guide.forEach((l, i) => text(l, M + 10, { size: 7.5, color: ink, yy: y - 26 - i * 10 }));
   y -= 46 + guide.length * 10;
 
@@ -97,15 +99,16 @@ export async function buildPaymentsDue(s: PaymentsDueInput): Promise<Uint8Array>
       need(100); catHead(false);
       rows.forEach((p) => {
         const forLines = wrapPlain(f.reg, p.forWhat, 7.5, COLS.total - 80 - COLS.name), bl = bankLines(p), noBank = pend(p) > 0 && p.mode !== "portal" && p.mode !== "cash" && !bl.length;
-        const lineCount = p.lines?.length ?? 0, h = Math.max(16 + forLines.length * 9.5 + lineCount * 9.5, 8 + (noBank ? 1 : bl.length) * 9.5) + 6; if (y - h < BOTTOM) { newPage(); catHead(true); }
+        const lineCount = p.lines?.length ?? 0, h = Math.max(16 + forLines.length * 9.5 + lineCount * 9.5, 8 + (noBank ? 1 : bl.length) * 9.5, p.running ? 32 : 0) + 6; if (y - h < BOTTOM) { newPage(); catHead(true); }
         const top = y; text(p.name, COLS.name, { size: 8.5, font: f.bold }); let ly = top - 11; forLines.forEach((l) => { text(l, COLS.name, { size: 7.5, color: mute, yy: ly }); ly -= 9.5; });
         (p.lines ?? []).forEach((l) => { text(`${l.label}`, COLS.name + 8, { size: 7, color: mute, yy: ly }); text(`${rs(l.total)} · paid ${rs(Math.min(l.paid, l.total))}`, COLS.total, { size: 7, color: mute, right: true, yy: ly }); ly -= 9.5; });
         text(rs(p.total), COLS.total, { size: 8.5, right: true }); text(rs(Math.min(p.paid, p.total)), COLS.paid, { size: 8.5, color: green, right: true });
         text(rs(pend(p)), COLS.pend, { size: 8.5, font: f.bold, color: pend(p) ? red : green, right: true });
         if (adv(p)) text(`advance ${rs(adv(p))}`, COLS.pend, { size: 6.5, color: green, right: true, yy: top - 11 });
-        else if (pend(p) > 0 && p.oldestDue && p.oldestDue < today) text(`${days(p.oldestDue, today)} days overdue`, COLS.pend, { size: 6.5, color: red, right: true, yy: top - 11 });
+        else if (pend(p) > 0 && p.oldestDue && p.oldestDue < today) text(`${days(p.oldestDue, today)} day${days(p.oldestDue, today) === 1 ? "" : "s"} overdue`, COLS.pend, { size: 6.5, color: red, right: true, yy: top - 11 });
         else if (p.draft) text("draft payroll", COLS.pend, { size: 6.5, color: amber, right: true, yy: top - 11 });
         else if (p.held) text("on hold", COLS.pend, { size: 6.5, color: amber, right: true, yy: top - 11 });
+        if (p.running) text(`+ ${rs(p.running)} running`, COLS.pend, { size: 6.5, color: blue, right: true, yy: top - 21 });
         if (noBank) text("⚠ Bank details missing", COLS.bank + 8, { size: 7, font: f.bold, color: amber }); else bl.forEach((l, i) => text(l, COLS.bank + 8, { size: 7, color: i ? mute : ink, yy: top - i * 9.5 }));
         page.drawRectangle({ x: COLS.tick - 8, y: top - 8, width: 9, height: 9, borderColor: mute, borderWidth: 0.7 });
         y = top - h; page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.3, color: rule }); y -= 10;

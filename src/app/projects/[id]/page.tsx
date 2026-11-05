@@ -12,11 +12,15 @@ import ProjectExpenses from "@/components/ProjectExpenses";
 import ProjectDocuments from "@/components/ProjectDocuments";
 import SalaryCost from "@/components/SalaryCost";
 import ProjectCommercial from "@/components/ProjectCommercial";
+import ForecastView from "@/components/ForecastView";
+import { useRole } from "@/lib/roles";
+import { baseScenario, forecast, type ForecastInput } from "@/lib/forecast";
 import { guessState, STATE_OPTIONS, type Client } from "@/lib/invoice";
 
-type Tab = "overview" | "people" | "expenses" | "documents";
+type Tab = "overview" | "people" | "expenses" | "forecast" | "documents";
 
 // One project at a glance. Overview first; people, expenses and documents each get their own tab; the report is its own page.
+// The expense forecast is for the Admin only (it shows personal funding) and only while the project is active: the tab and card are hidden otherwise, and /api/forecast refuses anyone else.
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const d = useProjectData(id); const { p, r, exps, cats, pdocs, dTypes } = d;
@@ -25,6 +29,8 @@ export default function ProjectPage() {
   latest.current = { spent: d.cost.spent, people: d.r.live.length };
   useEffect(() => { if (!d.loading && !seen.current) seen.current = { ...latest.current }; });
   useEffect(() => () => { const s = seen.current, l = latest.current; if (s && (s.spent !== l.spent || s.people !== l.people)) swrDrop("projects"); }, []);
+  const { admin } = useRole(); const showForecast = admin && p?.status === "active"; const [fc, setFc] = useState<ForecastInput | null>(null); const [fcErr, setFcErr] = useState("");
+  useEffect(() => { if (!showForecast) { setFc(null); return; } let live = true; (async () => { const res = await fetch(`/api/forecast?project=${id}`); if (!live) return; if (!res.ok) { setFcErr(await res.text()); return; } const list = (await res.json()) as ForecastInput[]; if (live) { setFc(list[0] ?? null); setFcErr(""); } })(); return () => { live = false; }; }, [showForecast, id, exps.length]);   // fresh after an expense is added or removed
   const [tab, setTab] = useState<Tab>("overview"); const [edit, setEdit] = useState(false); const [ed, setEd] = useState({ name: "", location: "", description: "", client_id: "", state_code: "" }); const [clients, setClients] = useState<Client[]>([]);
   useEffect(() => { supabase().from("clients").select("*").eq("active", true).order("name").then(({ data }) => setClients((data || []) as Client[])); }, []);
   const [expOpen, setExpOpen] = useState(0); const [docOpen, setDocOpen] = useState(0); const [msg, setMsg] = useState("");
@@ -44,7 +50,8 @@ export default function ProjectPage() {
   }
   const goExpense = () => { setTab("expenses"); setExpOpen((n) => n + 1); }; const goDoc = () => { setTab("documents"); setDocOpen((n) => n + 1); };
   const card = (label: string, value: string, sub?: string, onClick?: () => void) => <button type="button" onClick={onClick} className="card !p-3 text-left hover:bg-slate-50"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold">{value}</div>{sub && <div className="text-xs text-slate-400">{sub}</div>}</button>;
-  const tabs: [Tab, string, number | null][] = [["overview", "Overview", null], ["people", "People", r.live.length], ["expenses", "Expenses", exps.length], ["documents", "Documents", pdocs.length]];
+  const tabs: [Tab, string, number | null][] = [["overview", "Overview", null], ["people", "People", r.live.length], ["expenses", "Expenses", exps.length], ...(showForecast ? [["forecast", "Forecast", null] as [Tab, string, null]] : []), ["documents", "Documents", pdocs.length]];
+  const fcLikely = fc ? forecast(fc, baseScenario(fc)).likely : null; const fcMonth = fc ? new Date(`${fc.month}-01T00:00:00`).toLocaleDateString("en-IN", { month: "long" }) : ""; const fcEmpty = !!fc && fc.salaried.n + fc.daily.n === 0 && fc.rooms.n === 0 && fc.spent === 0;
   const catName = (cid: string) => cats.find((c) => c.id === cid)?.name ?? "—";
   const typeName = (tid: string | null) => dTypes.find((t) => t.id === tid)?.name ?? "—";
 
@@ -69,9 +76,10 @@ export default function ProjectPage() {
       <div role="tablist" className="flex border-b border-slate-200 overflow-x-auto">{tabs.map(([k, label, n]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? "tab-on" : ""}`} onClick={() => setTab(k)}>{label}{n !== null && <span className="ml-1.5 text-xs text-slate-400">{n}</span>}</button>)}</div>
 
       {tab === "overview" && <div className="space-y-4">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className={`grid grid-cols-2 gap-3 ${showForecast ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
           {card("People", String(r.live.length), r.rejected ? `${r.rejected} rejected not counted` : "on this project", () => setTab("people"))}
           {card("Expenses to date", d.expErr ? "—" : `₹${inr(d.cost.spent)}`, `${exps.length} entr${exps.length === 1 ? "y" : "ies"}`, () => setTab("expenses"))}
+          {showForecast && card(fc ? `${fcMonth} forecast` : "Next month forecast", fcLikely !== null ? `₹${inr(Math.round(fcLikely))}` : fcErr ? "—" : "…", "what if? open the forecast", () => setTab("forecast"))}
           {card("Documents", d.docErr ? "—" : String(pdocs.length), "letters, JSAs, POs…", () => setTab("documents"))}
           {card("First joining", r.first ? fmtD(r.first) : "—", r.last && r.last !== r.first ? `latest ${fmtD(r.last)}` : undefined, () => setTab("people"))}
         </div>
@@ -103,6 +111,7 @@ export default function ProjectPage() {
       </div>}
 
       {tab === "expenses" && (d.expErr ? <p className="warn">{d.expErr}</p> : <ProjectExpenses project={p} cats={cats} setCats={d.setCats} expenses={exps} people={r.live} reload={d.loadExpenses} openSignal={expOpen} />)}
+      {tab === "forecast" && (!showForecast ? <p className="text-sm text-slate-500">The forecast is only for active projects.</p> : fcErr ? <p className="warn" role="alert">{fcErr}</p> : !fc ? <div className="h-40 rounded-xl bg-slate-100 animate-pulse" /> : fcEmpty ? <p className="card text-sm text-slate-500">Nothing to forecast yet: this project has no people, rooms or costs.</p> : <div className="mob"><ForecastView key={fc.projectId} input={fc} /></div>)}
       {tab === "documents" && (d.docErr ? <p className="warn">{d.docErr}</p> : <ProjectDocuments project={p} types={dTypes} setTypes={d.setDTypes} docs={pdocs} reload={d.loadDocs} openSignal={docOpen} />)}
     </div>
   );
