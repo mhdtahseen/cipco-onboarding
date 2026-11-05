@@ -1,0 +1,22 @@
+name: JSL portal reachability test
+# Manual only. Opens the JSL login page from a GitHub runner and reports whether the portal's firewall lets it through. Sends no login and uses no secrets.
+on:
+  workflow_dispatch: {}
+jobs:
+  reach:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Open the login page
+        run: |
+          URL="https://jajitapps.jindalstainless.com:8050/Login.aspx"
+          echo "Runner public IP: $(curl -sS --max-time 15 https://api.ipify.org || echo unknown)"
+          probe() {
+            label="$1"; shift
+            echo; echo "=== $label ==="
+            code=$(curl -sS --max-time 30 --retry 2 -o body.html -w "%{http_code} tls=%{ssl_verify_result} time=%{time_total}s size=%{size_download}" "$@" "$URL") || { echo "FAILED: curl could not complete (blocked, reset or timed out)"; return; }
+            echo "result: $code"
+            if grep -q "txtUID" body.html; then echo "login form: FOUND (the portal answered normally)"; else echo "login form: NOT FOUND"; echo "--- first 400 characters of the reply ---"; head -c 400 body.html; echo; fi
+          }
+          probe "plain curl"
+          probe "browser-like headers" -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" -H "Accept-Language: en-IN,en;q=0.9"

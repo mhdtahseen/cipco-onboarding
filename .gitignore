@@ -4,3 +4,6 @@ node_modules
 .mcp.json
 next-env.d.ts
 out
+
+# portal recordings contain logins
+mrr-by-*.js
