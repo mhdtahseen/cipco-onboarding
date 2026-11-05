@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { istToday, tripRate, type TransportRate } from "./attendance";
-import { monthOf, monthsBilled, rentFor, type Rent, type Room } from "./accommodation";
+import { chargeOf, monthOf, monthsBilled, type Adjustment, type Landlord, type Rent, type Room } from "./accommodation";
 import { creditWindow, monthName, statDue, statutoryTotals } from "./payroll";
 import type { Bank, NotIncluded, Payee, ProjectDues } from "./pdf/paymentsDue";
 import { bankFor } from "./payee";
@@ -66,15 +66,20 @@ export async function loadPaymentsDue(sb: SupabaseClient): Promise<PaymentsDue> 
     add(v.project_id, { key: `transport:${v.id}`, category: "transport", name: v.operator || v.name, forWhat: `${v.name} · ${v.billing === "monthly" ? "monthly hire" : "per-trip hire"}${er.length ? ` + ${er.length} errand${er.length === 1 ? "" : "s"}` : ""}`, total, paid: sumBy(tpays, "vehicle_id", v.id), bank: bankOf("vehicle", v.id) });
   });
 
-  // Accommodation: a full month's rent for every month billed up to this month; payments are applied to the oldest month first.
-  // Rooms of the same landlord on a project are one person to pay, so they are one row (the bank details of any of the rooms are used).
-  const lords = new Map<string, { pid: string; name: string; id: string; rooms: Room[] }>();
-  rooms.forEach((r) => { const k = r.landlord.trim() ? `${r.project_id}:${r.landlord.trim().toLowerCase()}` : `room:${r.id}`; const e = lords.get(k) ?? { pid: r.project_id, name: r.landlord.trim() || r.name, id: r.id, rooms: [] }; e.rooms.push(r); lords.set(k, e); });
+  // landlords and month adjustments (2026-11-accommodation-landlords.sql): without them, rooms are grouped by the landlord name typed on them and every month is charged in full
+  const landlords = await (async () => { try { return await all<Landlord>(() => sb.from("accommodation_landlords").select("id, name")); } catch { return [] as Landlord[]; } })();
+  const adjs = await (async () => { try { return (await all<any>(() => sb.from("accommodation_adjustments").select("*"))).map((a) => ({ ...a, amount: num(a.amount) })) as Adjustment[]; } catch { return [] as Adjustment[]; } })();
+  const landlordName = new Map(landlords.map((l) => [l.id, l.name]));
+  // Accommodation: the rent charged for every month billed up to this month (a full month, unless a month was adjusted to a part amount or to nothing); payments are applied to the oldest month first.
+  // Rooms of the same landlord on a project are one person to pay, so they are one row, with the landlord's bank details.
+  const lords = new Map<string, { pid: string; name: string; id: string; landlordId: string | null; rooms: Room[] }>();
+  rooms.forEach((r) => { const lid = (r as Room).landlord_id ?? null; const k = lid ? `${r.project_id}:${lid}` : r.landlord.trim() ? `${r.project_id}:${r.landlord.trim().toLowerCase()}` : `room:${r.id}`;
+    const e = lords.get(k) ?? { pid: r.project_id, name: (lid && landlordName.get(lid)) || r.landlord.trim() || r.name, id: r.id, landlordId: lid, rooms: [] }; e.rooms.push(r); lords.set(k, e); });
   lords.forEach((g, k) => {
     let total = 0, paid = 0, oldest: string | null = null, nMonths = 0;
-    const lines = g.rooms.map((r) => { const months = monthsBilled(r, thisMonth), rent = months.map((m) => rentFor(rents, r.id, m)), t = rent.reduce((a, x) => a + x, 0), p = sumBy(rpays, "room_id", r.id); let left = p;
+    const lines = g.rooms.map((r) => { const months = monthsBilled(r, thisMonth), rent = months.map((m) => chargeOf(r, rents, adjs, m)), t = rent.reduce((a, x) => a + x, 0), p = sumBy(rpays, "room_id", r.id); let left = p;
       months.forEach((m, i) => { const q = Math.min(rent[i], left); left -= q; if (q < rent[i] && (!oldest || `${m}-01` < oldest)) oldest = `${m}-01`; }); total += t; paid += p; nMonths += months.length; return { label: `${r.name}`, total: t, paid: Math.min(p, t) }; });
-    const b = g.rooms.map((r) => bankOf("room", r.id)).find(Boolean) ?? null;
+    const b = (g.landlordId ? bankOf("landlord", g.landlordId) : null) ?? g.rooms.map((r) => bankOf("room", r.id)).find(Boolean) ?? null;
     add(g.pid, { key: k.startsWith("room:") ? k : `landlord:${k}`, category: "accommodation", name: g.name, forWhat: g.rooms.length === 1 ? `${g.rooms[0].name} · rent, ${nMonths} month${nMonths === 1 ? "" : "s"} billed` : `${g.rooms.length} rooms · rent`, total, paid, oldestDue: oldest, bank: b, lines: g.rooms.length > 1 ? lines : undefined });
   });
 
