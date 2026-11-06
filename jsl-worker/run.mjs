@@ -17,11 +17,18 @@ async function pickProof(page, selector, kind) {
   await page.locator(selector).selectOption(val);
 }
 
+// ASP.NET reloads parts of this page after many changes (the Received by dropdown, the WO, Add). Anything typed meanwhile is wiped, so wait for the page to go quiet first.
+async function settle(page) {
+  await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+}
+
 const fail = (msg) => { console.error(msg); process.exit(1); };
 const jobFile = process.argv[2];
 const { JSL_USER, JSL_PASSWORD } = process.env;
 if (!jobFile) fail('Usage: node run.mjs <job.json>');
 if (!JSL_USER || !JSL_PASSWORD) fail('JSL_USER and JSL_PASSWORD are not set.');
+const SKIP_WO = process.env.SKIP_WO === 'true';   // SAP down: do not wait for the contractor details
 if (process.env.DRY_RUN !== 'true') fail('Only the dry run is built. Set DRY_RUN=true.');
 
 const job = JSON.parse(readFileSync(jobFile, 'utf8'));
@@ -80,33 +87,48 @@ try {
   result.requisitionNoOnForm = await page.evaluate(() => [...document.querySelectorAll('input')].map((i) => i.value).find((v) => /^\d{8}-\d+$/.test(v)) || null);
 
   await page.locator(id('ddlReceivedby')).selectOption(job.receivedBy === 'hand' ? 'By Hand' : 'By Vehicle');
+  await settle(page);
   // The portal fills contractor name, address and validity once the WO box is left. It may listen for key presses, which fill() never sends, so type key by key and try the ways a person would leave the box.
   // Enter is not one of them: in an ASP.NET form it can press the default button.
   const wo = page.locator(id('txtWorkorder'));
   const filledCount = () => page.evaluate(() => [...document.querySelectorAll('input')].filter((i) => !['hidden', 'password', 'checkbox', 'image', 'submit', 'button'].includes(i.type) && i.value.trim()).length);
-  await wo.click();
-  await wo.pressSequentially(job.wo, { delay: 80 });
+  for (let attempt = 1; attempt <= 3; attempt++) {   // typed text can still be wiped by a late reload: check it stayed, and type again if not
+    await wo.click();
+    await wo.selectText().catch(() => {});
+    await wo.pressSequentially(job.wo, { delay: 80 });
+    if ((await wo.inputValue()).trim() === job.wo) break;
+    result.woTypedTimes = attempt;
+    await settle(page);
+  }
   result.woValueAfterTyping = await wo.inputValue();
   result.suggestions = (await page.locator('li:visible, [role="option"]:visible').allInnerTexts().catch(() => [])).slice(0, 10);
   await page.screenshot({ path: `${OUT}/wo-typed.png` });
-  const before = await filledCount();
-  const filled = async (ms) => { for (let t = 0; t < ms; t += 500) { if ((await filledCount()) >= before + 3) return true; await page.waitForTimeout(500); } return false; };
-  const ways = [
-    ['tab', () => wo.press('Tab')],
-    ['click-away', () => page.getByRole('cell', { name: /^Work Order/ }).first().click()],
-    ['suggestion', async () => { const s = page.locator('li', { hasText: job.wo }).first(); if (await s.isVisible()) await s.click(); }],
-  ];
-  for (const [name, leave] of ways) {
-    await leave().catch(() => {});
-    if (await filled(6000)) { result.woFilledBy = name; break; }
+  if (SKIP_WO) {
+    // The portal gets the contractor from SAP when the WO is left. While SAP is down nothing will fill in, so do not wait for it: leave the box and check everything else.
+    await wo.press('Tab').catch(() => {});
+    await settle(page);
+    result.woSkipped = true;
+  } else {
+    const before = await filledCount();
+    const filled = async (ms) => { for (let t = 0; t < ms; t += 500) { if ((await filledCount()) >= before + 3) return true; await page.waitForTimeout(500); } return false; };
+    const ways = [
+      ['tab', () => wo.press('Tab')],
+      ['click-away', () => page.getByRole('cell', { name: /^Work Order/ }).first().click()],
+      ['suggestion', async () => { const s = page.locator('li', { hasText: job.wo }).first(); if (await s.isVisible()) await s.click(); }],
+    ];
+    for (const [name, leave] of ways) {
+      await leave().catch(() => {});
+      if (await filled(6000)) { result.woFilledBy = name; break; }
+    }
+    if (!result.woFilledBy) {
+      result.formInputs = await page.evaluate(() => [...document.querySelectorAll('input,select')].filter((e) => !['hidden', 'password'].includes(e.type)).map((e) => ({ id: e.id, type: e.type, value: e.value, options: e.tagName === 'SELECT' && e.options.length < 15 ? [...e.options].map((o) => `${o.value}=${o.text}`) : undefined })));
+      throw new Error('The portal did not fill in the contractor details from the WO number.');
+    }
+    result.contractor = (await inputAfter(page, 'Contractor Name').inputValue().catch(() => '')).trim();
+    result.woValidity = (await inputAfter(page, 'WO Validity').inputValue().catch(() => '')).trim();
   }
-  if (!result.woFilledBy) {
-    result.formInputs = await page.evaluate(() => [...document.querySelectorAll('input,select')].filter((e) => !['hidden', 'password'].includes(e.type)).map((e) => ({ id: e.id, type: e.type, value: e.value, options: e.tagName === 'SELECT' && e.options.length < 15 ? [...e.options].map((o) => `${o.value}=${o.text}`) : undefined })));
-    throw new Error('The portal did not fill in the contractor details from the WO number.');
-  }
-  result.contractor = (await inputAfter(page, 'Contractor Name').inputValue().catch(() => '')).trim();
-  result.woValidity = (await inputAfter(page, 'WO Validity').inputValue().catch(() => '')).trim();
   await page.locator(id('ddlDept')).selectOption(job.department || 'MECHANICAL');
+  await settle(page);
 
   if (job.receivedBy === 'hand') {
     await setPersons(page, page.locator(id('txtNoofPersoninH')), 1);
@@ -132,7 +154,7 @@ try {
     await page.locator(id('txtQty')).fill(String(it.qty));
     await page.locator(id('ddlUnit')).selectOption(it.unit);
     await page.locator(id('ImgAdd')).click();
-    await page.waitForTimeout(800);
+    await settle(page);
   }
 
   // Read the item list back: each name must appear as many times as the job has it (two lines can share a name).
