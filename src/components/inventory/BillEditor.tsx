@@ -84,12 +84,20 @@ export default function BillEditor({ projectId, bill, items, pastBills, pastItem
   }
 
   const j = bill ? JSL_LABEL[bill.jsl_status] : null; const recorded = bill?.status === "recorded" && !bill.voided_at;
+  const wanted = !!bill?.jsl_wanted;   // sending to the JSL portal is optional: an Admin switches it on for a bill, and until then nobody sees or fills in any portal details
   const gateOpen = !!bill && !bill.voided_at && canEnter && ["none", "failed"].includes(bill.jsl_status);
   const gaps = gatepassGaps(gSaved, people); const takeBack = staff && !!bill && !bill.voided_at && ["none", "authorized", "failed"].includes(bill.jsl_status);
+  const hasSide = editable || (recorded && (wanted || admin || takeBack));
   const gateForm = showGate || (gateOpen && !gSaved);
   const chosen = people.find((p) => p.employee_id === g.person_employee_id); const savedPerson = people.find((p) => p.employee_id === gSaved?.person_employee_id);
   const fromTeam = g.person_source === "employee";
   const idBad = (type: string, no: string) => type === "Aadhaar" && no.trim() !== "" && !/^\d{12}$/.test(no.replace(/\s/g, ""));
+
+  const totalsBox = (items.length > 0 && <div className="rounded-xl bg-slate-50 p-3 text-sm space-y-1 tabular-nums">
+          <div className="flex justify-between"><span>Items</span><span>₹{inr(sums.taxable)}</span></div><div className="flex justify-between"><span>GST</span><span>₹{inr(sums.tax)}</span></div>
+          {Number(h.other_charges || 0) !== 0 && <div className="flex justify-between"><span>Freight or discount</span><span>₹{inr(Number(h.other_charges))}</span></div>}
+          <div className="flex justify-between font-semibold border-t border-slate-200 pt-1"><span>Items come to</span><span>₹{inr(sums.computed)}</span></div><div className="flex justify-between"><span>Bill says</span><span>₹{inr(Number(h.bill_total || 0))}</span></div>
+          <div className={`flex justify-between font-medium ${sums.matches ? "text-green-700" : "text-amber-700"}`}><span>{sums.matches ? (sums.diff === 0 ? "Matches" : "Matches, with round off") : "Difference: an item is missing or wrong"}</span><span className="whitespace-nowrap ml-2">{sums.diff > 0 ? "+" : sums.diff < 0 ? "−" : ""}₹{inr(Math.abs(sums.diff))}</span></div></div>);
 
   return (
     <div className="space-y-4">
@@ -97,6 +105,8 @@ export default function BillEditor({ projectId, bill, items, pastBills, pastItem
       {err && <p className="warn" role="alert">{err}</p>}{msg && <p className="text-sm text-green-700" role="status">{msg}</p>}
       {bill?.voided_at && <p className="text-sm rounded-xl px-3 py-2 bg-slate-50 text-slate-700">This bill is void: {bill.void_reason}. It is not in expenses or in the received list.</p>}
 
+      <div className={bill && hasSide ? "space-y-4 lg:space-y-0 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-5 lg:items-start" : "space-y-4 max-w-3xl"}>
+      <div className="space-y-4 min-w-0">
       {/* 1. the bill */}
       <section className="card !p-3 space-y-3"><div className="flex items-center gap-2"><h2 className="text-sm font-semibold">1. The bill</h2><span className="ml-auto flex gap-2">{bill?.bill_path && !editHead && <a className="btn btn-sm" href={`/api/inventory/view?bill=${bill.id}`} target="_blank" rel="noreferrer">View bill</a>}{editable && bill?.bill_path && !editHead && <button className="btn btn-sm" onClick={() => setEditHead(true)}>Edit</button>}</span></div>
         {editable && (!bill?.bill_path || editHead) ? <>
@@ -130,15 +140,11 @@ export default function BillEditor({ projectId, bill, items, pastBills, pastItem
         </form>}
         {items.length > 0 && <ol className="divide-y divide-slate-100">{[...items.keys()].reverse().map((n) => { const i = items[n]; return <li key={i.id} className="py-2 flex items-start gap-2 text-sm"><span className="text-slate-400 tabular-nums w-5 shrink-0">{n + 1}</span><div className="min-w-0 flex-1"><div className="font-medium break-words">{i.name}</div><div className="text-xs text-slate-500 tabular-nums">{Number(i.qty).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {i.unit} × ₹{inr(Number(i.rate))} · GST {Number(i.gst_pct)}%{i.hsn ? ` · HSN ${i.hsn}` : ""}</div></div><b className="tabular-nums whitespace-nowrap">₹{inr(Number(i.amount))}</b>
           {editable && <span className="flex gap-1 shrink-0"><button className="btn btn-sm" onClick={() => { setEditItem(i.id); setF({ name: i.name, qty: String(i.qty), unit: i.unit, rate: String(i.rate), gst_pct: String(i.gst_pct), hsn: i.hsn }); nameRef.current?.focus(); }}>Edit</button><button className="btn btn-sm btn-danger" aria-label={`Remove ${i.name}`} onClick={() => delItem(i)}>✕</button></span>}</li>; })}</ol>}
-        {items.length > 0 && <div className="rounded-xl bg-slate-50 p-3 text-sm space-y-1 tabular-nums">
-          <div className="flex justify-between"><span>Items</span><span>₹{inr(sums.taxable)}</span></div><div className="flex justify-between"><span>GST</span><span>₹{inr(sums.tax)}</span></div>
-          {Number(h.other_charges || 0) !== 0 && <div className="flex justify-between"><span>Freight or discount</span><span>₹{inr(Number(h.other_charges))}</span></div>}
-          <div className="flex justify-between font-semibold border-t border-slate-200 pt-1"><span>Items come to</span><span>₹{inr(sums.computed)}</span></div><div className="flex justify-between"><span>Bill says</span><span>₹{inr(Number(h.bill_total || 0))}</span></div>
-          <div className={`flex justify-between font-medium ${sums.matches ? "text-green-700" : "text-amber-700"}`}><span>{sums.matches ? (sums.diff === 0 ? "Matches" : "Matches, with round off") : "Difference: an item is missing or wrong"}</span><span className="whitespace-nowrap ml-2">{sums.diff > 0 ? "+" : sums.diff < 0 ? "−" : ""}₹{inr(Math.abs(sums.diff))}</span></div></div>}
+        {totalsBox && <div className="lg:hidden">{totalsBox}</div>}
         {editable && <>
-          <p className="text-xs text-slate-500">Recording adds ₹{inr(Number(h.bill_total || 0))} to this project's expenses under Site consumables.{!bill.bill_path && <span className="text-amber-700"> Attach the photo of the bill first.</span>}</p>
-          <div><button className="btn btn-danger btn-sm" disabled={busy} onClick={discard}>Discard draft</button></div>
-          <div className="sticky bottom-[var(--bottom-nav-h,0px)] z-10 -mx-3 -mb-3 px-3 py-2 border-t border-slate-200 bg-white/95 backdrop-blur rounded-b-xl flex items-center gap-3">
+          <p className="text-xs text-slate-500 lg:hidden">Recording adds ₹{inr(Number(h.bill_total || 0))} to this project's expenses under Site consumables. Sending the items to the JSL portal is optional: an Admin decides that afterwards.{!bill.bill_path && <span className="text-amber-700"> Attach the photo of the bill first.</span>}</p>
+          <div className="lg:hidden"><button className="btn btn-danger btn-sm" disabled={busy} onClick={discard}>Discard draft</button></div>
+          <div className="lg:hidden sticky bottom-[var(--bottom-nav-h,0px)] z-10 -mx-3 -mb-3 px-3 py-2 border-t border-slate-200 bg-white/95 backdrop-blur rounded-b-xl flex items-center gap-3">
             <div className="min-w-0 flex-1 text-xs tabular-nums leading-snug">
               <div className={`font-semibold ${items.length === 0 ? "text-slate-500" : sums.matches ? "text-green-700" : "text-amber-700"}`}>{items.length === 0 ? "No items yet" : `${items.length} item${items.length === 1 ? "" : "s"} · ₹${inr(sums.computed)}`}</div>
               <div className="text-slate-500 truncate">Bill ₹{inr(Number(h.bill_total || 0))}{items.length > 0 && !sums.matches ? ` · ₹${inr(Math.abs(sums.diff))} ${sums.diff > 0 ? "short" : "over"}` : ""}</div>
@@ -149,27 +155,40 @@ export default function BillEditor({ projectId, bill, items, pastBills, pastItem
         {recorded && <p className="text-sm text-green-700">₹{inr(Number(bill.bill_total))} is in this project's expenses under Site consumables.</p>}
       </section>}
 
+      </div>
+      <div className="space-y-4 min-w-0 lg:sticky lg:top-20">
+      {editable && bill && <section className="card !p-3 space-y-3 hidden lg:block"><h2 className="text-sm font-semibold">Check against the bill</h2>
+        {totalsBox || <p className="text-sm text-slate-500">Add the items from the bill. They are checked against its total here.</p>}
+        <p className="text-xs text-slate-500">Recording adds ₹{inr(Number(h.bill_total || 0))} to this project's expenses under Site consumables. Sending the items to the JSL portal is optional: an Admin decides that afterwards.{!bill.bill_path && <span className="text-amber-700"> Attach the photo of the bill first.</span>}</p>
+        <div className="flex gap-2"><button className="btn btn-primary flex-1 justify-center" disabled={busy || !sums.matches || !bill.bill_path} onClick={record}>Record bill</button><button className="btn btn-danger" disabled={busy} onClick={discard}>Discard</button></div>
+      </section>}
+
+      {/* the portal is optional: only an Admin can switch it on */}
+      {recorded && admin && !wanted && bill && <section className="card !p-3 space-y-2"><div className="flex items-center gap-2"><h2 className="text-sm font-semibold">JSL portal</h2><span className="text-[11px] rounded-full px-2 py-0.5 bg-slate-100 text-slate-600">Optional</span></div>
+        <p className="text-sm text-slate-600">This bill is an expense and is complete as it is. If you also want its items raised as one MRR on the JSL portal, switch that on for this bill. The person or vehicle details are then asked for.</p>
+        <button className="btn" disabled={busy} onClick={() => act("inventory_set_jsl_wanted", { p_bill: bill.id, p_on: true }, "Switched on: this bill can now go to the JSL portal.")}>Also send to the JSL portal</button></section>}
+
       {/* 3. what the portal asks for before any material */}
-      {recorded && !viewer && <section className="card !p-3 space-y-3"><div className="flex items-center gap-2"><h2 className="text-sm font-semibold">3. Details for the JSL portal</h2>{gSaved && gateOpen && !gateForm && <button className="btn btn-sm ml-auto" onClick={() => setShowGate(true)}>Edit</button>}</div>
+      {recorded && !viewer && wanted && <section className="card !p-3 space-y-3"><div className="flex items-center gap-2"><h2 className="text-sm font-semibold">3. Details for the JSL portal</h2>{gSaved && gateOpen && !gateForm && <button className="btn btn-sm ml-auto" onClick={() => setShowGate(true)}>Edit</button>}</div>
         {gateForm && gateOpen ? <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <div><label className="lbl">Received by</label><select className="inp" value={g.received_by} onChange={(e) => setGate({ received_by: e.target.value as Gatepass["received_by"] })}><option value="hand">By hand</option><option value="vehicle">By vehicle</option></select></div></div>
           {g.received_by === "hand" ? <div className="space-y-3">
             <div><label className="lbl">Who is bringing it?</label><select className="inp" value={fromTeam ? g.person_employee_id ?? "" : "__other"} onChange={(e) => (e.target.value === "__other" ? setGate({ person_source: "other", person_employee_id: null }) : setGate({ person_source: "employee", person_employee_id: e.target.value || null }))}><option value="">Choose…</option>{people.map((p) => <option key={p.employee_id} value={p.employee_id}>{p.full_name}{p.designation ? ` · ${p.designation}` : ""}</option>)}<option value="__other">Someone not on the team…</option></select>
               {fromTeam && chosen && (chosen.aadhaar_last4 ? <p className="text-xs text-slate-500 mt-1">Aadhaar {maskLast4(chosen.aadhaar_last4)}, from the employee record.</p> : <p className="warn">No Aadhaar on {chosen.full_name}'s employee record. Ask the office to add it, or choose someone else.</p>)}</div>
-            {!fromTeam && <div className="grid gap-3 sm:grid-cols-3"><div><label className="lbl">Person's name</label><input className="inp" value={g.person_name} onChange={(e) => setGate({ person_name: e.target.value })} /></div>
+            {!fromTeam && <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-2"><div><label className="lbl">Person's name</label><input className="inp" value={g.person_name} onChange={(e) => setGate({ person_name: e.target.value })} /></div>
             <div><label className="lbl">ID type</label><select className="inp" value={g.person_id_type} onChange={(e) => setGate({ person_id_type: e.target.value })}><option value=""></option>{ID_TYPES.map((t) => <option key={t}>{t}</option>)}</select></div>
             <div><label className="lbl">ID number</label><input className="inp uppercase" autoComplete="off" value={g.person_id_no} onChange={(e) => setGate({ person_id_no: e.target.value })} />{idBad(g.person_id_type, g.person_id_no) && <p className="warn">An Aadhaar number has 12 digits.</p>}</div></div>}
-          </div> : <div className="space-y-3"><div className="grid gap-3 sm:grid-cols-3">
+          </div> : <div className="space-y-3"><div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-2">
             <div><label className="lbl">Vehicle number</label><input className="inp uppercase" value={g.vehicle_no} onChange={(e) => setGate({ vehicle_no: e.target.value })} /></div>
             <div><label className="lbl">Driver's name</label><input className="inp" value={g.driver_name} onChange={(e) => setGate({ driver_name: e.target.value })} /></div>
             <div><label className="lbl">Driver's licence number</label><input className="inp uppercase" autoComplete="off" value={g.driver_dl_no} onChange={(e) => setGate({ driver_dl_no: e.target.value })} /></div></div>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-2">
             <div><label className="lbl">Co-driver's name <span className="font-normal text-slate-400">(if any)</span></label><input className="inp" value={g.codriver_name} onChange={(e) => setGate({ codriver_name: e.target.value })} /></div>
             <div><label className="lbl">Co-driver's ID type</label><select className="inp" value={g.codriver_id_type} onChange={(e) => setGate({ codriver_id_type: e.target.value })}><option value=""></option>{ID_TYPES.map((t) => <option key={t}>{t}</option>)}</select></div>
             <div><label className="lbl">Co-driver's ID number</label><input className="inp uppercase" autoComplete="off" value={g.codriver_id_no} onChange={(e) => setGate({ codriver_id_no: e.target.value })} />{idBad(g.codriver_id_type, g.codriver_id_no) && <p className="warn">An Aadhaar number has 12 digits.</p>}</div></div></div>}
           <div className="flex flex-wrap gap-2 form-actions"><button className="btn btn-primary" disabled={busy || (g.received_by === "hand" && !fromTeam && idBad(g.person_id_type, g.person_id_no)) || (g.received_by === "vehicle" && idBad(g.codriver_id_type, g.codriver_id_no))} onClick={saveGate}>Save JSL details</button>{gSaved && <button className="btn" onClick={() => { setG(gSaved); setShowGate(false); }}>Cancel</button>}</div>
-        </div> : gSaved ? <div className="text-sm grid gap-2 grid-cols-2 lg:grid-cols-3">
+        </div> : gSaved ? <div className="text-sm grid gap-2 grid-cols-2">
           <div><div className="text-xs text-slate-400">Received by</div>{gSaved.received_by === "hand" ? "By hand" : "By vehicle"}</div>
           {gSaved.received_by === "hand" ? <><div><div className="text-xs text-slate-400">Person</div>{gSaved.person_name || "—"}</div><div><div className="text-xs text-slate-400">{gSaved.person_source === "employee" ? "Aadhaar" : gSaved.person_id_type || "ID"}</div>{gSaved.person_source === "employee" ? (savedPerson?.aadhaar_last4 ? maskLast4(savedPerson.aadhaar_last4) : "—") : maskId(gSaved.person_id_no) || "—"}</div></>
             : <><div><div className="text-xs text-slate-400">Vehicle</div>{gSaved.vehicle_no || "—"}</div><div><div className="text-xs text-slate-400">Driver</div>{gSaved.driver_name || "—"}</div><div><div className="text-xs text-slate-400">Licence</div>{maskId(gSaved.driver_dl_no) || "—"}</div>{gSaved.codriver_name && <div><div className="text-xs text-slate-400">Co-driver</div>{gSaved.codriver_name} · {gSaved.codriver_id_type} {maskId(gSaved.codriver_id_no)}</div>}</>}
@@ -177,7 +196,7 @@ export default function BillEditor({ projectId, bill, items, pastBills, pastItem
       </section>}
 
       {/* 4. the Admin's decision */}
-      {recorded && j && <section className="card !p-3 space-y-2"><div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-semibold">4. Send to the JSL portal</h2><span className={`text-[11px] rounded-full px-2 py-0.5 ${j.cls}`}>{j.text}</span></div>
+      {recorded && j && wanted && <section className="card !p-3 space-y-2"><div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-semibold">4. Send to the JSL portal</h2><span className={`text-[11px] rounded-full px-2 py-0.5 ${j.cls}`}>{j.text}</span></div>
         {["none", "failed"].includes(bill.jsl_status) && <>
           {bill.jsl_status === "failed" && <p className="warn">The last attempt failed before anything was saved on the portal{bill.jsl_error ? `: ${bill.jsl_error}` : "."}</p>}
           {!viewer && gaps.length > 0 && <p className="text-sm text-amber-700">Still needed: {gaps.join(", ")}.</p>}
@@ -186,9 +205,12 @@ export default function BillEditor({ projectId, bill, items, pastBills, pastItem
         {bill.jsl_status === "authorized" && <><p className="text-sm text-slate-600">Authorized{staff && wo ? ` against WO ${wo}` : ""}. Automatic sending is not switched on yet, so nothing has gone to the portal.</p>{admin && <button className="btn" disabled={busy} onClick={() => act("inventory_withdraw_jsl", { p_bill: bill.id }, "Authorization withdrawn.")}>Withdraw authorization</button>}</>}
         {bill.jsl_status === "needs_check" && <p className="text-sm text-amber-800">The run stopped around the moment of saving, so the MRR may or may not exist. Check the portal before doing anything: this bill is not retried by itself.{bill.jsl_error ? ` (${bill.jsl_error})` : ""}</p>}
         {bill.jsl_status === "submitted" && <p className="text-sm text-green-800">JSL reference: <b>{bill.jsl_ref || "—"}</b></p>}
+        {admin && ["none", "authorized", "failed"].includes(bill.jsl_status) && <button className="btn btn-sm" disabled={busy} onClick={() => confirm("Take this bill off the JSL portal? It stays an expense. Any authorization is withdrawn; the portal details stay saved.") && act("inventory_set_jsl_wanted", { p_bill: bill.id, p_on: false }, "Switched off: this bill is an expense only.")}>Don't send this bill to the portal</button>}
       </section>}
 
       {bill && takeBack && recorded && <div className="flex flex-wrap gap-2 form-actions"><button className="btn" disabled={busy} onClick={() => confirm("Reopen this bill? Its expense comes off until it is recorded again.") && act("inventory_reopen_bill", { p_bill: bill.id }, "Reopened. The expense has come off the project.")}>Reopen bill</button><button className="btn btn-danger" disabled={busy} onClick={voidBill}>Void bill</button></div>}
+      </div>
+      </div>
     </div>
   );
 }
