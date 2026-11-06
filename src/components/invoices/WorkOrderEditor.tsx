@@ -6,6 +6,8 @@ import { supabase } from "@/lib/supabase/client";
 import { lineAmount, money, normName, qtyText, r2, rowsFromQuote, type Client, type Invoice, type WoItem, type WorkOrder } from "@/lib/invoice";
 import { createDraftBill, fmtD } from "@/lib/invoiceData";
 import { swrDrop } from "@/lib/swr";
+import { DEFAULT_UNIT } from "@/lib/units";
+import UnitSelect from "@/components/UnitSelect";
 import type { Project } from "@/lib/types";
 import type { QItem } from "@/lib/quote";
 
@@ -22,7 +24,7 @@ export default function WorkOrderEditor({ id }: { id: string }) {
   const router = useRouter(); const isNew = id === "new"; const fromQuote = useSearchParams().get("quotation");
   const [quotes, setQuotes] = useState<QuoteRef[]>([]); const [quotationId, setQuotationId] = useState("");
   const [clients, setClients] = useState<Client[]>([]); const [projects, setProjects] = useState<Project[]>([]);
-  const [h, setH] = useState<Head>(BLANK); const [rows, setRows] = useState<Row[]>([{ key: newKey(), description: "", unit: "Nos", qty: "", rate: "" }]); const [origIds, setOrigIds] = useState<string[]>([]);
+  const [h, setH] = useState<Head>(BLANK); const [rows, setRows] = useState<Row[]>([{ key: newKey(), description: "", unit: DEFAULT_UNIT, qty: "", rate: "" }]); const [origIds, setOrigIds] = useState<string[]>([]);
   const [billed, setBilled] = useState<Record<string, number>>({}); const [bills, setBills] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false); const [err, setErr] = useState(""); const [msg, setMsg] = useState("");
 
@@ -78,7 +80,7 @@ export default function WorkOrderEditor({ id }: { id: string }) {
     const removed = origIds.filter((o) => !keep.has(o));
     if (removed.length) { const { error } = await sb.from("work_order_items").delete().in("id", removed); if (error) { setBusy(false); setErr(/foreign key|violates/i.test(error.message) ? "An item that is on a bill cannot be removed. Set its quantity to what is billed instead." : error.message); return; } }
     for (const [i, r] of used.entries()) {
-      const row = { work_order_id: woId, sort: i, description: r.description.trim(), unit: r.unit.trim() || "Nos", qty: num(r.qty), rate: num(r.rate) };
+      const row = { work_order_id: woId, sort: i, description: r.description.trim(), unit: r.unit.trim() || DEFAULT_UNIT, qty: num(r.qty), rate: num(r.rate) };
       const { error } = r.id ? await sb.from("work_order_items").update(row).eq("id", r.id) : await sb.from("work_order_items").insert(row);
       if (error) { setBusy(false); setErr(error.message); return; }
     }
@@ -115,13 +117,13 @@ export default function WorkOrderEditor({ id }: { id: string }) {
           <tbody>{rows.map((r, i) => { const b = r.id ? billed[r.id] || 0 : 0; return (
             <tr key={r.key} className="border-t border-slate-100 align-top"><td className="p-1 pt-2.5 text-slate-400">{i + 1}</td>
               <td className="p-1"><textarea className="inp" rows={1} aria-label={`Item ${i + 1} description`} value={r.description} onChange={(e) => upd(r.key, "description", e.target.value)} /></td>
-              <td className="p-1"><input className="inp" aria-label={`Item ${i + 1} unit`} value={r.unit} onChange={(e) => upd(r.key, "unit", e.target.value)} /></td>
+              <td className="p-1"><UnitSelect ariaLabel={`Item ${i + 1} unit`} value={r.unit} onChange={(u) => upd(r.key, "unit", u)} /></td>
               <td className="p-1"><input className="inp text-right" inputMode="decimal" aria-label={`Item ${i + 1} quantity`} value={r.qty} onChange={(e) => upd(r.key, "qty", e.target.value)} /></td>
               <td className="p-1"><input className="inp text-right" inputMode="decimal" aria-label={`Item ${i + 1} rate`} value={r.rate} onChange={(e) => upd(r.key, "rate", e.target.value)} /></td>
               <td className="p-1 pt-2.5 text-right tabular-nums">{money(lineAmount(num(r.qty) || 0, num(r.rate) || 0))}</td>
               <td className="p-1 pt-2.5 text-right tabular-nums text-slate-500">{r.id ? `${qtyText(b)}${num(r.qty) > 0 ? ` (${Math.round((b / num(r.qty)) * 100)}%)` : ""}` : "—"}</td>
               <td className="p-1 pt-1.5 text-right"><button type="button" className="text-slate-400 hover:text-red-700 px-1" aria-label={`Remove item ${i + 1}`} onClick={() => setRows((x) => (x.length > 1 ? x.filter((y) => y.key !== r.key) : x))}>✕</button></td></tr>); })}</tbody></table></div>
-        <div className="flex flex-wrap items-center gap-2"><button className="btn btn-sm" onClick={() => setRows((r) => [...r, { key: newKey(), description: "", unit: r[r.length - 1]?.unit || "Nos", qty: "", rate: "" }])}>+ Add item</button>
+        <div className="flex flex-wrap items-center gap-2"><button className="btn btn-sm" onClick={() => setRows((r) => [...r, { key: newKey(), description: "", unit: r[r.length - 1]?.unit || DEFAULT_UNIT, qty: "", rate: "" }])}>+ Add item</button>
           {!isNew && <span className="text-xs text-slate-500">Changing a rate here affects only bills you start from now on; issued bills keep the rate they were issued at.</span>}</div></section>
       {!isNew && <section className="card space-y-2"><h2 className="font-semibold">Bills</h2>
         {!bills.length && <p className="text-sm text-slate-500">No bills raised yet.{h.status === "active" ? " Use New running bill above." : ""}</p>}

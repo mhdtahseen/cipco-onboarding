@@ -1,0 +1,185 @@
+"use client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { supabase } from "@/lib/supabase/client";
+import { istToday } from "@/lib/attendance";
+import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
+import { useRole } from "@/lib/roles";
+import UnitSelect from "@/components/UnitSelect";
+import { BLANK_GATEPASS, billSums, gatepassGaps, ID_TYPES, inr, JSL_LABEL, lineAmount, maskId, maskLast4, UNITS, type Gatepass, type InvBill, type InvItem, type ProjectPerson, type ProjectWo } from "@/lib/inventory";
+
+const BLANK_ITEM = { name: "", qty: "", unit: "", rate: "", gst_pct: "18", hsn: "" };
+const friendly = (e: { code?: string; message: string }) => (e.code === "23505" ? "This bill is already entered: same vendor, bill number and date." : e.message);
+
+// One bill, top to bottom in the order the work happens: the bill's header, then its items one at a time. Once it is recorded: the details the JSL portal asks for, then the Admin's authorization.
+export default function BillEditor({ projectId, bill, items, pastBills, pastItems, onClose, onChanged, onCreated }: { projectId: string; bill: InvBill | null; items: InvItem[]; pastBills: InvBill[]; pastItems: InvItem[]; onClose: () => void; onChanged: () => Promise<void>; onCreated: (id: string) => void }) {
+  const { role, admin, staff, viewer } = useRole(); const canEnter = !!role && role !== "none" && !viewer;
+  const editable = canEnter && (!bill || (bill.status === "draft" && !bill.voided_at));
+  const [h, setH] = useState({ vendor_name: bill?.vendor_name ?? "", vendor_gstin: bill?.vendor_gstin ?? "", bill_no: bill?.bill_no ?? "", bill_date: bill?.bill_date ?? istToday(), bill_total: bill ? String(bill.bill_total) : "", other_charges: bill && Number(bill.other_charges) ? String(bill.other_charges) : "" });
+  const [photo, setPhoto] = useState<File | null>(null); const [f, setF] = useState(BLANK_ITEM); const [editItem, setEditItem] = useState<string | null>(null); const nameRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState(""); const [msg, setMsg] = useState("");
+  const [g, setG] = useState<Gatepass>(BLANK_GATEPASS); const [gSaved, setGSaved] = useState<Gatepass | null>(null); const [showGate, setShowGate] = useState(false);
+  const [editHead, setEditHead] = useState(false);   // once saved the bill's header folds away, so on a phone the item form is the first thing on screen
+
+  const [people, setPeople] = useState<ProjectPerson[]>([]); const [wos, setWos] = useState<ProjectWo[]>([]); const [wo, setWo] = useState("");
+
+  // the JSL details: this bill's own, or by hand from whoever entered the bill. A Viewer cannot read any of this. Only the office is told the WO.
+  useEffect(() => { if (!bill || !canEnter) return; (async () => {
+    const sb = supabase(); const [gp, pp] = await Promise.all([sb.from("inventory_gatepass").select("*").eq("bill_id", bill.id).maybeSingle(), sb.rpc("inventory_project_people", { p_bill: bill.id })]);
+    if (gp.error || pp.error) { setErr((gp.error ?? pp.error)!.message); return; }
+    const list = (pp.data ?? []) as ProjectPerson[]; setPeople(list);
+    if (gp.data) { const d = { ...BLANK_GATEPASS, ...(gp.data as Gatepass) }; setG(d); setGSaved(d); }
+    else setG((x) => ({ ...x, person_employee_id: list.find((p) => p.is_default)?.employee_id ?? null }));
+    if (staff) { const w = await sb.rpc("inventory_project_wos", { p_project: bill.project_id }); if (w.error) { setErr(w.error.message); return; } const l = (w.data ?? []) as ProjectWo[]; setWos(l); if (l.length === 1) setWo(l[0].wo_no); }
+  })(); }, [bill?.id, canEnter, staff]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sums = billSums(items, Number(h.other_charges || 0), Number(h.bill_total || 0));
+  const vendors = useMemo(() => [...new Set(pastBills.map((b) => b.vendor_name))].sort(), [pastBills]);
+  const names = useMemo(() => [...new Set(pastItems.map((i) => i.name))].sort(), [pastItems]);
+  const setItem = (p: Partial<typeof BLANK_ITEM>) => setF((x) => ({ ...x, ...p }));
+  const setGate = (p: Partial<Gatepass>) => setG((x) => ({ ...x, ...p }));
+  const flash = (t: string) => { setMsg(t); setErr(""); };
+
+  async function uploadPhoto(): Promise<string | null | undefined> {   // undefined = it failed, and the message is already showing
+    if (!photo) return bill?.bill_path ?? null;
+    const file = await prepareUpload(photo);
+    if (file.size > MAX_UPLOAD) { setErr("The bill is larger than 5 MB: please send a smaller photo or compressed PDF."); return undefined; }
+    const fd = new FormData(); fd.set("file", file); fd.set("projectId", projectId);
+    const r = await fetch("/api/inventory/upload", { method: "POST", body: fd });
+    if (!r.ok) { setErr(await r.text()); return undefined; }
+    return (await r.json()).path as string;
+  }
+  async function saveHeader() {
+    const total = Number(h.bill_total); setMsg(""); setErr("");
+    if (!h.vendor_name.trim()) return setErr("Enter the vendor's name."); if (!h.bill_no.trim()) return setErr("Enter the bill number."); if (!h.bill_date) return setErr("Choose the bill's date."); if (!(total > 0)) return setErr("Enter the bill's total, as printed.");
+    setBusy(true);
+    const bill_path = await uploadPhoto(); if (bill_path === undefined) { setBusy(false); return; }
+    const row = { vendor_name: h.vendor_name.trim(), vendor_gstin: h.vendor_gstin.trim().toUpperCase(), bill_no: h.bill_no.trim(), bill_date: h.bill_date, bill_total: total, other_charges: Number(h.other_charges || 0), bill_path };
+    const sb = supabase();
+    if (bill) { const { error } = await sb.from("inventory_bills").update(row).eq("id", bill.id); setBusy(false); if (error) return setErr(friendly(error)); setPhoto(null); setEditHead(false); flash("Saved ✓"); await onChanged(); return; }
+    const { data, error } = await sb.from("inventory_bills").insert({ ...row, project_id: projectId }).select("id").single(); setBusy(false);
+    if (error) return setErr(friendly(error));
+    await onChanged(); onCreated((data as { id: string }).id);
+  }
+  async function saveItem() {
+    if (!bill) return; const qty = Number(f.qty), rate = Number(f.rate), gst = Number(f.gst_pct); setMsg(""); setErr("");
+    if (!f.name.trim()) return setErr("Enter the item's name."); if (!(qty > 0)) return setErr("Enter the quantity."); if (!UNITS.includes(f.unit)) return setErr("Choose the unit."); if (!(rate >= 0) || f.rate === "") return setErr("Enter the rate, before GST."); if (!(gst >= 0 && gst <= 40)) return setErr("GST must be between 0 and 40%.");
+    setBusy(true);
+    const row = { name: f.name.trim().replace(/\s+/g, " "), qty, unit: f.unit, rate, gst_pct: gst, hsn: f.hsn.trim() }; const sb = supabase();
+    const { error } = editItem ? await sb.from("inventory_bill_items").update(row).eq("id", editItem) : await sb.from("inventory_bill_items").insert({ ...row, bill_id: bill.id, line_no: Math.max(0, ...items.map((i) => i.line_no)) + 1 });
+    setBusy(false); if (error) return setErr(error.message);
+    // every item is saved as it is entered, so a dropped connection loses nothing. Unit and GST stay for the next line because most bills repeat them.
+    flash(`${editItem ? "Updated" : "Added"}: ${row.name}`); setEditItem(null); setF((x) => ({ ...BLANK_ITEM, unit: x.unit, gst_pct: x.gst_pct })); await onChanged(); nameRef.current?.focus();
+  }
+  async function delItem(i: InvItem) { if (!confirm(`Remove ${i.name}?`)) return; const { error } = await supabase().from("inventory_bill_items").delete().eq("id", i.id); if (error) return setErr(error.message); if (editItem === i.id) { setEditItem(null); setF(BLANK_ITEM); } await onChanged(); }
+  async function act(fn: string, args: Record<string, unknown>, done: string) { setBusy(true); setMsg(""); setErr(""); const { error } = await supabase().rpc(fn, args); setBusy(false); if (error) return setErr(error.message); flash(done); await onChanged(); }
+  async function record() { if (!bill) return; if (Number(h.bill_total) !== Number(bill.bill_total) || Number(h.other_charges || 0) !== Number(bill.other_charges)) return setErr("You changed the bill's details. Save them first."); await act("inventory_record_bill", { p_bill: bill.id }, "Recorded ✓ The total is now in the project's expenses."); }
+  async function discard() { if (!bill || !confirm("Discard this draft and its items?")) return; const { error } = await supabase().from("inventory_bills").delete().eq("id", bill.id); if (error) return setErr(error.message); await onChanged(); onClose(); }
+  async function voidBill() { if (!bill) return; const reason = prompt("Why is this bill being voided? Its expense comes off the project.")?.trim(); if (!reason) return; await act("inventory_void_bill", { p_bill: bill.id, p_reason: reason }, "Voided. The expense has come off the project."); }
+  async function saveGate() {
+    if (!bill) return; setBusy(true); setMsg(""); setErr("");
+    const hand = g.received_by === "hand"; const typed = hand && g.person_source === "other"; const clean = (s: string) => s.trim();   // a project person's name is filled in by the database, and their ID stays on their employee record
+    const row = { received_by: g.received_by, person_source: g.person_source, person_employee_id: hand && !typed ? g.person_employee_id : null, person_name: typed ? clean(g.person_name) : "", person_id_type: typed ? g.person_id_type : "", person_id_no: typed ? clean(g.person_id_no).toUpperCase() : "", vehicle_no: hand ? "" : clean(g.vehicle_no).toUpperCase().replace(/\s+/g, ""), driver_name: hand ? "" : clean(g.driver_name), driver_dl_no: hand ? "" : clean(g.driver_dl_no).toUpperCase(), codriver_name: hand ? "" : clean(g.codriver_name), codriver_id_type: hand ? "" : g.codriver_id_type, codriver_id_no: hand ? "" : clean(g.codriver_id_no).toUpperCase() };
+    const { data, error } = await supabase().from("inventory_gatepass").upsert({ ...row, bill_id: bill.id }).select().single(); setBusy(false);
+    if (error) return setErr(error.message); const saved = { ...BLANK_GATEPASS, ...(data as Gatepass) }; setG(saved); setGSaved(saved); setShowGate(false); flash("JSL details saved ✓");
+  }
+
+  const j = bill ? JSL_LABEL[bill.jsl_status] : null; const recorded = bill?.status === "recorded" && !bill.voided_at;
+  const gateOpen = !!bill && !bill.voided_at && canEnter && ["none", "failed"].includes(bill.jsl_status);
+  const gaps = gatepassGaps(gSaved, people); const takeBack = staff && !!bill && !bill.voided_at && ["none", "authorized", "failed"].includes(bill.jsl_status);
+  const gateForm = showGate || (gateOpen && !gSaved);
+  const chosen = people.find((p) => p.employee_id === g.person_employee_id); const savedPerson = people.find((p) => p.employee_id === gSaved?.person_employee_id);
+  const fromTeam = g.person_source === "employee";
+  const idBad = (type: string, no: string) => type === "Aadhaar" && no.trim() !== "" && !/^\d{12}$/.test(no.replace(/\s/g, ""));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2"><button className="btn btn-sm whitespace-nowrap shrink-0" onClick={onClose}>← Bills</button><h1 className="text-lg font-semibold truncate">{bill ? `${bill.vendor_name} · ${bill.bill_no}` : "New bill"}</h1></div>
+      {err && <p className="warn" role="alert">{err}</p>}{msg && <p className="text-sm text-green-700" role="status">{msg}</p>}
+      {bill?.voided_at && <p className="text-sm rounded-xl px-3 py-2 bg-slate-50 text-slate-700">This bill is void: {bill.void_reason}. It is not in expenses or in the received list.</p>}
+
+      {/* 1. the bill */}
+      <section className="card !p-3 space-y-3"><div className="flex items-center gap-2"><h2 className="text-sm font-semibold">1. The bill</h2>{editable && bill?.bill_path && !editHead && <button className="btn btn-sm ml-auto" onClick={() => setEditHead(true)}>Edit</button>}</div>
+        {editable && (!bill?.bill_path || editHead) ? <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="sm:col-span-2"><label className="lbl">Vendor</label><input className="inp" list="inv-vendors" value={h.vendor_name} onChange={(e) => setH({ ...h, vendor_name: e.target.value })} /><datalist id="inv-vendors">{vendors.map((v) => <option key={v} value={v} />)}</datalist></div>
+            <div><label className="lbl">Vendor GSTIN <span className="font-normal text-slate-400">(optional)</span></label><input className="inp uppercase" value={h.vendor_gstin} onChange={(e) => setH({ ...h, vendor_gstin: e.target.value })} /></div>
+            <div><label className="lbl">Bill number</label><input className="inp" value={h.bill_no} onChange={(e) => setH({ ...h, bill_no: e.target.value })} /></div>
+            <div><label className="lbl">Bill date</label><input className="inp" type="date" value={h.bill_date} onChange={(e) => setH({ ...h, bill_date: e.target.value })} /></div>
+            <div><label className="lbl">Total on the bill (₹)</label><input className="inp" type="number" inputMode="decimal" min="0" step="0.01" value={h.bill_total} onChange={(e) => setH({ ...h, bill_total: e.target.value })} /></div>
+            <div><label className="lbl">Freight or discount (₹) <span className="font-normal text-slate-400">(minus for a discount)</span></label><input className="inp" type="number" inputMode="decimal" step="0.01" value={h.other_charges} onChange={(e) => setH({ ...h, other_charges: e.target.value })} /></div>
+            <div><label className="lbl">Photo of the bill</label><label className="btn cursor-pointer w-full justify-center truncate">{photo ? photo.name : bill?.bill_path ? "Replace photo" : "Take or attach photo"}<input type="file" className="hidden" accept="image/*,.pdf" onChange={(e) => { setPhoto(e.target.files?.[0] ?? null); e.target.value = ""; }} /></label></div>
+          </div>
+          <div className="flex flex-wrap gap-2 form-actions"><button className="btn btn-primary" disabled={busy} onClick={saveHeader}>{busy ? "Saving…" : bill ? "Save bill details" : "Save and add items"}</button>{editHead && <button className="btn" onClick={() => { setEditHead(false); setPhoto(null); setH({ vendor_name: bill!.vendor_name, vendor_gstin: bill!.vendor_gstin, bill_no: bill!.bill_no, bill_date: bill!.bill_date, bill_total: String(bill!.bill_total), other_charges: Number(bill!.other_charges) ? String(bill!.other_charges) : "" }); }}>Cancel</button>}{bill?.bill_path && <a className="btn" href={`/api/inventory/view?bill=${bill.id}`} target="_blank" rel="noreferrer">View bill</a>}</div>
+        </> : bill && <div className="text-sm space-y-1">
+          <div className="grid gap-2 grid-cols-2 lg:grid-cols-4"><div><div className="text-xs text-slate-400">Vendor</div>{bill.vendor_name}</div><div><div className="text-xs text-slate-400">Bill</div>{bill.bill_no}</div><div><div className="text-xs text-slate-400">Date</div>{new Date(bill.bill_date + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</div><div><div className="text-xs text-slate-400">Total</div><b className="tabular-nums">₹{inr(Number(bill.bill_total))}</b></div></div>
+          {bill.bill_path && <a className="btn btn-sm mt-2" href={`/api/inventory/view?bill=${bill.id}`} target="_blank" rel="noreferrer">View bill</a>}
+        </div>}
+      </section>
+
+      {/* 2. items, one at a time */}
+      {bill && <section className="card !p-3 space-y-3"><h2 className="text-sm font-semibold">2. Items ({items.length})</h2>
+        {editable && <form className="rounded-xl border border-slate-200 p-3 space-y-3" onSubmit={(e) => { e.preventDefault(); void saveItem(); }}>
+          <div><label className="lbl">{editItem ? "Change this item" : `Item ${items.length + 1}: name, as on the bill`}</label><input ref={nameRef} className="inp" list="inv-names" autoFocus autoCapitalize="characters" value={f.name} onChange={(e) => setItem({ name: e.target.value })} /><datalist id="inv-names">{names.map((n) => <option key={n} value={n} />)}</datalist></div>
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-5">
+            <div><label className="lbl">Quantity</label><input className="inp" type="number" inputMode="decimal" min="0" step="any" value={f.qty} onChange={(e) => setItem({ qty: e.target.value })} /></div>
+            <div><label className="lbl">Unit</label><UnitSelect list={UNITS} blank="Select" value={f.unit} onChange={(u) => setItem({ unit: u })} /></div>
+            <div><label className="lbl">Rate (₹, before GST)</label><input className="inp" type="number" inputMode="decimal" min="0" step="0.01" value={f.rate} onChange={(e) => setItem({ rate: e.target.value })} /></div>
+            <div><label className="lbl">GST %</label><input className="inp" type="number" inputMode="decimal" min="0" max="40" step="0.01" value={f.gst_pct} onChange={(e) => setItem({ gst_pct: e.target.value })} /></div>
+            <div className="col-span-2 sm:col-span-1"><label className="lbl">HSN <span className="font-normal text-slate-400">(optional)</span></label><input className="inp" inputMode="numeric" value={f.hsn} onChange={(e) => setItem({ hsn: e.target.value })} /></div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 form-actions"><button type="submit" className="btn btn-primary" disabled={busy}>{busy ? "Saving…" : editItem ? "Save item" : "Add item"}</button>{editItem && <button type="button" className="btn" onClick={() => { setEditItem(null); setF(BLANK_ITEM); }}>Cancel</button>}{Number(f.qty) > 0 && f.rate !== "" && <span className="text-sm text-slate-500 tabular-nums">Amount ₹{inr(lineAmount(Number(f.qty), Number(f.rate)))}</span>}</div>
+        </form>}
+        {items.length > 0 && <ol className="divide-y divide-slate-100">{items.map((i, n) => <li key={i.id} className="py-2 flex items-start gap-2 text-sm"><span className="text-slate-400 tabular-nums w-5 shrink-0">{n + 1}</span><div className="min-w-0 flex-1"><div className="font-medium break-words">{i.name}</div><div className="text-xs text-slate-500 tabular-nums">{Number(i.qty).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {i.unit} × ₹{inr(Number(i.rate))} · GST {Number(i.gst_pct)}%{i.hsn ? ` · HSN ${i.hsn}` : ""}</div></div><b className="tabular-nums whitespace-nowrap">₹{inr(Number(i.amount))}</b>
+          {editable && <span className="flex gap-1 shrink-0"><button className="btn btn-sm" onClick={() => { setEditItem(i.id); setF({ name: i.name, qty: String(i.qty), unit: i.unit, rate: String(i.rate), gst_pct: String(i.gst_pct), hsn: i.hsn }); nameRef.current?.focus(); }}>Edit</button><button className="btn btn-sm btn-danger" aria-label={`Remove ${i.name}`} onClick={() => delItem(i)}>✕</button></span>}</li>)}</ol>}
+        {items.length > 0 && <div className="rounded-xl bg-slate-50 p-3 text-sm space-y-1 tabular-nums">
+          <div className="flex justify-between"><span>Items</span><span>₹{inr(sums.taxable)}</span></div><div className="flex justify-between"><span>GST</span><span>₹{inr(sums.tax)}</span></div>
+          {Number(h.other_charges || 0) !== 0 && <div className="flex justify-between"><span>Freight or discount</span><span>₹{inr(Number(h.other_charges))}</span></div>}
+          <div className="flex justify-between font-semibold border-t border-slate-200 pt-1"><span>Items come to</span><span>₹{inr(sums.computed)}</span></div><div className="flex justify-between"><span>Bill says</span><span>₹{inr(Number(h.bill_total || 0))}</span></div>
+          <div className={`flex justify-between font-medium ${sums.matches ? "text-green-700" : "text-amber-700"}`}><span>{sums.matches ? (sums.diff === 0 ? "Matches" : "Matches, with round off") : "Difference: an item is missing or wrong"}</span><span className="whitespace-nowrap ml-2">{sums.diff > 0 ? "+" : sums.diff < 0 ? "−" : ""}₹{inr(Math.abs(sums.diff))}</span></div></div>}
+        {editable && <div className="flex flex-wrap gap-2 form-actions"><button className="btn btn-primary" disabled={busy || !sums.matches || !bill.bill_path} onClick={record}>Record bill, add to expenses</button><button className="btn btn-danger" disabled={busy} onClick={discard}>Discard draft</button>{!bill.bill_path && <span className="text-xs text-amber-700 self-center">Attach the photo of the bill first.</span>}</div>}
+        {recorded && <p className="text-sm text-green-700">₹{inr(Number(bill.bill_total))} is in this project's expenses under Site consumables.</p>}
+      </section>}
+
+      {/* 3. what the portal asks for before any material */}
+      {recorded && !viewer && <section className="card !p-3 space-y-3"><div className="flex items-center gap-2"><h2 className="text-sm font-semibold">3. Details for the JSL portal</h2>{gSaved && gateOpen && !gateForm && <button className="btn btn-sm ml-auto" onClick={() => setShowGate(true)}>Edit</button>}</div>
+        {gateForm && gateOpen ? <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div><label className="lbl">Received by</label><select className="inp" value={g.received_by} onChange={(e) => setGate({ received_by: e.target.value as Gatepass["received_by"] })}><option value="hand">By hand</option><option value="vehicle">By vehicle</option></select></div></div>
+          {g.received_by === "hand" ? <div className="space-y-3">
+            <div><label className="lbl">Who is bringing it?</label><select className="inp" value={fromTeam ? g.person_employee_id ?? "" : "__other"} onChange={(e) => (e.target.value === "__other" ? setGate({ person_source: "other", person_employee_id: null }) : setGate({ person_source: "employee", person_employee_id: e.target.value || null }))}><option value="">Choose…</option>{people.map((p) => <option key={p.employee_id} value={p.employee_id}>{p.full_name}{p.designation ? ` · ${p.designation}` : ""}</option>)}<option value="__other">Someone not on the team…</option></select>
+              {fromTeam && chosen && (chosen.aadhaar_last4 ? <p className="text-xs text-slate-500 mt-1">Aadhaar {maskLast4(chosen.aadhaar_last4)}, from the employee record.</p> : <p className="warn">No Aadhaar on {chosen.full_name}'s employee record. Ask the office to add it, or choose someone else.</p>)}</div>
+            {!fromTeam && <div className="grid gap-3 sm:grid-cols-3"><div><label className="lbl">Person's name</label><input className="inp" value={g.person_name} onChange={(e) => setGate({ person_name: e.target.value })} /></div>
+            <div><label className="lbl">ID type</label><select className="inp" value={g.person_id_type} onChange={(e) => setGate({ person_id_type: e.target.value })}><option value=""></option>{ID_TYPES.map((t) => <option key={t}>{t}</option>)}</select></div>
+            <div><label className="lbl">ID number</label><input className="inp uppercase" autoComplete="off" value={g.person_id_no} onChange={(e) => setGate({ person_id_no: e.target.value })} />{idBad(g.person_id_type, g.person_id_no) && <p className="warn">An Aadhaar number has 12 digits.</p>}</div></div>}
+          </div> : <div className="space-y-3"><div className="grid gap-3 sm:grid-cols-3">
+            <div><label className="lbl">Vehicle number</label><input className="inp uppercase" value={g.vehicle_no} onChange={(e) => setGate({ vehicle_no: e.target.value })} /></div>
+            <div><label className="lbl">Driver's name</label><input className="inp" value={g.driver_name} onChange={(e) => setGate({ driver_name: e.target.value })} /></div>
+            <div><label className="lbl">Driver's licence number</label><input className="inp uppercase" autoComplete="off" value={g.driver_dl_no} onChange={(e) => setGate({ driver_dl_no: e.target.value })} /></div></div>
+            <div className="grid gap-3 sm:grid-cols-3">
+            <div><label className="lbl">Co-driver's name <span className="font-normal text-slate-400">(if any)</span></label><input className="inp" value={g.codriver_name} onChange={(e) => setGate({ codriver_name: e.target.value })} /></div>
+            <div><label className="lbl">Co-driver's ID type</label><select className="inp" value={g.codriver_id_type} onChange={(e) => setGate({ codriver_id_type: e.target.value })}><option value=""></option>{ID_TYPES.map((t) => <option key={t}>{t}</option>)}</select></div>
+            <div><label className="lbl">Co-driver's ID number</label><input className="inp uppercase" autoComplete="off" value={g.codriver_id_no} onChange={(e) => setGate({ codriver_id_no: e.target.value })} />{idBad(g.codriver_id_type, g.codriver_id_no) && <p className="warn">An Aadhaar number has 12 digits.</p>}</div></div></div>}
+          <div className="flex flex-wrap gap-2 form-actions"><button className="btn btn-primary" disabled={busy || (g.received_by === "hand" && !fromTeam && idBad(g.person_id_type, g.person_id_no)) || (g.received_by === "vehicle" && idBad(g.codriver_id_type, g.codriver_id_no))} onClick={saveGate}>Save JSL details</button>{gSaved && <button className="btn" onClick={() => { setG(gSaved); setShowGate(false); }}>Cancel</button>}</div>
+        </div> : gSaved ? <div className="text-sm grid gap-2 grid-cols-2 lg:grid-cols-3">
+          <div><div className="text-xs text-slate-400">Received by</div>{gSaved.received_by === "hand" ? "By hand" : "By vehicle"}</div>
+          {gSaved.received_by === "hand" ? <><div><div className="text-xs text-slate-400">Person</div>{gSaved.person_name || "—"}</div><div><div className="text-xs text-slate-400">{gSaved.person_source === "employee" ? "Aadhaar" : gSaved.person_id_type || "ID"}</div>{gSaved.person_source === "employee" ? (savedPerson?.aadhaar_last4 ? maskLast4(savedPerson.aadhaar_last4) : "—") : maskId(gSaved.person_id_no) || "—"}</div></>
+            : <><div><div className="text-xs text-slate-400">Vehicle</div>{gSaved.vehicle_no || "—"}</div><div><div className="text-xs text-slate-400">Driver</div>{gSaved.driver_name || "—"}</div><div><div className="text-xs text-slate-400">Licence</div>{maskId(gSaved.driver_dl_no) || "—"}</div>{gSaved.codriver_name && <div><div className="text-xs text-slate-400">Co-driver</div>{gSaved.codriver_name} · {gSaved.codriver_id_type} {maskId(gSaved.codriver_id_no)}</div>}</>}
+        </div> : <p className="text-sm text-slate-500">No details entered.</p>}
+      </section>}
+
+      {/* 4. the Admin's decision */}
+      {recorded && j && <section className="card !p-3 space-y-2"><div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-semibold">4. Send to the JSL portal</h2><span className={`text-[11px] rounded-full px-2 py-0.5 ${j.cls}`}>{j.text}</span></div>
+        {["none", "failed"].includes(bill.jsl_status) && <>
+          {bill.jsl_status === "failed" && <p className="warn">The last attempt failed before anything was saved on the portal{bill.jsl_error ? `: ${bill.jsl_error}` : "."}</p>}
+          {!viewer && gaps.length > 0 && <p className="text-sm text-amber-700">Still needed: {gaps.join(", ")}.</p>}
+          {staff && (wos.length === 0 ? <p className="text-sm text-amber-700">This project has no active work order. Add one under Work orders first.</p> : wos.length === 1 ? <p className="text-sm text-slate-600">WO {wos[0].wo_no}</p> : admin ? <div><label className="lbl">Work order</label><select className="inp" value={wo} onChange={(e) => setWo(e.target.value)}><option value="">Choose…</option>{wos.map((w) => <option key={w.wo_no} value={w.wo_no}>{w.wo_no} · {w.title}</option>)}</select></div> : <p className="text-sm text-slate-600">This project has {wos.length} active work orders. The Admin chooses one when authorizing.</p>)}
+          {admin ? <button className="btn btn-primary" disabled={busy || gaps.length > 0 || !wo} onClick={() => confirm(`Authorize ${items.length} item${items.length === 1 ? "" : "s"} from bill ${bill.bill_no} as one MRR on the JSL portal, against WO ${wo}?`) && act("inventory_authorize_jsl", { p_bill: bill.id, p_wo: wo }, "Authorized ✓")}>Authorize for JSL portal</button> : <p className="text-sm text-slate-500">Waiting for an Admin to authorize.</p>}</>}
+        {bill.jsl_status === "authorized" && <><p className="text-sm text-slate-600">Authorized{staff && wo ? ` against WO ${wo}` : ""}. Automatic sending is not switched on yet, so nothing has gone to the portal.</p>{admin && <button className="btn" disabled={busy} onClick={() => act("inventory_withdraw_jsl", { p_bill: bill.id }, "Authorization withdrawn.")}>Withdraw authorization</button>}</>}
+        {bill.jsl_status === "needs_check" && <p className="text-sm text-amber-800">The run stopped around the moment of saving, so the MRR may or may not exist. Check the portal before doing anything: this bill is not retried by itself.{bill.jsl_error ? ` (${bill.jsl_error})` : ""}</p>}
+        {bill.jsl_status === "submitted" && <p className="text-sm text-green-800">JSL reference: <b>{bill.jsl_ref || "—"}</b></p>}
+      </section>}
+
+      {bill && takeBack && recorded && <div className="flex flex-wrap gap-2 form-actions"><button className="btn" disabled={busy} onClick={() => confirm("Reopen this bill? Its expense comes off until it is recorded again.") && act("inventory_reopen_bill", { p_bill: bill.id }, "Reopened. The expense has come off the project.")}>Reopen bill</button><button className="btn btn-danger" disabled={busy} onClick={voidBill}>Void bill</button></div>}
+    </div>
+  );
+}

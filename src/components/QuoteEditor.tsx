@@ -10,6 +10,7 @@ import { swrDrop } from "@/lib/swr";
 import type { Client } from "@/lib/invoice";
 import type { Project } from "@/lib/types";
 import LineList from "./LineList";
+import UnitSelect from "./UnitSelect";
 
 const COLS = ["client_name", "client_short", "client_address", "kind_attn", "subject", "intro", "quote_date", "items", "show_total", "show_gst", "notes", "terms", "include_scope", "scope", "client_supply", "our_supply", "signatory", "client_id", "project_id"] as const;
 const pick = (q: Quote) => Object.fromEntries(COLS.map((k) => [k, (q as any)[k]]));
@@ -124,7 +125,7 @@ export default function QuoteEditor({ id }: { id: string }) {
               <div className="grid gap-2 grid-cols-2 sm:grid-cols-5 items-end">
                 {it.lump ? <div className="col-span-2 sm:col-span-4"><label className="lbl">Lump-sum amount (₹)</label><input className="inp" inputMode="decimal" value={it.amount} onChange={(e) => setItem(i, { amount: e.target.value })} /></div> : <>
                   <div><label className="lbl">Quantity</label><input className="inp" inputMode="decimal" value={it.qty} onChange={(e) => setItem(i, { qty: e.target.value })} /></div>
-                  <div><label className="lbl">Unit</label><input className="inp" value={it.unit} onChange={(e) => setItem(i, { unit: e.target.value })} placeholder="MT" /></div>
+                  <div><label className="lbl">Unit</label><UnitSelect value={it.unit} onChange={(u) => setItem(i, { unit: u })} /></div>
                   <div><label className="lbl">Rate per unit (₹)</label><input className="inp" inputMode="decimal" value={it.rate} onChange={(e) => setItem(i, { rate: e.target.value })} /></div>
                   <div><label className="lbl">Qty remark</label><input className="inp" value={it.note} onChange={(e) => setItem(i, { note: e.target.value })} placeholder="(approx.) plus or minus 10%" /></div></>}
                 <div className="text-sm"><div className="lbl">Amount</div><div className="font-semibold py-2">₹{inr(itemAmount(it))}</div></div>

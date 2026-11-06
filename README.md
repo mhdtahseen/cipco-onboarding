@@ -40,6 +40,8 @@ Every clause is optional. In the Letters tab tick what you want, press **Edit wo
 ## Documentation
 `docs/SALARY_STRUCTURE.md` explains exactly how salary is calculated and how to change it.
 
+`docs/INVENTORY.md` explains purchase bills: entering items, posting to expenses, and authorizing an MRR for the JSL portal.
+
 ## Where things are
 | What | File |
 |---|---|

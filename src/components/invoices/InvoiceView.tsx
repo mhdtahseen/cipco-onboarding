@@ -8,6 +8,8 @@ import { BANK } from "@/lib/company";
 import { addDays, calcInvoice, checkLine, lineAmount, money, outstandingOf, qtyText, r2, receivedOf, retentionHeld, settledOf, STATE_OPTIONS, stateName, taxKind, tdsOf, type Client, type Invoice, type Receipt, type WoItem, type WorkOrder } from "@/lib/invoice";
 import { fmtD } from "@/lib/invoiceData";
 import { swrDrop } from "@/lib/swr";
+import { DEFAULT_UNIT } from "@/lib/units";
+import UnitSelect from "@/components/UnitSelect";
 
 type Row = { key: string; id?: string; woItemId: string | null; description: string; unit: string; rate: string; prev: number; cum: string };
 const num = (s: string) => { const n = parseFloat(s); return Number.isFinite(n) ? n : 0; };
@@ -104,13 +106,13 @@ export default function InvoiceView({ id }: { id: string }) {
           <tbody>{rows.map((r, i) => { const qty = Math.max(0, num(r.cum) - r.prev); const extra = !r.woItemId; return (
             <tr key={r.key} className="border-t border-slate-100 align-top"><td className="p-1 pt-2.5 text-slate-400">{i + 1}</td>
               <td className="p-1">{draft && extra ? <input className="inp" aria-label={`Extra item ${i + 1} description`} placeholder="Extra work, as instructed by…" value={r.description} onChange={(e) => upd(r.key, "description", e.target.value)} /> : <div className="py-1.5">{r.description}{extra && <span className="ml-2 text-xs text-slate-500">extra</span>}</div>}{problems[i] && <div className="text-xs text-red-700">{problems[i]}</div>}</td>
-              <td className="p-1 pt-2.5">{draft && extra ? <input className="inp" aria-label={`Extra item ${i + 1} unit`} value={r.unit} onChange={(e) => upd(r.key, "unit", e.target.value)} /> : r.unit}</td>
+              <td className="p-1 pt-2.5">{draft && extra ? <UnitSelect ariaLabel={`Extra item ${i + 1} unit`} value={r.unit} onChange={(u) => upd(r.key, "unit", u)} /> : r.unit}</td>
               <td className="p-1 pt-2.5 text-right tabular-nums">{draft && extra ? <input className="inp text-right" inputMode="decimal" aria-label={`Extra item ${i + 1} rate`} value={r.rate} onChange={(e) => upd(r.key, "rate", e.target.value)} /> : money(num(r.rate))}</td>
               <td className="p-1 pt-2.5 text-right tabular-nums text-slate-500">{qtyText(r.prev)}</td>
               <td className="p-1 text-right">{draft ? <input className={`inp text-right ${problems[i] ? "!border-red-400" : ""}`} inputMode="decimal" aria-label={`Item ${i + 1} quantity done to date`} value={r.cum} onChange={(e) => upd(r.key, "cum", e.target.value)} /> : <span className="inline-block pt-1.5 tabular-nums">{qtyText(num(r.cum))}</span>}{!extra && <div className="text-[11px] text-slate-400">of {qtyText(orderQty[r.woItemId!] ?? 0)}</div>}</td>
               <td className="p-1 pt-2.5 text-right tabular-nums">{qtyText(qty)}</td><td className="p-1 pt-2.5 text-right tabular-nums font-medium">{money(lineAmount(qty, num(r.rate)))}</td>
               {draft && <td className="p-1 pt-1.5 text-right">{extra && <button type="button" className="text-slate-400 hover:text-red-700 px-1" aria-label={`Remove extra item ${i + 1}`} onClick={() => setRows((x) => x.filter((y) => y.key !== r.key))}>✕</button>}</td>}</tr>); })}</tbody></table></div>
-        {draft && <button className="btn btn-sm" onClick={() => setRows((r) => [...r, { key: newKey(), woItemId: null, description: "", unit: "Nos", rate: "", prev: 0, cum: "" }])}>+ Add extra item (not in the order)</button>}</section>
+        {draft && <button className="btn btn-sm" onClick={() => setRows((r) => [...r, { key: newKey(), woItemId: null, description: "", unit: DEFAULT_UNIT, rate: "", prev: 0, cum: "" }])}>+ Add extra item (not in the order)</button>}</section>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="card space-y-2"><h2 className="font-semibold">Deductions and notes</h2>

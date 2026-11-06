@@ -7,6 +7,7 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 const LOGIN_URL = 'https://jajitapps.jindalstainless.com:8050/Login.aspx';
 const OUT = 'out';
 const id = (name) => `#ContentPlaceHolder1_${name}`;
+const UNITS = ['FT', 'Inch', 'Kg', 'Meter', 'mm', 'MT', 'No', 'Pcs'];   // the portal's unit dropdown, spelled as it spells them
 const PROOF = { aadhaar: 1, voter: 1 };   // only the allowed ID kinds: the portal's option values are looked up by label
 
 // Pick an ID type by the label the portal shows, so a changed option number can never send the wrong ID type.
@@ -48,8 +49,13 @@ function checkJob(j) {
   need(['hand', 'vehicle'].includes(j.receivedBy), 'receivedBy must be "hand" or "vehicle"');
   need(/^\d{6,}$/.test(j.wo || ''), 'wo must be the work order number');
   need(Array.isArray(j.items) && j.items.length > 0, 'items is empty');
-  for (const it of j.items) need(it.name && it.qty > 0 && it.unit, `item "${it.name}" needs a name, a quantity and a unit`);
+  for (const it of j.items) {
+    need(it.name && it.qty > 0 && it.unit, `item "${it.name}" needs a name, a quantity and a unit`);
+    need(UNITS.includes(it.unit), `item "${it.name}": "${it.unit}" is not a portal unit (${UNITS.join(', ')})`);
+  }
   if (j.receivedBy === 'hand') need(j.hand?.name && PROOF[j.hand.idType] && j.hand.idNo, 'hand needs name, idType (aadhaar|voter) and idNo');
+  if (j.receivedBy === 'hand' && j.hand?.idType === 'aadhaar') need(/^\d{12}$/.test(j.hand.idNo), 'an Aadhaar number is 12 digits');
+  if (j.vehicle?.coDriver?.idType === 'aadhaar') need(/^\d{12}$/.test(j.vehicle.coDriver.idNo), 'a co-driver Aadhaar number is 12 digits');
   if (j.receivedBy === 'vehicle') {
     const v = j.vehicle || {};
     need(v.vehicleNo && v.driverName && v.driverDl, 'vehicle needs vehicleNo, driverName and driverDl');
@@ -174,6 +180,8 @@ try {
   result.itemsMissing = [...new Set(job.items.map((i) => i.name))].filter((n) => count(listText, n.toUpperCase()) < job.items.filter((i) => i.name === n).length);
   if (result.itemsMissing.length) throw new Error(`Items not shown in the portal's list: ${result.itemsMissing.join(', ')}`);
 
+  // The longest text each box accepts, so the app can refuse what the portal would cut off.
+  result.fieldLimits = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('input')].filter((e) => ['text', ''].includes(e.type) && e.maxLength > 0 && e.maxLength < 1000).map((e) => [e.id.replace('ContentPlaceHolder1_', ''), e.maxLength])));
   await page.screenshot({ path: `${OUT}/form.png`, fullPage: true });
   result.ok = true;
   console.log('Dry run complete: the form was filled and read back. Nothing was saved.');

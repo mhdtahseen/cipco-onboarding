@@ -2,7 +2,7 @@
 // so adding a module (Payroll, Invoices, Inventory…) means adding an entry here and nothing else.
 // Pure data + helpers (no React), so the server-side route guard can import it too.
 export type NavRole = "admin" | "staff" | "site_engineer" | "supervisor" | "attendance" | "viewer";   // "attendance" = the old name for Supervisor, kept so the app still works before the migration renames it
-export type IconName = "users" | "clipboard" | "folder" | "file" | "book" | "mail" | "list" | "sliders" | "shield" | "building" | "truck" | "utensils" | "bed" | "wallet" | "pin" | "cylinder";
+export type IconName = "users" | "clipboard" | "folder" | "file" | "book" | "mail" | "list" | "sliders" | "shield" | "building" | "truck" | "utensils" | "bed" | "wallet" | "pin" | "cylinder" | "box";
 export type NavItem = {
   href: string;            // where the link goes
   label: string;
@@ -32,6 +32,7 @@ export const NAV: NavItem[] = [
   { href: "/accommodation", label: "Accommodation", icon: "bed", section: "Operations", roles: ["admin", "viewer"], paths: ["/accommodation"] },
   { href: "/gas", label: "Gas cylinders", icon: "cylinder", section: "Site consumables", roles: CONSUMABLES_ROLES, paths: ["/gas", "/api/gas"], bar: CONSUMABLES_BAR },
   { href: "/equipment", label: "Hired equipment", icon: "truck", section: "Site consumables", roles: CONSUMABLES_ROLES, paths: ["/equipment"], bar: CONSUMABLES_BAR },
+  { href: "/inventory", label: "Inventory", icon: "box", section: "Operations", roles: ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"], paths: ["/inventory", "/api/inventory"], bar: ["site_engineer", "supervisor", "attendance"] },
   { href: "/payments-due", label: "Payments due", icon: "wallet", section: "Operations", roles: ["admin", "viewer"], paths: ["/payments-due"] },
   { href: "/quotations", label: "Quotations", icon: "file", section: "Sales", roles: ["admin", "staff", "viewer"], paths: ["/quotations"], bar: true },
   { href: "/invoices", label: "Invoices", icon: "wallet", section: "Sales", roles: ["admin", "viewer"], paths: ["/invoices"] },

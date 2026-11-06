@@ -1,3 +1,4 @@
+import { DEFAULT_UNIT } from "./units";
 import type { QItem } from "./quote";
 
 // Invoicing: types and the money maths. Pure (no React, no database) so it can be tested and used by both the screens and the PDF.
@@ -69,7 +70,7 @@ export function agingOf(dueDate: string | null, today: string): Aging { if (!due
 /** A quotation's lines as order lines: a lump-sum line becomes 1 Lot at that amount, and lines with no description are dropped. */
 export function rowsFromQuote(items: QItem[]): { description: string; unit: string; qty: number; rate: number }[] {
   const n = (s: string) => { const v = Number(String(s ?? "").replace(/,/g, "")); return Number.isFinite(v) ? v : 0; };
-  return (items || []).filter((i) => (i.desc || "").trim()).map((i) => (i.lump ? { description: i.desc.trim(), unit: "Lot", qty: 1, rate: n(i.amount) } : { description: i.desc.trim(), unit: (i.unit || "Nos").trim(), qty: n(i.qty), rate: n(i.rate) }));
+  return (items || []).filter((i) => (i.desc || "").trim()).map((i) => (i.lump ? { description: i.desc.trim(), unit: "Lot", qty: 1, rate: n(i.amount) } : { description: i.desc.trim(), unit: (i.unit || DEFAULT_UNIT).trim(), qty: n(i.qty), rate: n(i.rate) }));
 }
 /** Match a typed client name against the client list: ignores case, punctuation and trailing commas ("Man Industries (India) Ltd," = "Man Industries (India) Ltd"). */
 export const normName = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
