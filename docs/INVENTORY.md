@@ -12,7 +12,7 @@ The **Inventory** page (menu: **Operations → Inventory**) records purchase bil
 
 1. **The bill.** Vendor, bill number, date, the total as printed, and a photo. Freight or a discount printed outside the item lines goes in its own box (minus for a discount).
 2. **Items, one at a time.** Name, quantity, unit, rate before GST and GST %. Each item is saved as it is added, so a dropped connection loses nothing. A running total compares the items with the bill.
-3. **Record bill.** Allowed only when the items plus GST are within ₹1 of the bill's total (₹1 covers round off) and the photo is attached. The total posts to the project's expenses.
+3. **Submit for approval** (Supervisor, Site Engineer) or **Record bill** (Operations, Admin: recording your own entry is the same as approving it). Allowed only when the items plus GST are within ₹1 of the bill's total (₹1 covers round off) and the photo is attached. The total posts to the project's expenses.
 4. **Optional: the JSL portal.** A recorded bill is a complete expense as it is. Only an Admin can choose **Also send to the JSL portal** for a bill; until then nobody else sees any portal fields, buttons or labels for it. Once it is on, the details are asked for. How the material was received:
    - **By hand, someone on the project.** The list starts on the person who entered the bill and can be changed to anyone on the project. Their Aadhaar comes from their employee record, and only the last 4 digits are shown.
    - **By hand, someone not on the team.** Choose "Someone not on the team" and type their name, ID type and ID number.
@@ -23,7 +23,8 @@ The **Inventory** page (menu: **Operations → Inventory**) records purchase bil
 
 | | Supervisor / Site Engineer | Operations | Admin | Viewer |
 | --- | --- | --- | --- | --- |
-| Enter bills and items, record, enter JSL details | own projects | yes | yes | no |
+| Enter bills and items, submit for approval, enter JSL details (once switched on) | own projects | yes | yes | no |
+| Approve, send back, mark corrections, correct an entry under review | no | yes | yes | no |
 | Discard a draft | own projects | yes | yes | no |
 | Reopen or void a recorded bill (the expense comes off) | no | yes | yes | no |
 | Switch a bill on for the JSL portal (or off again), authorize, withdraw authorization | no | no | yes | no |
@@ -160,3 +161,31 @@ CHECK LIST (after the code block, as short bullets)
 
 Now read the invoice I have attached.
 ```
+
+## Approval, and entries without a bill
+
+**Why.** Inventory tracks what was bought for the project. A Supervisor or Site Engineer enters it, and Operations or an Admin checks it against the photo before it counts. The JSL portal is a separate, later step: it is the approval to take the items into the plant.
+
+**The stages of an entry**
+
+| Stage | Meaning | Who can change it |
+| --- | --- | --- |
+| Draft | Being entered | Whoever entered it, Operations, Admin |
+| Waiting for review | Submitted | Only Operations or an Admin (they may correct it) |
+| Sent back | Returned with a message and marked corrections | Whoever entered it, until they submit it again |
+| In expenses (approved) | Recorded: the items count as received and its amount is in expenses | Nobody: reopen it first |
+
+Supervisors and Site Engineers cannot approve. Operations and Admin recording their own entry skips the review.
+
+**Reviewing.** An entry waiting for review opens with the photo on one side and the entries on the other (on a phone the photo comes first). The reviewer can:
+
+- **Mark corrections** on an item (the Flag button), on a part of the entry (vendor, date, total, photo...) or on the whole entry. They show against the item and in a Corrections list.
+- **Correct it themselves**: edit an item or the bill's details directly.
+- **Send back**, with a message. The corrections go with it. The person who entered it sees the message, ticks each correction off as they fix it, and submits again.
+- **Approve**: either *keep as an inventory entry*, or (Admin only) *also send to the JSL portal*, which switches the portal step on for that entry so the details can be entered. Nothing is added to expenses, and no items count as received, until approval.
+
+Every submit, send back and approval is kept in the entry's History.
+
+**An entry without a bill** (**+ Entry without a bill**): a cash purchase where the shop gave no bill, a transfer from another site, stock found. It has a reason (required), where it came from, the date received, an optional photo and an optional amount paid. Items need no rate. It goes through the same approval. If an amount was paid it posts to expenses on approval, described as "Entry without a bill"; with no amount it is stock only. It can be sent to the JSL portal like any other entry.
+
+`supabase/migrations/2026-11-inventory-approval.sql` adds the stages, \`kind\`, the corrections table and the history table, and the functions \`inventory_submit_bill\`, \`inventory_return_bill\`, \`inventory_record_bill\` (now approves, and takes \`p_portal\`), \`inventory_note_add\`, \`inventory_note_remove\` and \`inventory_note_set_done\`. Run it after the three earlier inventory migrations. The page checks whether it has been run: until then it works as it did before (no submit or review buttons, nothing sent that the database would not understand), so the code can be deployed first.

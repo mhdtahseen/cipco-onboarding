@@ -98,3 +98,23 @@ details.card[open]::details-content { block-size: auto; }
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after, ::details-content { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; transition-delay: 0s !important; }
 }
+
+/* Tablets and phones.
+   1. A grid with no column template of its own gets one column that is allowed to shrink. Without it the single column grows to fit the longest line that cannot wrap
+      (a description in a row, a long name), and a card ends up wider than the screen. In the base layer, so a real template (grid-cols-2, lg:grid-cols-2...) still wins. */
+@layer base {
+  .grid:not([class*=" grid-cols-"]):not([class^="grid-cols-"]) { grid-template-columns: minmax(0, 1fr); }
+}
+/*  2. Touch screens (a pointer that is a finger): text at least 16px, or iPad and iPhone Safari zoom the page every time a box is tapped; and controls a finger can hit.
+      A mouse keeps the compact controls. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), select, textarea { font-size: 16px; }
+  .inp, input.inp, select.inp, textarea.inp { font-size: 16px; }   /* the older .inp rule sets 14px and would otherwise win over the rule above */
+  .inp, select.inp { min-height: 44px; }
+  .chip { min-height: 40px; }
+  textarea.inp { min-height: 0; }
+  .btn { min-height: 44px; }
+  .btn-sm { min-height: 40px; }
+  .tab { min-height: 44px; }
+  input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; flex-shrink: 0; }
+}

@@ -1,24 +1,41 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { istToday } from "@/lib/attendance";
 import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
 import { useRole } from "@/lib/roles";
 import UnitSelect from "@/components/UnitSelect";
-import { BLANK_GATEPASS, billSums, gatepassGaps, ID_TYPES, inr, JSL_LABEL, lineAmount, maskId, maskLast4, UNITS, type Gatepass, type InvBill, type InvItem, type ProjectPerson, type ProjectWo } from "@/lib/inventory";
+import BillPhoto from "./BillPhoto";
+import ReviewNotes from "./ReviewNotes";
+import ReviewBar from "./ReviewBar";
+import { BLANK_GATEPASS, billSums, gatepassGaps, ID_TYPES, inr, JSL_LABEL, lineAmount, maskId, maskLast4, stageOf, UNITS, type BillEvent, type Gatepass, type InvBill, type InvItem, type ProjectPerson, type ProjectWo, type ReviewNote } from "@/lib/inventory";
 
 const BLANK_ITEM = { name: "", qty: "", unit: "", rate: "", gst_pct: "18", hsn: "" };
 const friendly = (e: { code?: string; message: string }) => (e.code === "23505" ? "This bill is already entered: same vendor, bill number and date." : e.message);
 
 // One bill, top to bottom in the order the work happens: the bill's header, then its items one at a time. Once it is recorded: the details the JSL portal asks for, then the Admin's authorization.
-export default function BillEditor({ projectId, bill, items, pastBills, pastItems, onClose, onChanged, onCreated }: { projectId: string; bill: InvBill | null; items: InvItem[]; pastBills: InvBill[]; pastItems: InvItem[]; onClose: () => void; onChanged: () => Promise<void>; onCreated: (id: string) => void }) {
+export default function BillEditor({ projectId, bill, newKind = "bill", approval = true, items, pastBills, pastItems, onClose, onChanged, onCreated }: { projectId: string; bill: InvBill | null; newKind?: "bill" | "no_bill"; approval?: boolean; items: InvItem[]; pastBills: InvBill[]; pastItems: InvItem[]; onClose: () => void; onChanged: () => Promise<void>; onCreated: (id: string) => void }) {
   const { role, admin, staff, viewer } = useRole(); const canEnter = !!role && role !== "none" && !viewer;
-  const editable = canEnter && (!bill || (bill.status === "draft" && !bill.voided_at));
-  const [h, setH] = useState({ vendor_name: bill?.vendor_name ?? "", vendor_gstin: bill?.vendor_gstin ?? "", bill_no: bill?.bill_no ?? "", bill_date: bill?.bill_date ?? istToday(), bill_total: bill ? String(bill.bill_total) : "", other_charges: bill && Number(bill.other_charges) ? String(bill.other_charges) : "" });
-  const [photo, setPhoto] = useState<File | null>(null); const [f, setF] = useState(BLANK_ITEM); const [editItem, setEditItem] = useState<string | null>(null); const nameRef = useRef<HTMLInputElement>(null);
+  const kind = bill?.kind ?? newKind; const noBill = kind === "no_bill"; const st = bill?.status;
+  const blank = { ...BLANK_ITEM, gst_pct: noBill ? "0" : "18" };
+  const mineOpen = canEnter && (!bill || ((st === "draft" || st === "returned") && !bill.voided_at));   // whoever enters entries may change a draft, or one that was sent back
+  const reviewing = approval && staff && st === "submitted" && !bill?.voided_at;                                   // Operations and Admin review what was submitted, and may correct it themselves
+  const editable = mineOpen || reviewing;
+  const canSubmit = approval && mineOpen && !!bill && (!staff || st === "returned");                                 // Operations and Admin record their own drafts directly, which is the same as approving
+  const [h, setH] = useState({ vendor_name: bill?.vendor_name ?? "", vendor_gstin: bill?.vendor_gstin ?? "", bill_no: bill?.bill_no ?? "", bill_date: bill?.bill_date ?? istToday(), bill_total: bill ? String(bill.bill_total) : "", other_charges: bill && Number(bill.other_charges) ? String(bill.other_charges) : "", note: bill?.note ?? "" });
+  const [photo, setPhoto] = useState<File | null>(null); const [f, setF] = useState(blank); const [editItem, setEditItem] = useState<string | null>(null); const nameRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState(""); const [msg, setMsg] = useState("");
   const [g, setG] = useState<Gatepass>(BLANK_GATEPASS); const [gSaved, setGSaved] = useState<Gatepass | null>(null); const [showGate, setShowGate] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);   // for a reviewer, the add-item form opens on request
   const [editHead, setEditHead] = useState(false);   // once saved the bill's header folds away, so on a phone the item form is the first thing on screen
+
+  const [notes, setNotes] = useState<ReviewNote[]>([]); const [events, setEvents] = useState<BillEvent[]>([]); const [target, setTarget] = useState("");
+  const loadExtras = useCallback(async () => {
+    if (!bill || !approval) return; const sb = supabase();
+    const [n, e] = await Promise.all([sb.from("inventory_review_notes").select("*").eq("bill_id", bill.id).order("created_at"), sb.from("inventory_bill_events").select("*").eq("bill_id", bill.id).order("created_at")]);
+    if (!n.error) setNotes((n.data ?? []) as ReviewNote[]); if (!e.error) setEvents((e.data ?? []) as BillEvent[]);   // an error just means there is nothing to show
+  }, [bill?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void loadExtras(); }, [loadExtras, bill?.status]);
 
   const [people, setPeople] = useState<ProjectPerson[]>([]); const [wos, setWos] = useState<ProjectWo[]>([]); const [wo, setWo] = useState("");
 
@@ -49,20 +66,22 @@ export default function BillEditor({ projectId, bill, items, pastBills, pastItem
     return (await r.json()).path as string;
   }
   async function saveHeader() {
-    const total = Number(h.bill_total); setMsg(""); setErr("");
-    if (!h.vendor_name.trim()) return setErr("Enter the vendor's name."); if (!h.bill_no.trim()) return setErr("Enter the bill number."); if (!h.bill_date) return setErr("Choose the bill's date."); if (!(total > 0)) return setErr("Enter the bill's total, as printed.");
+    const total = Number(h.bill_total || 0); setMsg(""); setErr("");
+    if (noBill) { if (!h.bill_date) return setErr("Choose the date."); if (!(total >= 0)) return setErr("The amount paid cannot be below zero."); if (!h.note.trim()) return setErr("Give the reason for this entry: where the items came from."); }
+    else { if (!h.vendor_name.trim()) return setErr("Enter the vendor's name."); if (!h.bill_no.trim()) return setErr("Enter the bill number."); if (!h.bill_date) return setErr("Choose the bill's date."); if (!(total > 0)) return setErr("Enter the bill's total, as printed."); }
     setBusy(true);
     const bill_path = await uploadPhoto(); if (bill_path === undefined) { setBusy(false); return; }
-    const row = { vendor_name: h.vendor_name.trim(), vendor_gstin: h.vendor_gstin.trim().toUpperCase(), bill_no: h.bill_no.trim(), bill_date: h.bill_date, bill_total: total, other_charges: Number(h.other_charges || 0), bill_path };
+    const row = noBill ? { vendor_name: h.vendor_name.trim(), vendor_gstin: "", bill_no: "", bill_date: h.bill_date, bill_total: total, other_charges: 0, note: h.note.trim(), bill_path }
+      : { vendor_name: h.vendor_name.trim(), vendor_gstin: h.vendor_gstin.trim().toUpperCase(), bill_no: h.bill_no.trim(), bill_date: h.bill_date, bill_total: total, other_charges: Number(h.other_charges || 0), bill_path };
     const sb = supabase();
     if (bill) { const { error } = await sb.from("inventory_bills").update(row).eq("id", bill.id); setBusy(false); if (error) return setErr(friendly(error)); setPhoto(null); setEditHead(false); flash("Saved ✓"); await onChanged(); return; }
-    const { data, error } = await sb.from("inventory_bills").insert({ ...row, project_id: projectId }).select("id").single(); setBusy(false);
+    const { data, error } = await sb.from("inventory_bills").insert({ ...row, ...(approval ? { kind } : {}), project_id: projectId }).select("id").single(); setBusy(false);
     if (error) return setErr(friendly(error));
     await onChanged(); onCreated((data as { id: string }).id);
   }
   async function saveItem() {
     if (!bill) return; const qty = Number(f.qty), rate = Number(f.rate), gst = Number(f.gst_pct); setMsg(""); setErr("");
-    if (!f.name.trim()) return setErr("Enter the item's name."); if (!(qty > 0)) return setErr("Enter the quantity."); if (!UNITS.includes(f.unit)) return setErr("Choose the unit."); if (!(rate >= 0) || f.rate === "") return setErr("Enter the rate, before GST."); if (!(gst >= 0 && gst <= 40)) return setErr("GST must be between 0 and 40%.");
+    if (!f.name.trim()) return setErr("Enter the item's name."); if (!(qty > 0)) return setErr("Enter the quantity."); if (!UNITS.includes(f.unit)) return setErr("Choose the unit."); if (!(rate >= 0) || (f.rate === "" && !noBill)) return setErr("Enter the rate, before GST."); if (!(gst >= 0 && gst <= 40)) return setErr("GST must be between 0 and 40%.");
     setBusy(true);
     const row = { name: f.name.trim().replace(/\s+/g, " "), qty, unit: f.unit, rate, gst_pct: gst, hsn: f.hsn.trim() }; const sb = supabase();
     const { error } = editItem ? await sb.from("inventory_bill_items").update(row).eq("id", editItem) : await sb.from("inventory_bill_items").insert({ ...row, bill_id: bill.id, line_no: Math.max(0, ...items.map((i) => i.line_no)) + 1 });
@@ -70,9 +89,13 @@ export default function BillEditor({ projectId, bill, items, pastBills, pastItem
     // every item is saved as it is entered, so a dropped connection loses nothing. Unit and GST stay for the next line because most bills repeat them.
     flash(`${editItem ? "Updated" : "Added"}: ${row.name}`); setEditItem(null); setF((x) => ({ ...BLANK_ITEM, unit: x.unit, gst_pct: x.gst_pct })); await onChanged(); nameRef.current?.focus();
   }
-  async function delItem(i: InvItem) { if (!confirm(`Remove ${i.name}?`)) return; const { error } = await supabase().from("inventory_bill_items").delete().eq("id", i.id); if (error) return setErr(error.message); if (editItem === i.id) { setEditItem(null); setF(BLANK_ITEM); } await onChanged(); }
-  async function act(fn: string, args: Record<string, unknown>, done: string) { setBusy(true); setMsg(""); setErr(""); const { error } = await supabase().rpc(fn, args); setBusy(false); if (error) return setErr(error.message); flash(done); await onChanged(); }
-  async function record() { if (!bill) return; if (Number(h.bill_total) !== Number(bill.bill_total) || Number(h.other_charges || 0) !== Number(bill.other_charges)) return setErr("You changed the bill's details. Save them first."); await act("inventory_record_bill", { p_bill: bill.id }, "Recorded ✓ The total is now in the project's expenses."); }
+  async function delItem(i: InvItem) { if (!confirm(`Remove ${i.name}?`)) return; const { error } = await supabase().from("inventory_bill_items").delete().eq("id", i.id); if (error) return setErr(error.message); if (editItem === i.id) { setEditItem(null); setF(blank); } await onChanged(); }
+  async function act(fn: string, args: Record<string, unknown>, done: string) { setBusy(true); setMsg(""); setErr(""); const { error } = await supabase().rpc(fn, args); setBusy(false); if (error) return setErr(error.message); flash(done); await onChanged(); await loadExtras(); }
+  const headChanged = !!bill && (Number(h.bill_total || 0) !== Number(bill.bill_total) || Number(h.other_charges || 0) !== Number(bill.other_charges) || h.note.trim() !== (bill.note ?? "").trim());
+  async function record() { if (!bill) return; if (headChanged) return setErr("You changed the details. Save them first."); await act("inventory_record_bill", { p_bill: bill.id }, Number(bill.bill_total) > 0 ? "Recorded ✓ The total is now in the project's expenses." : "Recorded ✓ The items are counted as received."); }
+  async function submit() { if (!bill) return; if (headChanged) return setErr("You changed the details. Save them first."); await act("inventory_submit_bill", { p_bill: bill.id }, "Submitted ✓ Operations or an Admin will review it. You will see it here if it is sent back."); }
+  async function sendBack(message: string) { if (!bill) return; await act("inventory_return_bill", { p_bill: bill.id, p_note: message }, "Sent back ✓ It is with the person who entered it, with your marks."); }
+  async function approve(portal: boolean) { if (!bill) return; if (headChanged) return setErr("You changed the details. Save them first."); await act("inventory_record_bill", { p_bill: bill.id, p_portal: portal }, portal ? "Approved ✓ It can now go to the JSL portal: enter the details below." : "Approved ✓ It is an inventory entry."); }
   async function discard() { if (!bill || !confirm("Discard this draft and its items?")) return; const { error } = await supabase().from("inventory_bills").delete().eq("id", bill.id); if (error) return setErr(error.message); await onChanged(); onClose(); }
   async function voidBill() { if (!bill) return; const reason = prompt("Why is this bill being voided? Its expense comes off the project.")?.trim(); if (!reason) return; await act("inventory_void_bill", { p_bill: bill.id, p_reason: reason }, "Voided. The expense has come off the project."); }
   async function saveGate() {
@@ -87,30 +110,40 @@ export default function BillEditor({ projectId, bill, items, pastBills, pastItem
   const wanted = !!bill?.jsl_wanted;   // sending to the JSL portal is optional: an Admin switches it on for a bill, and until then nobody sees or fills in any portal details
   const gateOpen = !!bill && !bill.voided_at && canEnter && ["none", "failed"].includes(bill.jsl_status);
   const gaps = gatepassGaps(gSaved, people); const takeBack = staff && !!bill && !bill.voided_at && ["none", "authorized", "failed"].includes(bill.jsl_status);
-  const hasSide = editable || (recorded && (wanted || admin || takeBack));
+  const notesMode: "review" | "rework" | "read" = reviewing ? "review" : st === "returned" && canEnter ? "rework" : "read";
+  const hasSide = mineOpen || (recorded && (wanted || admin || takeBack)) || events.length > 0 || (notesMode === "read" && notes.length > 0);
+  // ready to submit or record: the items add up to the bill's total and its photo is there; for an entry without a bill, it has items and a reason
+  const ready = !!bill && items.length > 0 && (noBill ? !!h.note.trim() : sums.matches && !!bill.bill_path);
+  const sv = bill ? billSums(items, Number(bill.other_charges), Number(bill.bill_total)) : null;
+  const savedReady = !!bill && items.length > 0 && (noBill ? !!(bill.note ?? "").trim() : !!sv?.matches && !!bill.bill_path);   // what the database will check when it is approved
+  const savedMsg = items.length === 0 ? "Add the items first." : noBill ? "It needs a reason." : !bill?.bill_path ? "It needs the photo of the bill." : "The items do not add up to the bill's total yet.";
+  const effectText = canSubmit ? "Submitting sends this to Operations or an Admin to review. Nothing is added to expenses until they approve it." : Number(h.bill_total || 0) > 0 ? `Recording adds ₹${inr(Number(h.bill_total))} to this project's expenses under Site consumables. Sending the items to the JSL portal is optional: an Admin decides that afterwards.` : "Recording counts these items as received. No expense is added.";
+  const needText = !bill ? "" : noBill ? (!h.note.trim() ? " Give the reason for this entry first." : "") : (!bill.bill_path ? " Attach the photo of the bill first." : "");
+  const actionLabel = canSubmit ? (st === "returned" ? "Submit again" : "Submit for approval") : "Record bill";
+  const stage = bill ? stageOf(bill) : null; const lastReturn = [...events].reverse().find((e) => e.kind === "returned");
+  const openNotes = notes.filter((n) => n.state === "open").length;
   const gateForm = showGate || (gateOpen && !gSaved);
   const chosen = people.find((p) => p.employee_id === g.person_employee_id); const savedPerson = people.find((p) => p.employee_id === gSaved?.person_employee_id);
   const fromTeam = g.person_source === "employee";
   const idBad = (type: string, no: string) => type === "Aadhaar" && no.trim() !== "" && !/^\d{12}$/.test(no.replace(/\s/g, ""));
 
-  const totalsBox = (items.length > 0 && <div className="rounded-xl bg-slate-50 p-3 text-sm space-y-1 tabular-nums">
+  const totalsBox = (items.length > 0 && !noBill && <div className="rounded-xl bg-slate-50 p-3 text-sm space-y-1 tabular-nums">
           <div className="flex justify-between"><span>Items</span><span>₹{inr(sums.taxable)}</span></div><div className="flex justify-between"><span>GST</span><span>₹{inr(sums.tax)}</span></div>
           {Number(h.other_charges || 0) !== 0 && <div className="flex justify-between"><span>Freight or discount</span><span>₹{inr(Number(h.other_charges))}</span></div>}
           <div className="flex justify-between font-semibold border-t border-slate-200 pt-1"><span>Items come to</span><span>₹{inr(sums.computed)}</span></div><div className="flex justify-between"><span>Bill says</span><span>₹{inr(Number(h.bill_total || 0))}</span></div>
           <div className={`flex justify-between font-medium ${sums.matches ? "text-green-700" : "text-amber-700"}`}><span>{sums.matches ? (sums.diff === 0 ? "Matches" : "Matches, with round off") : "Difference: an item is missing or wrong"}</span><span className="whitespace-nowrap ml-2">{sums.diff > 0 ? "+" : sums.diff < 0 ? "−" : ""}₹{inr(Math.abs(sums.diff))}</span></div></div>);
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2"><button className="btn btn-sm whitespace-nowrap shrink-0" onClick={onClose}>← Bills</button><div className="min-w-0"><h1 className="text-lg font-semibold truncate leading-tight">{bill ? bill.vendor_name : "New bill"}</h1>{bill && <div className="text-xs text-slate-500 truncate">Bill {bill.bill_no}</div>}</div></div>
-      {err && <p className="warn" role="alert">{err}</p>}{msg && <p className="text-sm text-green-700" role="status">{msg}</p>}
-      {bill?.voided_at && <p className="text-sm rounded-xl px-3 py-2 bg-slate-50 text-slate-700">This bill is void: {bill.void_reason}. It is not in expenses or in the received list.</p>}
-
-      <div className={bill && hasSide ? "space-y-4 lg:space-y-0 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-5 lg:items-start" : "space-y-4 max-w-3xl"}>
-      <div className="space-y-4 min-w-0">
+  const sec1 = (<>
       {/* 1. the bill */}
-      <section className="card !p-3 space-y-3"><div className="flex items-center gap-2"><h2 className="text-sm font-semibold">1. The bill</h2><span className="ml-auto flex gap-2">{bill?.bill_path && !editHead && <a className="btn btn-sm" href={`/api/inventory/view?bill=${bill.id}`} target="_blank" rel="noreferrer">View bill</a>}{editable && bill?.bill_path && !editHead && <button className="btn btn-sm" onClick={() => setEditHead(true)}>Edit</button>}</span></div>
-        {editable && (!bill?.bill_path || editHead) ? <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="card !p-3 space-y-3"><div className="flex items-center gap-2"><h2 className="text-sm font-semibold">{noBill ? "1. The entry" : "1. The bill"}</h2><span className="ml-auto flex gap-2">{bill?.bill_path && !editHead && <a className="btn btn-sm" href={`/api/inventory/view?bill=${bill.id}`} target="_blank" rel="noreferrer">View bill</a>}{editable && bill && (noBill || bill.bill_path) && !editHead && <button className="btn btn-sm" onClick={() => setEditHead(true)}>Edit</button>}</span></div>
+        {editable && (!bill || editHead || (!noBill && !bill.bill_path)) ? <>
+          {noBill ? <div className="grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2"><label className="lbl">Reason: where did these items come from?</label><textarea className="inp !min-h-20" value={h.note} onChange={(e) => setH({ ...h, note: e.target.value })} placeholder="For example: cash purchase, the shop gave no bill. Or: transferred from the MAN site." /></div>
+            <div><label className="lbl">From <span className="font-normal text-slate-400">(supplier or place, optional)</span></label><input className="inp" list="inv-vendors" value={h.vendor_name} onChange={(e) => setH({ ...h, vendor_name: e.target.value })} /><datalist id="inv-vendors">{vendors.map((v) => <option key={v} value={v} />)}</datalist></div>
+            <div><label className="lbl">Date received</label><input className="inp" type="date" value={h.bill_date} onChange={(e) => setH({ ...h, bill_date: e.target.value })} /></div>
+            <div><label className="lbl">Amount paid (₹) <span className="font-normal text-slate-400">(optional)</span></label><input className="inp" type="number" inputMode="decimal" min="0" step="0.01" value={h.bill_total} onChange={(e) => setH({ ...h, bill_total: e.target.value })} /></div>
+            <div><label className="lbl">Photo <span className="font-normal text-slate-400">(optional)</span></label><label className="btn cursor-pointer w-full justify-center truncate">{photo ? photo.name : bill?.bill_path ? "Replace photo" : "Take or attach photo"}<input type="file" className="hidden" accept="image/*,.pdf" onChange={(e) => { setPhoto(e.target.files?.[0] ?? null); e.target.value = ""; }} /></label></div>
+          </div> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="sm:col-span-2"><label className="lbl">Vendor</label><input className="inp" list="inv-vendors" value={h.vendor_name} onChange={(e) => setH({ ...h, vendor_name: e.target.value })} /><datalist id="inv-vendors">{vendors.map((v) => <option key={v} value={v} />)}</datalist></div>
             <div><label className="lbl">Vendor GSTIN <span className="font-normal text-slate-400">(optional)</span></label><input className="inp uppercase" value={h.vendor_gstin} onChange={(e) => setH({ ...h, vendor_gstin: e.target.value })} /></div>
             <div><label className="lbl">Bill number</label><input className="inp" value={h.bill_no} onChange={(e) => setH({ ...h, bill_no: e.target.value })} /></div>
@@ -118,49 +151,53 @@ export default function BillEditor({ projectId, bill, items, pastBills, pastItem
             <div><label className="lbl">Total on the bill (₹)</label><input className="inp" type="number" inputMode="decimal" min="0" step="0.01" value={h.bill_total} onChange={(e) => setH({ ...h, bill_total: e.target.value })} /></div>
             <div><label className="lbl">Freight or discount (₹) <span className="font-normal text-slate-400">(minus for a discount)</span></label><input className="inp" type="number" inputMode="decimal" step="0.01" value={h.other_charges} onChange={(e) => setH({ ...h, other_charges: e.target.value })} /></div>
             <div><label className="lbl">Photo of the bill</label><label className="btn cursor-pointer w-full justify-center truncate">{photo ? photo.name : bill?.bill_path ? "Replace photo" : "Take or attach photo"}<input type="file" className="hidden" accept="image/*,.pdf" onChange={(e) => { setPhoto(e.target.files?.[0] ?? null); e.target.value = ""; }} /></label></div>
-          </div>
-          <div className="flex flex-wrap gap-2 form-actions"><button className="btn btn-primary" disabled={busy} onClick={saveHeader}>{busy ? "Saving…" : bill ? "Save bill details" : "Save and add items"}</button>{editHead && <button className="btn" onClick={() => { setEditHead(false); setPhoto(null); setH({ vendor_name: bill!.vendor_name, vendor_gstin: bill!.vendor_gstin, bill_no: bill!.bill_no, bill_date: bill!.bill_date, bill_total: String(bill!.bill_total), other_charges: Number(bill!.other_charges) ? String(bill!.other_charges) : "" }); }}>Cancel</button>}{bill?.bill_path && <a className="btn" href={`/api/inventory/view?bill=${bill.id}`} target="_blank" rel="noreferrer">View bill</a>}</div>
-        </> : bill && <div className="text-sm space-y-1">
+          </div>}
+          <div className="flex flex-wrap gap-2 form-actions"><button className="btn btn-primary" disabled={busy} onClick={saveHeader}>{busy ? "Saving…" : bill ? (noBill ? "Save entry details" : "Save bill details") : "Save and add items"}</button>{editHead && <button className="btn" onClick={() => { setEditHead(false); setPhoto(null); setH({ vendor_name: bill!.vendor_name, vendor_gstin: bill!.vendor_gstin, bill_no: bill!.bill_no, bill_date: bill!.bill_date, bill_total: String(bill!.bill_total), other_charges: Number(bill!.other_charges) ? String(bill!.other_charges) : "", note: bill!.note ?? "" }); }}>Cancel</button>}{bill?.bill_path && <a className="btn" href={`/api/inventory/view?bill=${bill.id}`} target="_blank" rel="noreferrer">View bill</a>}</div>
+        </> : bill && noBill ? <div className="text-sm space-y-2">
+          <div className="grid gap-2 grid-cols-3"><div><div className="text-xs text-slate-400">From</div>{bill.vendor_name || "—"}</div><div><div className="text-xs text-slate-400">Date</div>{new Date(bill.bill_date + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</div><div><div className="text-xs text-slate-400">Amount paid</div>{Number(bill.bill_total) > 0 ? <b className="tabular-nums">₹{inr(Number(bill.bill_total))}</b> : "None"}</div></div>
+          <div><div className="text-xs text-slate-400">Reason</div><div className="break-words">{bill.note || "—"}</div></div>
+        </div> : bill && <div className="text-sm space-y-1">
           <div className="grid gap-2 grid-cols-3 lg:grid-cols-4"><div className="hidden lg:block"><div className="text-xs text-slate-400">Vendor</div>{bill.vendor_name}</div><div><div className="text-xs text-slate-400">Bill</div>{bill.bill_no}</div><div><div className="text-xs text-slate-400">Date</div>{new Date(bill.bill_date + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</div><div><div className="text-xs text-slate-400">Total</div><b className="tabular-nums">₹{inr(Number(bill.bill_total))}</b></div></div>
         </div>}
       </section>
-
+  </>);
+  const sec2 = (<>
       {/* 2. items, one at a time */}
       {bill && <section className="card !p-3 space-y-3"><h2 className="text-sm font-semibold">2. Items ({items.length})</h2>
-        {editable && <form className="rounded-xl border border-slate-200 p-3 space-y-3" onSubmit={(e) => { e.preventDefault(); void saveItem(); }}>
-          <div><label className="lbl">{editItem ? "Change this item" : `Item ${items.length + 1}: name, as on the bill`}</label><input ref={nameRef} className="inp" list="inv-names" autoFocus autoCapitalize="characters" value={f.name} onChange={(e) => setItem({ name: e.target.value })} /><datalist id="inv-names">{names.map((n) => <option key={n} value={n} />)}</datalist></div>
+        {reviewing && !addOpen && !editItem && <div><button className="btn btn-sm" onClick={() => setAddOpen(true)}>+ Add a missing item</button></div>}
+        {editable && (!reviewing || addOpen || !!editItem) && <form className="rounded-xl border border-slate-200 p-3 space-y-3" onSubmit={(e) => { e.preventDefault(); void saveItem(); }}>
+          <div><label className="lbl">{editItem ? "Change this item" : `Item ${items.length + 1}: name${noBill ? "" : ", as on the bill"}`}</label><input ref={nameRef} className="inp" list="inv-names" autoFocus autoCapitalize="characters" value={f.name} onChange={(e) => setItem({ name: e.target.value })} /><datalist id="inv-names">{names.map((n) => <option key={n} value={n} />)}</datalist></div>
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-5">
             <div><label className="lbl">Quantity</label><input className="inp" type="number" inputMode="decimal" min="0" step="any" value={f.qty} onChange={(e) => setItem({ qty: e.target.value })} /></div>
             <div><label className="lbl">Unit</label><UnitSelect list={UNITS} blank="Select" value={f.unit} onChange={(u) => setItem({ unit: u })} /></div>
-            <div><label className="lbl">Rate (₹, before GST)</label><input className="inp" type="number" inputMode="decimal" min="0" step="0.01" value={f.rate} onChange={(e) => setItem({ rate: e.target.value })} /></div>
+            <div><label className="lbl">{noBill ? "Rate (₹, optional)" : "Rate (₹, before GST)"}</label><input className="inp" type="number" inputMode="decimal" min="0" step="0.01" value={f.rate} onChange={(e) => setItem({ rate: e.target.value })} /></div>
             <div><label className="lbl">GST %</label><input className="inp" type="number" inputMode="decimal" min="0" max="40" step="0.01" value={f.gst_pct} onChange={(e) => setItem({ gst_pct: e.target.value })} /></div>
             <div className="hidden sm:block"><label className="lbl">HSN <span className="font-normal text-slate-400">(optional)</span></label><input className="inp" inputMode="numeric" value={f.hsn} onChange={(e) => setItem({ hsn: e.target.value })} /></div><details className="col-span-2 sm:hidden" open={!!f.hsn}><summary className="lbl cursor-pointer select-none text-[#1e4fa3]">+ HSN <span className="font-normal text-slate-400">(optional)</span></summary><input className="inp mt-1" inputMode="numeric" value={f.hsn} onChange={(e) => setItem({ hsn: e.target.value })} /></details>
           </div>
-          <div className="flex flex-wrap items-center gap-2 form-actions"><button type="submit" className="btn btn-primary" disabled={busy}>{busy ? "Saving…" : editItem ? "Save item" : "Add item"}</button>{editItem && <button type="button" className="btn" onClick={() => { setEditItem(null); setF(BLANK_ITEM); }}>Cancel</button>}{Number(f.qty) > 0 && f.rate !== "" && <span className="text-sm text-slate-500 tabular-nums">Amount ₹{inr(lineAmount(Number(f.qty), Number(f.rate)))}</span>}</div>
+          <div className="flex flex-wrap items-center gap-2 form-actions"><button type="submit" className="btn btn-primary" disabled={busy}>{busy ? "Saving…" : editItem ? "Save item" : "Add item"}</button>{editItem && <button type="button" className="btn" onClick={() => { setEditItem(null); setF(blank); }}>Cancel</button>}{Number(f.qty) > 0 && f.rate !== "" && <span className="text-sm text-slate-500 tabular-nums">Amount ₹{inr(lineAmount(Number(f.qty), Number(f.rate)))}</span>}</div>
         </form>}
-        {items.length > 0 && <ol className="divide-y divide-slate-100">{[...items.keys()].reverse().map((n) => { const i = items[n]; return <li key={i.id} className="py-2 flex items-start gap-2 text-sm"><span className="text-slate-400 tabular-nums w-5 shrink-0">{n + 1}</span><div className="min-w-0 flex-1"><div className="font-medium break-words">{i.name}</div><div className="text-xs text-slate-500 tabular-nums">{Number(i.qty).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {i.unit} × ₹{inr(Number(i.rate))} · GST {Number(i.gst_pct)}%{i.hsn ? ` · HSN ${i.hsn}` : ""}</div></div><b className="tabular-nums whitespace-nowrap">₹{inr(Number(i.amount))}</b>
-          {editable && <span className="flex gap-1 shrink-0"><button className="btn btn-sm" onClick={() => { setEditItem(i.id); setF({ name: i.name, qty: String(i.qty), unit: i.unit, rate: String(i.rate), gst_pct: String(i.gst_pct), hsn: i.hsn }); nameRef.current?.focus(); }}>Edit</button><button className="btn btn-sm btn-danger" aria-label={`Remove ${i.name}`} onClick={() => delItem(i)}>✕</button></span>}</li>; })}</ol>}
+        {items.length > 0 && <ol className="divide-y divide-slate-100">{[...items.keys()].reverse().map((n) => { const i = items[n]; return <li key={i.id} className="py-2 flex flex-wrap sm:flex-nowrap items-start gap-2 text-sm"><span className="text-slate-400 tabular-nums w-5 shrink-0">{n + 1}</span><div className="min-w-0 flex-1"><div className="font-medium break-words">{i.name}</div><div className="text-xs text-slate-500 tabular-nums">{Number(i.qty).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {i.unit}{noBill && Number(i.rate) === 0 ? "" : ` × ₹${inr(Number(i.rate))} · GST ${Number(i.gst_pct)}%`}{i.hsn ? ` · HSN ${i.hsn}` : ""}</div>{notes.filter((x) => x.item_id === i.id).map((x) => <div key={x.id} className={`text-xs mt-0.5 ${x.state === "done" ? "text-green-700" : "text-amber-800"}`}>⚑ {x.note}{x.state === "done" ? " (fixed)" : ""}</div>)}</div><b className="tabular-nums whitespace-nowrap">₹{inr(Number(i.amount))}</b>
+          {editable && <span className="flex gap-1 shrink-0 w-full sm:w-auto justify-end">{reviewing && <button className="btn btn-sm" onClick={() => { setTarget("i:" + i.id); document.getElementById("review-notes")?.scrollIntoView({ behavior: "smooth", block: "center" }); }}>Flag</button>}<button className="btn btn-sm" onClick={() => { setEditItem(i.id); setF({ name: i.name, qty: String(i.qty), unit: i.unit, rate: String(i.rate), gst_pct: String(i.gst_pct), hsn: i.hsn }); nameRef.current?.focus(); }}>Edit</button><button className="btn btn-sm btn-danger" aria-label={`Remove ${i.name}`} onClick={() => delItem(i)}>✕</button></span>}</li>; })}</ol>}
         {totalsBox && <div className="lg:hidden">{totalsBox}</div>}
-        {editable && <>
-          <p className="text-xs text-slate-500 lg:hidden">Recording adds ₹{inr(Number(h.bill_total || 0))} to this project's expenses under Site consumables. Sending the items to the JSL portal is optional: an Admin decides that afterwards.{!bill.bill_path && <span className="text-amber-700"> Attach the photo of the bill first.</span>}</p>
-          <div className="lg:hidden"><button className="btn btn-danger btn-sm" disabled={busy} onClick={discard}>Discard draft</button></div>
+        {mineOpen && bill && <>
+          <p className="text-xs text-slate-500 lg:hidden">{effectText}{needText && <span className="text-amber-700">{needText}</span>}</p>
+          <div className="lg:hidden"><button className="btn btn-danger btn-sm" disabled={busy} onClick={discard}>Discard {st === "returned" ? "entry" : "draft"}</button></div>
           <div className="lg:hidden sticky bottom-[var(--bottom-nav-h,0px)] z-10 -mx-3 -mb-3 px-3 py-2 border-t border-slate-200 bg-white/95 backdrop-blur rounded-b-xl flex items-center gap-3">
             <div className="min-w-0 flex-1 text-xs tabular-nums leading-snug">
-              <div className={`font-semibold ${items.length === 0 ? "text-slate-500" : sums.matches ? "text-green-700" : "text-amber-700"}`}>{items.length === 0 ? "No items yet" : `${items.length} item${items.length === 1 ? "" : "s"} · ₹${inr(sums.computed)}`}</div>
-              <div className="text-slate-500 truncate">Bill ₹{inr(Number(h.bill_total || 0))}{items.length > 0 && !sums.matches ? ` · ₹${inr(Math.abs(sums.diff))} ${sums.diff > 0 ? "short" : "over"}` : ""}</div>
+              <div className={`font-semibold ${items.length === 0 ? "text-slate-500" : ready ? "text-green-700" : "text-amber-700"}`}>{items.length === 0 ? "No items yet" : noBill ? `${items.length} item${items.length === 1 ? "" : "s"}` : `${items.length} item${items.length === 1 ? "" : "s"} · ₹${inr(sums.computed)}`}</div>
+              <div className="text-slate-500 truncate">{noBill ? (Number(h.bill_total || 0) > 0 ? `Paid ₹${inr(Number(h.bill_total))}` : "No amount paid") : `Bill ₹${inr(Number(h.bill_total || 0))}${items.length > 0 && !sums.matches ? ` · ₹${inr(Math.abs(sums.diff))} ${sums.diff > 0 ? "short" : "over"}` : ""}`}</div>
             </div>
-            <button className="btn btn-primary shrink-0" disabled={busy || !sums.matches || !bill.bill_path} onClick={record}>Record bill</button>
+            <button className="btn btn-primary shrink-0" disabled={busy || !ready} onClick={canSubmit ? submit : record}>{actionLabel}</button>
           </div>
         </>}
-        {recorded && <p className="text-sm text-green-700">₹{inr(Number(bill.bill_total))} is in this project's expenses under Site consumables.</p>}
+        {recorded && (Number(bill.bill_total) > 0 ? <p className="text-sm text-green-700">₹{inr(Number(bill.bill_total))} is in this project's expenses under Site consumables. The items are counted as received.</p> : <p className="text-sm text-green-700">The items are counted as received. No expense was added.</p>)}
       </section>}
-
-      </div>
-      <div className="space-y-4 min-w-0 lg:sticky lg:top-20">
-      {editable && bill && <section className="card !p-3 space-y-3 hidden lg:block"><h2 className="text-sm font-semibold">Check against the bill</h2>
-        {totalsBox || <p className="text-sm text-slate-500">Add the items from the bill. They are checked against its total here.</p>}
-        <p className="text-xs text-slate-500">Recording adds ₹{inr(Number(h.bill_total || 0))} to this project's expenses under Site consumables. Sending the items to the JSL portal is optional: an Admin decides that afterwards.{!bill.bill_path && <span className="text-amber-700"> Attach the photo of the bill first.</span>}</p>
-        <div className="flex gap-2"><button className="btn btn-primary flex-1 justify-center" disabled={busy || !sums.matches || !bill.bill_path} onClick={record}>Record bill</button><button className="btn btn-danger" disabled={busy} onClick={discard}>Discard</button></div>
+  </>);
+  const rightCards = (<>
+      {mineOpen && bill && <section className="card !p-3 space-y-3 hidden lg:block"><h2 className="text-sm font-semibold">{noBill ? "Check the entry" : "Check against the bill"}</h2>
+        {totalsBox || <p className="text-sm text-slate-500">{noBill ? (items.length ? `${items.length} item${items.length === 1 ? "" : "s"} entered.` : "Add the items that came in.") : "Add the items from the bill. They are checked against its total here."}</p>}
+        <p className="text-xs text-slate-500">{effectText}{needText && <span className="text-amber-700">{needText}</span>}</p>
+        <div className="flex gap-2"><button className="btn btn-primary flex-1 justify-center" disabled={busy || !ready} onClick={canSubmit ? submit : record}>{actionLabel}</button><button className="btn btn-danger" disabled={busy} onClick={discard}>Discard</button></div>
       </section>}
 
       {/* the portal is optional: only an Admin can switch it on */}
@@ -209,8 +246,34 @@ export default function BillEditor({ projectId, bill, items, pastBills, pastItem
       </section>}
 
       {bill && takeBack && recorded && <div className="flex flex-wrap gap-2 form-actions"><button className="btn" disabled={busy} onClick={() => confirm("Reopen this bill? Its expense comes off until it is recorded again.") && act("inventory_reopen_bill", { p_bill: bill.id }, "Reopened. The expense has come off the project.")}>Reopen bill</button><button className="btn btn-danger" disabled={busy} onClick={voidBill}>Void bill</button></div>}
-      </div>
-      </div>
+  </>);
+  const historyPanel = events.length > 0 ? <details className="card !p-3 text-sm"><summary className="cursor-pointer font-semibold">History</summary><ul className="mt-2 space-y-1.5">{events.map((e) => <li key={e.id}><span className="font-medium">{({ submitted: "Submitted for review", returned: "Sent back", approved: "Approved", recorded: "Recorded", reopened: "Reopened", voided: "Voided" } as const)[e.kind]}</span> <span className="text-xs text-slate-500">{new Date(e.created_at).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>{e.note && <div className="text-slate-600 whitespace-pre-wrap break-words">{e.note}</div>}</li>)}</ul></details> : null;
+  const notesPanel = bill && (notes.length > 0 || reviewing) ? <ReviewNotes billId={bill.id} kind={kind} notes={notes} items={items} mode={notesMode} target={target} setTarget={setTarget} onChanged={loadExtras} /> : null;
+
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2"><button className="btn btn-sm whitespace-nowrap shrink-0" onClick={onClose}>← Bills</button><div className="min-w-0"><h1 className="text-lg font-semibold truncate leading-tight">{bill ? (noBill ? "Entry without a bill" : bill.vendor_name) : noBill ? "New entry without a bill" : "New bill"}</h1>{bill && <div className="text-xs text-slate-500 truncate">{noBill ? (bill.vendor_name ? `From ${bill.vendor_name}` : new Date(bill.bill_date + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })) : `Bill ${bill.bill_no}`}</div>}</div>{stage && <span className={`ml-auto shrink-0 text-[11px] rounded-full px-2 py-0.5 ${stage.cls}`}>{stage.text}</span>}</div>
+      {err && <p className="warn" role="alert">{err}</p>}{msg && <p className="text-sm text-green-700" role="status">{msg}</p>}
+      {bill?.voided_at && <p className="text-sm rounded-xl px-3 py-2 bg-slate-50 text-slate-700">This bill is void: {bill.void_reason}. It is not in expenses or in the received list.</p>}
+      {bill && st === "returned" && !bill.voided_at && canEnter && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm space-y-1"><b className="text-red-800">Sent back for rework</b>{lastReturn && <p className="whitespace-pre-wrap break-words">{lastReturn.note}</p>}<p className="text-xs text-slate-600">Fix what is marked below, tick each correction off, then submit it again.</p></div>}
+      {bill && st === "submitted" && !bill.voided_at && !staff && <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm"><b className="text-blue-800">Waiting for review.</b> Operations or an Admin will approve it or send it back. It cannot be changed until then.</div>}
+
+      {reviewing && bill ? (
+        <div className="space-y-4 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start">
+          <div className="min-w-0 lg:sticky lg:top-20"><BillPhoto bill={bill} /></div>
+          <div className="space-y-4 min-w-0">
+            <ReviewBar variant="card" ready={savedReady} readyMsg={savedMsg} admin={admin} busy={busy} amount={Number(bill?.bill_total ?? 0)} itemCount={items.length} openNotes={openNotes} onReturn={sendBack} onApprove={approve} />
+            {sec1}{sec2}{notesPanel}{historyPanel}
+            <ReviewBar variant="bar" ready={savedReady} readyMsg={savedMsg} admin={admin} busy={busy} amount={Number(bill?.bill_total ?? 0)} itemCount={items.length} openNotes={openNotes} onReturn={sendBack} onApprove={approve} />
+          </div>
+        </div>
+      ) : (
+        <div className={bill && hasSide ? "space-y-4 lg:space-y-0 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-5 lg:items-start" : "space-y-4 max-w-3xl"}>
+          <div className="space-y-4 min-w-0">{notesMode === "rework" && notesPanel}{sec1}{sec2}</div>
+          <div className="space-y-4 min-w-0 lg:sticky lg:top-20">{rightCards}{notesMode === "read" && notesPanel}{historyPanel}</div>
+        </div>
+      )}
     </div>
   );
 }

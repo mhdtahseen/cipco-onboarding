@@ -2,7 +2,7 @@
 // so adding a module (Payroll, Invoices, Inventory…) means adding an entry here and nothing else.
 // Pure data + helpers (no React), so the server-side route guard can import it too.
 export type NavRole = "admin" | "staff" | "site_engineer" | "supervisor" | "attendance" | "viewer";   // "attendance" = the old name for Supervisor, kept so the app still works before the migration renames it
-export type IconName = "users" | "clipboard" | "folder" | "file" | "book" | "mail" | "list" | "sliders" | "shield" | "building" | "truck" | "utensils" | "bed" | "wallet" | "pin" | "cylinder" | "box";
+export type IconName = "users" | "clipboard" | "folder" | "file" | "book" | "mail" | "list" | "sliders" | "shield" | "building" | "truck" | "utensils" | "bed" | "wallet" | "pin" | "cylinder" | "box" | "calendar" | "receipt" | "briefcase" | "hard-hat" | "wrench";
 export type NavItem = {
   href: string;            // where the link goes
   label: string;
@@ -26,17 +26,17 @@ export const NAV: NavItem[] = [
   { href: "/payroll", label: "Payroll", icon: "wallet", section: "People", roles: ["admin", "viewer"], paths: ["/payroll"] },
   { href: "/attendance", label: "Attendance", icon: "clipboard", section: "People", roles: ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"], paths: ["/attendance"], bar: true },
   { href: "/projects", label: "Projects", icon: "folder", section: "Operations", roles: ["admin", "staff", "viewer"], paths: ["/projects"], bar: true },
-  { href: "/sites", label: "Sites today", icon: "building", section: "Operations", roles: ["admin", "viewer"], paths: ["/sites"], bar: ["viewer"] },
+  { href: "/sites", label: "Sites today", icon: "hard-hat", section: "Operations", roles: ["admin", "viewer"], paths: ["/sites"], bar: ["viewer"] },
   { href: "/transport", label: "Transport", icon: "truck", section: "Operations", roles: ["admin", "viewer"], paths: ["/transport"] },
   { href: "/meals", label: "Meals", icon: "utensils", section: "Operations", roles: ["admin", "viewer"], paths: ["/meals"] },
   { href: "/accommodation", label: "Accommodation", icon: "bed", section: "Operations", roles: ["admin", "viewer"], paths: ["/accommodation"] },
   { href: "/gas", label: "Gas cylinders", icon: "cylinder", section: "Site consumables", roles: CONSUMABLES_ROLES, paths: ["/gas", "/api/gas"], bar: CONSUMABLES_BAR },
-  { href: "/equipment", label: "Hired equipment", icon: "truck", section: "Site consumables", roles: CONSUMABLES_ROLES, paths: ["/equipment"], bar: CONSUMABLES_BAR },
+  { href: "/equipment", label: "Hired equipment", icon: "wrench", section: "Site consumables", roles: CONSUMABLES_ROLES, paths: ["/equipment"], bar: CONSUMABLES_BAR },
   { href: "/inventory", label: "Inventory", icon: "box", section: "Operations", roles: ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"], paths: ["/inventory", "/api/inventory"], bar: ["site_engineer", "supervisor", "attendance"] },
-  { href: "/payments-due", label: "Payments due", icon: "wallet", section: "Operations", roles: ["admin", "viewer"], paths: ["/payments-due"] },
+  { href: "/payments-due", label: "Payments due", icon: "calendar", section: "Operations", roles: ["admin", "viewer"], paths: ["/payments-due"] },
   { href: "/quotations", label: "Quotations", icon: "file", section: "Sales", roles: ["admin", "staff", "viewer"], paths: ["/quotations"], bar: true },
-  { href: "/invoices", label: "Invoices", icon: "wallet", section: "Sales", roles: ["admin", "viewer"], paths: ["/invoices"] },
-  { href: "/work-orders", label: "Work orders", icon: "clipboard", section: "Sales", roles: ["admin", "viewer"], paths: ["/work-orders"] },
+  { href: "/invoices", label: "Invoices", icon: "receipt", section: "Sales", roles: ["admin", "viewer"], paths: ["/invoices"] },
+  { href: "/work-orders", label: "Work orders", icon: "briefcase", section: "Sales", roles: ["admin", "viewer"], paths: ["/work-orders"] },
   { href: "/clients", label: "Clients", icon: "building", section: "Sales", roles: ["admin", "staff", "viewer"], paths: ["/clients"] },
   { href: "/clauses", label: "Clause library", icon: "book", section: "Templates", roles: ["admin", "staff", "viewer"], paths: ["/clauses"] },
   { href: "/mail-templates", label: "Mail templates", icon: "mail", section: "Templates", roles: ["admin", "staff", "viewer"], paths: ["/mail-templates"] },

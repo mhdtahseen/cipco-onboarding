@@ -1,7 +1,12 @@
 // Inventory: pure types and sums, shared by the page and its components. One bill = one project expense = one MRR on the JSL portal.
 import { JSL_UNITS } from "./units";
+/** draft: being entered. submitted: waiting for Operations or an Admin to review. returned: sent back to be reworked. recorded: approved (its items are received and its amount, if any, is in expenses). */
+export type BillStatus = "draft" | "submitted" | "returned" | "recorded";
+export type NoteField = "" | "vendor" | "gstin" | "bill_no" | "date" | "total" | "other_charges" | "photo" | "reason" | "amount";
+export type ReviewNote = { id: string; bill_id: string; item_id: string | null; item_name: string; field: NoteField; note: string; state: "open" | "done"; created_at: string; resolved_at: string | null };
+export type BillEvent = { id: string; bill_id: string; kind: "submitted" | "returned" | "approved" | "recorded" | "reopened" | "voided"; note: string; created_at: string };
 export type JslStatus = "none" | "authorized" | "sending" | "submitting" | "submitted" | "failed" | "needs_check";
-export type InvBill = { id: string; project_id: string; vendor_name: string; vendor_gstin: string; bill_no: string; bill_date: string; bill_total: number; other_charges: number; bill_path: string | null; note: string; status: "draft" | "recorded"; jsl_status: JslStatus; jsl_wanted: boolean; jsl_authorized_at: string | null; jsl_ref: string | null; jsl_error: string | null; jsl_submitted_at: string | null; created_at: string; voided_at: string | null; void_reason: string | null };
+export type InvBill = { id: string; project_id: string; vendor_name: string; vendor_gstin: string; bill_no: string; bill_date: string; bill_total: number; other_charges: number; bill_path: string | null; note: string; status: BillStatus; kind: "bill" | "no_bill"; submitted_by: string | null; submitted_at: string | null; jsl_status: JslStatus; jsl_wanted: boolean; jsl_authorized_at: string | null; jsl_ref: string | null; jsl_error: string | null; jsl_submitted_at: string | null; created_at: string; voided_at: string | null; void_reason: string | null };
 export type InvItem = { id: string; bill_id: string; line_no: number; name: string; hsn: string; qty: number; unit: string; rate: number; gst_pct: number; amount: number };
 export type Gatepass = { wo_no: string; received_by: "hand" | "vehicle"; person_source: "employee" | "other"; person_employee_id: string | null; person_name: string; person_id_type: string; person_id_no: string; vehicle_no: string; driver_name: string; driver_dl_no: string; codriver_name: string; codriver_id_type: string; codriver_id_no: string };
 export type ProjectPerson = { employee_id: string; full_name: string; designation: string | null; aadhaar_last4: string | null; is_default: boolean };
@@ -75,3 +80,16 @@ export function stockFrom(items: InvItem[], recordedBillIds: Set<string>): Stock
   }
   return [...map.values()].map(({ billSet: _b, ...r }) => r).sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/** What the list and the screen call an entry's stage. */
+export function stageOf(b: Pick<InvBill, "status" | "voided_at">): { key: string; text: string; cls: string } {
+  if (b.voided_at) return { key: "void", text: "Void", cls: "bg-slate-100 text-slate-600" };
+  if (b.status === "submitted") return { key: "submitted", text: "Waiting for review", cls: "bg-blue-50 text-blue-800" };
+  if (b.status === "returned") return { key: "returned", text: "Sent back", cls: "bg-red-50 text-red-700" };
+  if (b.status === "draft") return { key: "draft", text: "Draft", cls: "bg-amber-50 text-amber-800" };
+  return { key: "recorded", text: "In expenses", cls: "bg-green-50 text-green-800" };
+}
+
+/** The parts of an entry a reviewer can mark, in the words the reviewer sees. */
+export const NOTE_FIELDS: Record<Exclude<NoteField, "">, string> = { vendor: "Vendor", gstin: "GSTIN", bill_no: "Bill number", date: "Date", total: "Total", other_charges: "Freight or discount", photo: "Photo", reason: "Reason", amount: "Amount paid" };
+export const noteTitle = (n: Pick<ReviewNote, "field" | "item_id" | "item_name">) => (n.item_id || n.item_name ? n.item_name || "An item" : n.field ? NOTE_FIELDS[n.field] : "The entry");
