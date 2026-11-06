@@ -17,10 +17,21 @@ async function pickProof(page, selector, kind) {
   await page.locator(selector).selectOption(val);
 }
 
+// Every field on the form with its value and choices. Used only to diagnose a failed dry run, which uses sample data: remove it before real bills are filled in.
+const dumpFields = (page) => page.evaluate(() => [...document.querySelectorAll('input,select')].filter((e) => !['hidden', 'password'].includes(e.type)).map((e) => ({ id: e.id, type: e.type, value: e.value, options: e.tagName === 'SELECT' && e.options.length < 15 ? [...e.options].map((o) => `${o.value}=${o.text}`) : undefined })));
+
 // ASP.NET reloads parts of this page after many changes (the Received by dropdown, the WO, Add). Anything typed meanwhile is wiped, so wait for the page to go quiet first.
 async function settle(page) {
   await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(1500);
+}
+
+// The count box is the input the ▲ button belongs to (the button's id is the box's id plus "_bUp"), so it is found the same way on every form.
+async function countBox(page, result) {
+  const upId = await page.getByRole('button', { name: '▲' }).first().getAttribute('id');
+  result.countBoxId = upId;
+  if (upId && upId.endsWith('_bUp')) return page.locator(`#${upId.slice(0, -4)}`);
+  return page.locator('input[id*="txtNoofPerson" i]:visible').first();   // by hand it is ...PersoninH, by vehicle ...PersonIn
 }
 
 const fail = (msg) => { console.error(msg); process.exit(1); };
@@ -121,7 +132,7 @@ try {
       if (await filled(6000)) { result.woFilledBy = name; break; }
     }
     if (!result.woFilledBy) {
-      result.formInputs = await page.evaluate(() => [...document.querySelectorAll('input,select')].filter((e) => !['hidden', 'password'].includes(e.type)).map((e) => ({ id: e.id, type: e.type, value: e.value, options: e.tagName === 'SELECT' && e.options.length < 15 ? [...e.options].map((o) => `${o.value}=${o.text}`) : undefined })));
+      result.formInputs = await dumpFields(page);
       throw new Error('The portal did not fill in the contractor details from the WO number.');
     }
     result.contractor = (await inputAfter(page, 'Contractor Name').inputValue().catch(() => '')).trim();
@@ -131,7 +142,7 @@ try {
   await settle(page);
 
   if (job.receivedBy === 'hand') {
-    await setPersons(page, page.locator(id('txtNoofPersoninH')), 1);
+    await setPersons(page, await countBox(page, result), 1);
     await page.locator(id('txtPersonName')).fill(job.hand.name);
     await pickProof(page, id('ddlPersonProofid'), job.hand.idType);
     await page.locator(id('txtPersonPfoofid')).fill(job.hand.idNo);
@@ -142,7 +153,7 @@ try {
     await page.locator(id('txtDriverName')).fill(v.driverName);
     await page.locator(id('txtDriverDLNo')).fill(v.driverDl);
     if (v.coDriver) {
-      await setPersons(page, page.locator('input[id*="txtNoofPersonin"]:visible').first(), 1);
+      await setPersons(page, await countBox(page, result), 1);
       await pickProof(page, id('ddlIDProofType'), v.coDriver.idType);
       await page.locator(id('txtCoDriverName')).fill(v.coDriver.name);
       await page.locator(id('txtCodriverDLNo')).fill(v.coDriver.idNo);
@@ -168,6 +179,7 @@ try {
   console.log('Dry run complete: the form was filled and read back. Nothing was saved.');
 } catch (e) {
   result.error = e.message;
+  result.formInputs ??= await dumpFields(page).catch(() => undefined);
   console.error(`Dry run FAILED: ${e.message}`);
   await page.screenshot({ path: `${OUT}/failure.png`, fullPage: true }).catch(() => {});
 } finally {
