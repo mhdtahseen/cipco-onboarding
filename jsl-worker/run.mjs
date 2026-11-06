@@ -68,13 +68,29 @@ try {
   result.requisitionNoOnForm = await page.evaluate(() => [...document.querySelectorAll('input')].map((i) => i.value).find((v) => /^\d{8}-\d+$/.test(v)) || null);
 
   await page.locator(id('ddlReceivedby')).selectOption(job.receivedBy === 'hand' ? 'By Hand' : 'By Vehicle');
-  await page.locator(id('txtWorkorder')).fill(job.wo);
-  await page.locator(id('txtWorkorder')).blur();   // leaving the box is what makes the portal fill in the contractor details
-  const contractor = inputAfter(page, 'Contractor Name');
-  for (let i = 0; i < 30 && !(await contractor.inputValue()).trim(); i++) await page.waitForTimeout(500);
-  result.contractor = (await contractor.inputValue()).trim();
-  if (!result.contractor) throw new Error('The portal did not fill in the contractor details from the WO number.');
-  result.woValidity = (await inputAfter(page, 'WO Validity').inputValue()).trim();
+  // The portal fills contractor name, address and validity once the WO box is left. It may listen for key presses, which fill() never sends, so type key by key and try the ways a person would leave the box.
+  // Enter is not one of them: in an ASP.NET form it can press the default button.
+  const wo = page.locator(id('txtWorkorder'));
+  const filledCount = () => page.evaluate(() => [...document.querySelectorAll('input')].filter((i) => !['hidden', 'password', 'checkbox', 'image', 'submit', 'button'].includes(i.type) && i.value.trim()).length);
+  await wo.click();
+  await wo.pressSequentially(job.wo, { delay: 80 });
+  const before = await filledCount();
+  const filled = async (ms) => { for (let t = 0; t < ms; t += 500) { if ((await filledCount()) >= before + 3) return true; await page.waitForTimeout(500); } return false; };
+  const ways = [
+    ['tab', () => wo.press('Tab')],
+    ['click-away', () => page.getByRole('cell', { name: /^Work Order/ }).first().click()],
+    ['suggestion', async () => { const s = page.locator('li', { hasText: job.wo }).first(); if (await s.isVisible()) await s.click(); }],
+  ];
+  for (const [name, leave] of ways) {
+    await leave().catch(() => {});
+    if (await filled(6000)) { result.woFilledBy = name; break; }
+  }
+  if (!result.woFilledBy) {
+    result.formInputs = await page.evaluate(() => [...document.querySelectorAll('input,select')].filter((e) => !['hidden', 'password'].includes(e.type)).map((e) => ({ id: e.id, type: e.type, value: e.value })));
+    throw new Error('The portal did not fill in the contractor details from the WO number.');
+  }
+  result.contractor = (await inputAfter(page, 'Contractor Name').inputValue().catch(() => '')).trim();
+  result.woValidity = (await inputAfter(page, 'WO Validity').inputValue().catch(() => '')).trim();
   await page.locator(id('ddlDept')).selectOption(job.department || 'MECHANICAL');
 
   if (job.receivedBy === 'hand') {
