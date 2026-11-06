@@ -1,0 +1,10 @@
+{
+  "receivedBy": "hand",
+  "wo": "1909000093",
+  "department": "MECHANICAL",
+  "hand": { "name": "TEST PERSON", "idType": "aadhaar", "idNo": "000000000000" },
+  "items": [
+    { "name": "LPG CYLINDER 19KG", "qty": 1, "unit": "No" },
+    { "name": "TEST ITEM TWO", "qty": 2, "unit": "No" }
+  ]
+}

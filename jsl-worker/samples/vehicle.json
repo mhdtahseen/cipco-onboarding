@@ -1,0 +1,14 @@
+{
+  "receivedBy": "vehicle",
+  "wo": "1909000093",
+  "department": "MECHANICAL",
+  "vehicle": {
+    "vehicleNo": "MH00XX0000",
+    "driverName": "TEST DRIVER",
+    "driverDl": "MH0000000000000",
+    "coDriver": { "name": "TEST CODRIVER", "idType": "voter", "idNo": "TEST0000000" }
+  },
+  "items": [
+    { "name": "LPG CYLINDER 19KG", "qty": 1, "unit": "No" }
+  ]
+}

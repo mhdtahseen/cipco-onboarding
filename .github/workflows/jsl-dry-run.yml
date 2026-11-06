@@ -1,0 +1,39 @@
+name: JSL dry run
+# Manual only. Logs in to the JSL portal, fills an MRR from a sample job, reads it back and stops. It never saves, so no MRR is raised.
+# Needs the repository secrets JSL_USER and JSL_PASSWORD.
+on:
+  workflow_dispatch:
+    inputs:
+      sample:
+        description: Which sample to fill in
+        type: choice
+        options: [hand, vehicle]
+        default: hand
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: jsl-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - name: Fill the form (no save)
+        env:
+          JSL_USER: ${{ secrets.JSL_USER }}
+          JSL_PASSWORD: ${{ secrets.JSL_PASSWORD }}
+          DRY_RUN: "true"
+          SAMPLE: ${{ inputs.sample }}
+        run: node run.mjs "samples/$SAMPLE.json"
+      - name: Keep the screenshots for 3 days
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-${{ inputs.sample }}
+          path: jsl-worker/out
+          retention-days: 3

@@ -1,0 +1,7 @@
+{
+  "name": "jsl-worker",
+  "private": true,
+  "type": "module",
+  "description": "Robot that raises MRRs on the JSL portal. Runs on GitHub Actions, not in the app.",
+  "dependencies": { "playwright": "1.65.0" }
+}

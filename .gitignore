@@ -7,3 +7,5 @@ out
 
 # portal recordings contain logins
 mrr-by-*.js
+jsl-worker/node_modules
+jsl-worker/out
