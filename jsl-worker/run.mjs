@@ -7,7 +7,15 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 const LOGIN_URL = 'https://jajitapps.jindalstainless.com:8050/Login.aspx';
 const OUT = 'out';
 const id = (name) => `#ContentPlaceHolder1_${name}`;
-const PROOF = { aadhaar: '1', voter: '2' };   // the portal's values for both proof dropdowns
+const PROOF = { aadhaar: 1, voter: 1 };   // only the allowed ID kinds: the portal's option values are looked up by label
+
+// Pick an ID type by the label the portal shows, so a changed option number can never send the wrong ID type.
+async function pickProof(page, selector, kind) {
+  const src = kind === 'aadhaar' ? 'a{1,2}dh?a{1,2}r' : 'voter';
+  const val = await page.locator(selector).evaluate((el, rx) => { const o = [...el.options].find((x) => new RegExp(rx, 'i').test(x.text)); return o ? o.value : null; }, src);
+  if (val === null) throw new Error(`No "${kind}" choice in ${selector}.`);
+  await page.locator(selector).selectOption(val);
+}
 
 const fail = (msg) => { console.error(msg); process.exit(1); };
 const jobFile = process.argv[2];
@@ -52,6 +60,10 @@ const browser = await chromium.launch();
 const page = await (await browser.newContext({ locale: 'en-IN', viewport: { width: 1400, height: 1000 } })).newPage();
 page.setDefaultTimeout(20000);
 page.on('dialog', (d) => d.accept().catch(() => {}));   // the portal's alert always says ERROR even when it worked, so its text is ignored
+// Background calls the portal makes that fail (paths only, never the query or body): this is how we would see the portal refusing a GitHub server.
+result.badRequests = [];
+page.on('response', (r) => { if (r.status() >= 400 && result.badRequests.length < 15) result.badRequests.push(`${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`); });
+page.on('requestfailed', (r) => { if (result.badRequests.length < 15) result.badRequests.push(`FAILED ${r.method()} ${new URL(r.url()).pathname} ${r.failure()?.errorText}`); });
 
 try {
   await page.goto(LOGIN_URL);
@@ -74,6 +86,9 @@ try {
   const filledCount = () => page.evaluate(() => [...document.querySelectorAll('input')].filter((i) => !['hidden', 'password', 'checkbox', 'image', 'submit', 'button'].includes(i.type) && i.value.trim()).length);
   await wo.click();
   await wo.pressSequentially(job.wo, { delay: 80 });
+  result.woValueAfterTyping = await wo.inputValue();
+  result.suggestions = (await page.locator('li:visible, [role="option"]:visible').allInnerTexts().catch(() => [])).slice(0, 10);
+  await page.screenshot({ path: `${OUT}/wo-typed.png` });
   const before = await filledCount();
   const filled = async (ms) => { for (let t = 0; t < ms; t += 500) { if ((await filledCount()) >= before + 3) return true; await page.waitForTimeout(500); } return false; };
   const ways = [
@@ -86,7 +101,7 @@ try {
     if (await filled(6000)) { result.woFilledBy = name; break; }
   }
   if (!result.woFilledBy) {
-    result.formInputs = await page.evaluate(() => [...document.querySelectorAll('input,select')].filter((e) => !['hidden', 'password'].includes(e.type)).map((e) => ({ id: e.id, type: e.type, value: e.value })));
+    result.formInputs = await page.evaluate(() => [...document.querySelectorAll('input,select')].filter((e) => !['hidden', 'password'].includes(e.type)).map((e) => ({ id: e.id, type: e.type, value: e.value, options: e.tagName === 'SELECT' && e.options.length < 15 ? [...e.options].map((o) => `${o.value}=${o.text}`) : undefined })));
     throw new Error('The portal did not fill in the contractor details from the WO number.');
   }
   result.contractor = (await inputAfter(page, 'Contractor Name').inputValue().catch(() => '')).trim();
@@ -96,7 +111,7 @@ try {
   if (job.receivedBy === 'hand') {
     await setPersons(page, page.locator(id('txtNoofPersoninH')), 1);
     await page.locator(id('txtPersonName')).fill(job.hand.name);
-    await page.locator(id('ddlPersonProofid')).selectOption(PROOF[job.hand.idType]);
+    await pickProof(page, id('ddlPersonProofid'), job.hand.idType);
     await page.locator(id('txtPersonPfoofid')).fill(job.hand.idNo);
   } else {
     const v = job.vehicle;
@@ -106,7 +121,7 @@ try {
     await page.locator(id('txtDriverDLNo')).fill(v.driverDl);
     if (v.coDriver) {
       await setPersons(page, page.locator('input[id*="txtNoofPersonin"]:visible').first(), 1);
-      await page.locator(id('ddlIDProofType')).selectOption(PROOF[v.coDriver.idType]);
+      await pickProof(page, id('ddlIDProofType'), v.coDriver.idType);
       await page.locator(id('txtCoDriverName')).fill(v.coDriver.name);
       await page.locator(id('txtCodriverDLNo')).fill(v.coDriver.idNo);
     }
