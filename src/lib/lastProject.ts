@@ -1,4 +1,4 @@
-// The project last chosen on Gas cylinders or Hired equipment, remembered on this phone so moving between the two (or coming back tomorrow) does not ask again.
+// The project last chosen on Site supplies, remembered on this phone so coming back tomorrow does not ask again.
 // Only a convenience: if the project is no longer in the list, or storage is unavailable, the first project is used.
 const KEY = "cipco_last_project";
 export const keepProject = (id: string) => { try { localStorage.setItem(KEY, id); } catch { /* storage unavailable */ } };

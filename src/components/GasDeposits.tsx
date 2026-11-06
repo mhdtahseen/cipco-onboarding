@@ -1,0 +1,35 @@
+"use client";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase/client";
+import { istToday } from "@/lib/attendance";
+
+type Dep = { id: string; vendor_id: string; kind: "paid" | "refund"; amount: number; on_date: string; reference: string; note: string; voided_at: string | null };
+export type DepositProduct = { id: string; vendor_id: string; label: string; deposit: number; held: number; lost: number; everIn: number };
+const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const dmy = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+
+// The deposit paid for each cylinder (a refundable asset, never an expense), for Operations / Admin. Cylinders are not rented: a deposit is paid once per cylinder and refills are paid for separately.
+// It compares what the vendor holds with what the cylinders with us should have cost in deposit. A lost cylinder's deposit is kept by the vendor, so it comes off what they hold.
+export default function GasDeposits({ projectId, vendors, products }: { projectId: string; vendors: { id: string; name: string }[]; products: DepositProduct[] }) {
+  const today = istToday(); const [deps, setDeps] = useState<Dep[]>([]); const [err, setErr] = useState(""); const [msg, setMsg] = useState(""); const [df, setDf] = useState({ vendor_id: "", kind: "paid", amount: "", on_date: today, reference: "" });
+  async function load() { const { data, error } = await supabase().from("gas_deposits").select("*").eq("project_id", projectId).order("on_date", { ascending: false }); if (error) { setErr(error.message); return; } setDeps(((data || []) as Dep[]).map((q) => ({ ...q, amount: Number(q.amount) }))); setErr(""); }
+  useEffect(() => { load(); }, [projectId]);
+  const note = (m: string) => { setMsg(m); setTimeout(() => setMsg(""), 5000); }; const vName = (id: string) => vendors.find((v) => v.id === id)?.name ?? "?";
+  async function add() { const a = parseFloat(df.amount); if (!df.vendor_id || !(a > 0)) { setErr("Choose the vendor and enter the amount."); return; } setErr(""); const { error } = await supabase().from("gas_deposits").insert({ vendor_id: df.vendor_id, project_id: projectId, kind: df.kind, amount: a, on_date: df.on_date, reference: df.reference.trim() }); if (error) { setErr(error.message); return; } setDf({ ...df, amount: "", reference: "" }); note(df.kind === "paid" ? "Deposit recorded ✓" : "Refund recorded ✓"); load(); }
+  async function voidRow(id: string) { if (!confirm("Void this entry? It stays in the list, marked void.")) return; const { error } = await supabase().from("gas_deposits").update({ voided_at: new Date().toISOString() }).eq("id", id); if (error) { setErr(error.message); return; } note("Voided ✓"); load(); }
+  return (
+    <div className="space-y-4">
+      {err && <p className="warn" role="alert">{err}</p>}{msg && <p className="text-sm text-green-700" role="status">{msg}</p>}
+      {!vendors.length && <p className="text-sm text-slate-500">No gas vendor is set up for this project yet.</p>}
+      {vendors.map((v) => { const mine = deps.filter((d) => d.vendor_id === v.id && !d.voided_at), paid = mine.filter((d) => d.kind === "paid").reduce((s, d) => s + d.amount, 0), back = mine.filter((d) => d.kind === "refund").reduce((s, d) => s + d.amount, 0); const prods = products.filter((p) => p.vendor_id === v.id);
+        const kept = prods.reduce((s, p) => s + p.lost * p.deposit, 0), expected = prods.reduce((s, p) => s + p.held * p.deposit, 0), holds = paid - back - kept, gap = expected - holds, notYet = holds > 0 && prods.every((p) => !p.everIn); return (
+        <section key={v.id} className="card !p-3 space-y-3"><div className="font-medium">{v.name}</div>
+          <div className="grid gap-2 grid-cols-2 lg:grid-cols-4">{([["Paid", paid], ["Refunded", back], ["Kept for lost cylinders", kept], ["Vendor holds", holds]] as [string, number][]).map(([l, n]) => <div key={l} className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-slate-500">{l}</div><div className="text-lg font-medium tabular-nums">₹{inr(n)}</div></div>)}</div>
+          <ul className="text-sm space-y-0.5">{prods.map((p) => <li key={p.id} className="flex flex-wrap gap-x-2"><span className="font-medium">{p.label}</span><span className="text-slate-600">{p.held} with us × ₹{inr(p.deposit)} = ₹{inr(p.held * p.deposit)}</span>{p.lost > 0 && <span className="text-slate-500">· {p.lost} lost</span>}</li>)}</ul>
+          <p className={`text-sm rounded-xl px-3 py-2 ${notYet ? "bg-slate-50 text-slate-700" : Math.abs(gap) < 1 ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>{notYet ? `₹${inr(holds)} paid in advance. No cylinders are recorded yet, so there is nothing to check it against.` : Math.abs(gap) < 1 ? `✓ Matches: the cylinders with us should have ₹${inr(expected)} in deposit.` : gap > 0 ? `₹${inr(gap)} more deposit is due: the cylinders with us should have ₹${inr(expected)}, and the vendor holds ₹${inr(holds)}.` : `The vendor holds ₹${inr(-gap)} more than the cylinders with us need (₹${inr(expected)}). It is due back unless more cylinders are coming.`}</p></section>); })}
+      <section className="card !p-3 space-y-3"><div className="font-medium">Record a deposit or refund</div>
+        <div className="flex flex-wrap items-end gap-2"><div><label className="lbl">Vendor</label><select className="inp !w-48" value={df.vendor_id} onChange={(e) => setDf({ ...df, vendor_id: e.target.value })}><option value="">Choose…</option>{vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></div><div><label className="lbl">Type</label><select className="inp !w-40" value={df.kind} onChange={(e) => setDf({ ...df, kind: e.target.value })}><option value="paid">Deposit paid</option><option value="refund">Refund received</option></select></div><div><label className="lbl">Amount (₹)</label><input className="inp !w-32" inputMode="decimal" value={df.amount} onChange={(e) => setDf({ ...df, amount: e.target.value.replace(/[^\d.]/g, "") })} /></div><div><label className="lbl">Date</label><input type="date" className="inp" max={today} value={df.on_date} onChange={(e) => setDf({ ...df, on_date: e.target.value })} /></div><div><label className="lbl">Reference</label><input className="inp !w-36" value={df.reference} onChange={(e) => setDf({ ...df, reference: e.target.value })} /></div><button className="btn btn-primary" onClick={add}>Save</button></div>
+        {deps.length > 0 && <ul className="text-sm space-y-1">{deps.map((d) => <li key={d.id} className={`flex flex-wrap items-center gap-2 ${d.voided_at ? "opacity-60 line-through" : ""}`}><span>{dmy(d.on_date)}</span><b>{vName(d.vendor_id)}</b><span>{d.kind === "paid" ? "deposit paid" : "refund received"}</span><span className="tabular-nums">₹{inr(d.amount)}</span><span className="text-slate-500">{d.reference}{d.note ? ` · ${d.note}` : ""}</span>{!d.voided_at && <button className="tlink tlink-danger" onClick={() => voidRow(d.id)}>Void</button>}</li>)}</ul>}</section>
+    </div>
+  );
+}

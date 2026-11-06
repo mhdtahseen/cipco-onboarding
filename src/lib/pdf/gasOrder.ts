@@ -7,7 +7,7 @@ export type GasOrderPdf = {
   orderNo: string; orderedOn: string; neededBy: string | null; projectName: string; projectLocation: string;
   vendor: { name: string; contact: string; phone: string; gstin: string; address?: string };
   lines: { product: string; capacity: string; qty: number; rate: number; gst: number }[];
-  terms: { deposits: { product: string; amount: number }[]; rent: number; postRent: number; graceDays: number; loss: number; damage: number; chargesGst: number; transport: number; dueFirst: number; dueSecond: number; note: string; noticeHours: number; freeMin: number } | null;
+  terms: { deposits: { product: string; amount: number }[]; loss: number; damage: number; chargesGst: number; transport: number; dueFirst: number; dueSecond: number; note: string; noticeHours: number; freeMin: number } | null;
 };
 
 const W = 595.28, H = 841.89, M = 40, BOTTOM = 60;
@@ -52,8 +52,8 @@ export async function buildGasOrder(o: GasOrderPdf): Promise<Uint8Array> {
   const m2 = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   sum(`Cylinders ordered: ${cyl}   ·   Amount before GST`, `₹${m2(sub)}`); sum("GST", `₹${m2(gst)}`); sum("Order total", `₹${m2(sub + gst)}`, true);
   if (o.terms && o.terms.transport > 0) {   // not part of the cylinder total: it is charged for each delivery trip, so the vendor and the site both see it before the first delivery
-    const tg = o.terms.transport * (1 + o.terms.chargesGst / 100); need(16);
-    text(`Plus transport: ₹${m2(o.terms.transport)} per delivery trip${o.terms.chargesGst > 0 ? ` + ${o.terms.chargesGst}% GST = ₹${m2(tg)}` : ""}, charged on delivery`, cx.amt, { right: true, size: 8.5, color: mute }); y -= 14;
+    need(16);
+    text(`Plus transport: ₹${m2(o.terms.transport)} per delivery trip, no GST, charged on delivery`, cx.amt, { right: true, size: 8.5, color: mute }); y -= 14;
   }
   y -= 8;
 
@@ -63,9 +63,7 @@ export async function buildGasOrder(o: GasOrderPdf): Promise<Uint8Array> {
     const rows: string[] = [];
     if (t.deposits.length) rows.push(`Cylinder deposit (refundable when the cylinders are returned in the same condition): ${t.deposits.map((d) => `${d.product} ₹${fmtMoney(d.amount)}`).join(", ")} per cylinder.`);
     if (t.noticeHours > 0 || t.freeMin > 0) rows.push(`${t.noticeHours > 0 ? `Please give us at least ${t.noticeHours} hours' notice before cylinders are needed. ` : ""}${t.freeMin > 0 ? `Delivery is free from ${t.freeMin} cylinders in one order.` : ""}`.trim());
-    if (t.transport > 0) rows.push(`Transportation is charged at ₹${fmtMoney(t.transport)} per trip${t.chargesGst > 0 ? `, plus ${t.chargesGst}% GST` : ""}.`);
-    if (t.rent > 0) rows.push(`Cylinder rent of ₹${fmtMoney(t.rent)} per cylinder per day applies to a cylinder not rotated often enough in a month, as per your quotation.`);
-    if (t.postRent > 0) rows.push(`When the project is over, cylinders are returned within ${t.graceDays} days; after that ₹${fmtMoney(t.postRent)} per cylinder per day is payable as rent.`);
+    if (t.transport > 0) rows.push(`Transportation is charged at ₹${fmtMoney(t.transport)} per trip, with no GST.`);
     if (t.loss > 0) rows.push(`A cylinder lost on site is charged at ₹${fmtMoney(t.loss)}${t.chargesGst > 0 ? ` + ${t.chargesGst}% GST` : ""}.`);
     if (t.damage > 0) rows.push(`A cylinder whose valve and cap are damaged on site is charged at ₹${fmtMoney(t.damage)}${t.chargesGst > 0 ? ` + ${t.chargesGst}% GST` : ""}.`);
     rows.push("The rates above are those in force when this order was approved. Please quote this order number on every challan and invoice.");

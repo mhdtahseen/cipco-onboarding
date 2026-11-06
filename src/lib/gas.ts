@@ -4,9 +4,8 @@ export type GMove = { vendor_id: string; product_id: string; order_id: string | 
 export type GOrder = { id: string; gas_order_lines: { id: string; product_id: string; qty: number }[] };
 export type GPricing = { line_id: string; rate: number; gst_pct: number };
 export type GRate = { product_id: string; rate: number; gst_pct: number; valid_from: string };
-export type GProduct = { id: string; vendor_id: string; name: string; capacity?: string };
+export type GProduct = { id: string; vendor_id: string; name: string; capacity?: string; deposit_per_cylinder?: number };
 export type GTerms = { vendor_id: string; loss_charge_per_cylinder: number; damage_charge_per_cylinder: number; charges_gst_pct: number; transport_per_trip: number };
-export type GRent = { vendor_id: string; period_to: string; amount: number };
 
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
@@ -20,14 +19,14 @@ export function countTrips(moves: Pick<GMove, "vendor_id" | "kind" | "moved_on" 
   return trips.size;
 }
 
-export type GasCost = { cylinders: number; cylinderAmount: number; lost: number; lostAmount: number; damaged: number; damagedAmount: number; trips: number; transportAmount: number; rent: number; total: number; unpriced: number; lines: string[] };
+export type GasCost = { cylinders: number; cylinderAmount: number; lost: number; lostAmount: number; damaged: number; damagedAmount: number; trips: number; transportAmount: number; total: number; unpriced: number; lines: string[] };
 
-/** Everything a vendor can charge for the deliveries and incidents of one project between two dates (or all dates), GST included.
+/** Cylinders are not rented: a deposit is paid per cylinder (tracked apart, not a cost) and refills are paid for as they arrive. Everything a vendor can charge for the deliveries and incidents of one project between two dates (or all dates), GST included.
  *  A delivery linked to an order is priced at the rate locked when that order was approved; any other delivery at the rate in force on its delivery date. */
-export function gasCost(i: { moves: GMove[]; orders: GOrder[]; pricing: GPricing[]; rates: GRate[]; products: GProduct[]; terms: GTerms[]; rent: GRent[]; vendorId?: string; from?: string; to?: string; label?: (productId: string) => string }): GasCost {
+export function gasCost(i: { moves: GMove[]; orders: GOrder[]; pricing: GPricing[]; rates: GRate[]; products: GProduct[]; terms: GTerms[]; vendorId?: string; from?: string; to?: string; label?: (productId: string) => string }): GasCost {
   const live = i.moves.filter((m) => !m.voided_at && (!i.vendorId || m.vendor_id === i.vendorId) && (!i.from || m.moved_on >= i.from) && (!i.to || m.moved_on <= i.to));
   const label = i.label ?? ((id: string) => i.products.find((p) => p.id === id)?.name ?? "?"); const lines: string[] = [];
-  const out: GasCost = { cylinders: 0, cylinderAmount: 0, lost: 0, lostAmount: 0, damaged: 0, damagedAmount: 0, trips: 0, transportAmount: 0, rent: 0, total: 0, unpriced: 0, lines };
+  const out: GasCost = { cylinders: 0, cylinderAmount: 0, lost: 0, lostAmount: 0, damaged: 0, damagedAmount: 0, trips: 0, transportAmount: 0, total: 0, unpriced: 0, lines };
   const priceOf = (lineId: string) => i.pricing.find((p) => p.line_id === lineId);
   i.products.filter((p) => !i.vendorId || p.vendor_id === i.vendorId).forEach((p) => {
     let qty = 0, sum = 0;
@@ -42,13 +41,12 @@ export function gasCost(i: { moves: GMove[]; orders: GOrder[]; pricing: GPricing
   const vendors = [...new Set(live.map((m) => m.vendor_id))];
   vendors.forEach((vid) => {
     const t = i.terms.find((x) => x.vendor_id === vid); if (!t) return; const gstF = 1 + (t.charges_gst_pct ?? 0) / 100; const mine = live.filter((m) => m.vendor_id === vid);
-    const lost = mine.filter((m) => m.kind === "lost").reduce((s, m) => s + m.qty, 0), dmg = mine.filter((m) => m.kind === "damaged").reduce((s, m) => s + m.qty, 0), trips = countTrips(mine);
-    if (lost && t.loss_charge_per_cylinder > 0) { const c = lost * t.loss_charge_per_cylinder * gstF; lines.push(`${lost} lost × ₹${inr(t.loss_charge_per_cylinder)} + ${t.charges_gst_pct}% GST → ₹${inr(c)}`); out.lost += lost; out.lostAmount += c; }
+    const dmg = mine.filter((m) => m.kind === "damaged").reduce((s, m) => s + m.qty, 0), trips = countTrips(mine);
+    // a lost cylinder: the vendor keeps its deposit and we pay the rest of the lost-cylinder charge
+    if (t.loss_charge_per_cylinder > 0) i.products.filter((p) => p.vendor_id === vid).forEach((p) => { const n = mine.filter((m) => m.kind === "lost" && m.product_id === p.id).reduce((s, m) => s + m.qty, 0); if (!n) return; const dep = Number(p.deposit_per_cylinder ?? 0), c = Math.max(0, n * (t.loss_charge_per_cylinder * gstF - dep)); lines.push(`${n} ${label(p.id)} lost × ₹${inr(t.loss_charge_per_cylinder)} + ${t.charges_gst_pct}% GST${dep ? `, less the ₹${inr(dep)} deposit the vendor keeps` : ""} → ₹${inr(c)}`); out.lost += n; out.lostAmount += c; });
     if (dmg && t.damage_charge_per_cylinder > 0) { const c = dmg * t.damage_charge_per_cylinder * gstF; lines.push(`${dmg} with valve / cap damaged × ₹${inr(t.damage_charge_per_cylinder)} + ${t.charges_gst_pct}% GST → ₹${inr(c)}`); out.damaged += dmg; out.damagedAmount += c; }
-    if (trips && t.transport_per_trip > 0) { const c = trips * t.transport_per_trip * gstF; lines.push(`${trips} delivery trip${trips === 1 ? "" : "s"} × ₹${inr(t.transport_per_trip)} transport + ${t.charges_gst_pct}% GST → ₹${inr(c)}`); out.trips += trips; out.transportAmount += c; }
+    if (trips && t.transport_per_trip > 0) { const c = trips * t.transport_per_trip; lines.push(`${trips} delivery trip${trips === 1 ? "" : "s"} × ₹${inr(t.transport_per_trip)} transport, no GST → ₹${inr(c)}`); out.trips += trips; out.transportAmount += c; }
   });
-  out.rent = i.rent.filter((r) => (!i.vendorId || r.vendor_id === i.vendorId) && (!i.from || r.period_to >= i.from) && (!i.to || r.period_to <= i.to)).reduce((s, r) => s + r.amount, 0);
-  if (out.rent) lines.push(`Rent the vendor charged (entered under Deposits & rent) → ₹${inr(out.rent)}`);
-  out.total = out.cylinderAmount + out.lostAmount + out.damagedAmount + out.transportAmount + out.rent;
+  out.total = out.cylinderAmount + out.lostAmount + out.damagedAmount + out.transportAmount;
   return out;
 }

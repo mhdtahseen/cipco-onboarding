@@ -13,10 +13,10 @@ export type NavItem = {
   bar?: boolean | NavRole[];   // also shown on the phone's bottom bar (the first four that a role can see): true for every role, or only for the listed roles
 };
 
-export const NAV_SECTIONS = ["People", "Operations", "Site consumables", "Sales", "Templates", "Admin"] as const;
+export const NAV_SECTIONS = ["People", "Operations", "Sales", "Templates", "Admin"] as const;
 
-// Gas cylinders and Hired equipment are built for Supervisors and Site Engineers too (phone layout, bottom bar, their own limited views) but are switched off for them for now.
-// To open them up, set this to true: the menu, the phone bottom bar, the page guard and the gas routes all follow it. Operations and Admin always have both.
+// Site supplies (gas cylinders and hired equipment) is built for Supervisors and Site Engineers too (phone layout, bottom bar, their own limited views) but is switched off for them for now.
+// To open it up, set this to true: the menu, the phone bottom bar, the page guard and the gas routes all follow it. Operations and Admin always have it.
 const SITE_ROLES_GET_CONSUMABLES = false;
 const CONSUMABLES_ROLES: NavRole[] = SITE_ROLES_GET_CONSUMABLES ? ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"] : ["admin", "staff", "viewer"];
 const CONSUMABLES_BAR: NavRole[] = SITE_ROLES_GET_CONSUMABLES ? ["site_engineer", "supervisor", "attendance"] : [];
@@ -30,8 +30,7 @@ export const NAV: NavItem[] = [
   { href: "/transport", label: "Transport", icon: "truck", section: "Operations", roles: ["admin", "viewer"], paths: ["/transport"] },
   { href: "/meals", label: "Meals", icon: "utensils", section: "Operations", roles: ["admin", "viewer"], paths: ["/meals"] },
   { href: "/accommodation", label: "Accommodation", icon: "bed", section: "Operations", roles: ["admin", "viewer"], paths: ["/accommodation"] },
-  { href: "/gas", label: "Gas cylinders", icon: "cylinder", section: "Site consumables", roles: CONSUMABLES_ROLES, paths: ["/gas", "/api/gas"], bar: CONSUMABLES_BAR },
-  { href: "/equipment", label: "Hired equipment", icon: "wrench", section: "Site consumables", roles: CONSUMABLES_ROLES, paths: ["/equipment"], bar: CONSUMABLES_BAR },
+  { href: "/site-supplies", label: "Site supplies", icon: "cylinder", section: "Operations", roles: CONSUMABLES_ROLES, paths: ["/site-supplies", "/gas", "/equipment", "/api/gas"], bar: CONSUMABLES_BAR },
   { href: "/inventory", label: "Inventory", icon: "box", section: "Operations", roles: ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"], paths: ["/inventory", "/api/inventory"], bar: ["site_engineer", "supervisor", "attendance"] },
   { href: "/payments-due", label: "Payments due", icon: "calendar", section: "Operations", roles: ["admin", "viewer"], paths: ["/payments-due"] },
   { href: "/quotations", label: "Quotations", icon: "file", section: "Sales", roles: ["admin", "staff", "viewer"], paths: ["/quotations"], bar: true },

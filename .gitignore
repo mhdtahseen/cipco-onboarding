@@ -9,3 +9,6 @@ out
 mrr-by-*.js
 jsl-worker/node_modules
 jsl-worker/out
+
+# macOS folder settings
+.DS_Store

@@ -4,7 +4,7 @@ import { chargeOf, monthOf, monthsBilled, type Adjustment, type Landlord, type R
 import { creditWindow, monthName, statDue, statutoryTotals } from "./payroll";
 import type { Bank, NotIncluded, Payee, ProjectDues } from "./pdf/paymentsDue";
 import { bankFor } from "./payee";
-import { gasCost, type GMove, type GOrder, type GPricing, type GProduct, type GRate, type GRent, type GTerms } from "./gas";
+import { gasCost, type GMove, type GOrder, type GPricing, type GProduct, type GRate, type GTerms } from "./gas";
 import { chargeFor, type EqLog, type EqRate } from "./equipment";
 import type { DueItem } from "./paymentsDueLabels";
 
@@ -114,10 +114,10 @@ export async function loadPaymentsDue(sb: SupabaseClient): Promise<PaymentsDue> 
     soft<any>(() => sb.from("gas_terms").select("*")),
   ]);
   // what this month has delivered or logged and no bill covers yet ("running")
-  const [gmoves, gorders, gpricing, grates, gprods, grent, elogs, eitems, erates] = await Promise.all([
+  const [gmoves, gorders, gpricing, grates, gprods, elogs, eitems, erates] = await Promise.all([
     soft<any>(() => sb.from("gas_movements").select("project_id, vendor_id, product_id, order_id, kind, qty, moved_on, challan_no, voided_at").gte("moved_on", monthStart).is("voided_at", null)),
     soft<any>(() => sb.from("gas_orders").select("id, gas_order_lines(id, product_id, qty)")), soft<any>(() => sb.from("gas_order_pricing").select("line_id, rate, gst_pct")), soft<any>(() => sb.from("gas_rates").select("product_id, rate, gst_pct, valid_from")),
-    soft<any>(() => sb.from("gas_products").select("id, vendor_id, name")), soft<any>(() => sb.from("gas_rent_billed").select("vendor_id, project_id, period_to, amount").is("voided_at", null)),
+    soft<any>(() => sb.from("gas_products").select("id, vendor_id, name, deposit_per_cylinder")),
     soft<any>(() => sb.from("equipment_logs").select("project_id, vendor_id, item_id, work_date, start_at, end_at, voided_at, verified_at").gte("work_date", monthStart).is("voided_at", null)), soft<any>(() => sb.from("equipment_items").select("id, vendor_id")), soft<any>(() => sb.from("equipment_rates").select("*")),
   ]);
   const gtermsN: GTerms[] = gterms.map((t: any) => ({ vendor_id: t.vendor_id, loss_charge_per_cylinder: num(t.loss_charge_per_cylinder), damage_charge_per_cylinder: num(t.damage_charge_per_cylinder), charges_gst_pct: num(t.charges_gst_pct), transport_per_trip: num(t.transport_per_trip) }));
@@ -125,7 +125,7 @@ export async function loadPaymentsDue(sb: SupabaseClient): Promise<PaymentsDue> 
   const runningFor = (vid: string, pid: string, kind: string, periods: { from: string; to: string }[]): number => {
     const ranges = uncovered(monthStart, today, periods.filter((p) => p.to >= monthStart && p.from <= today)); let total = 0;
     ranges.forEach(([from, to]) => {
-      if (kind === "gas") total += gasCost({ moves: gmoves.filter((m: any) => m.project_id === pid && m.vendor_id === vid) as GMove[], orders: gorders as GOrder[], pricing: gpricing.map((x: any) => ({ ...x, rate: num(x.rate), gst_pct: num(x.gst_pct) })) as GPricing[], rates: grates.map((x: any) => ({ ...x, rate: num(x.rate), gst_pct: num(x.gst_pct) })) as GRate[], products: gprods as GProduct[], terms: gtermsN, rent: grent.filter((r: any) => r.project_id === pid).map((r: any) => ({ ...r, amount: num(r.amount) })) as GRent[], vendorId: vid, from, to }).total;
+      if (kind === "gas") total += gasCost({ moves: gmoves.filter((m: any) => m.project_id === pid && m.vendor_id === vid) as GMove[], orders: gorders as GOrder[], pricing: gpricing.map((x: any) => ({ ...x, rate: num(x.rate), gst_pct: num(x.gst_pct) })) as GPricing[], rates: grates.map((x: any) => ({ ...x, rate: num(x.rate), gst_pct: num(x.gst_pct) })) as GRate[], products: gprods.map((p: any) => ({ ...p, deposit_per_cylinder: num(p.deposit_per_cylinder) })) as GProduct[], terms: gtermsN, vendorId: vid, from, to }).total;
       else { const t = chargeFor(elogs.filter((l: any) => l.project_id === pid && l.vendor_id === vid) as EqLog[], eqRates, new Set(eitems.filter((i: any) => i.vendor_id === vid).map((i: any) => i.id)), from, to); total += t.amount + t.gst; }
     });
     return total;
