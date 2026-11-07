@@ -86,6 +86,10 @@ await scenario('happy path, by hand', {}, ({ r, portal, app, result }) => {
 await scenario('happy path, by vehicle with a co-driver', { job: VEH }, ({ r, portal, app }) => {
   ok('exit 0 and submitted', r.code === 0 && app.st.status === 'submitted', r.out.slice(-400)); ok('one new requisition', newCount(portal) === 1);
 });
+await scenario('item names with an inch mark (the portal turns " into two single quotes)', { job: { ...HAND, items: [{ name: 'PU WHEEL 6"', qty: 1, unit: 'No' }, { name: 'PU WHEEL 6" WITH BRACKET', qty: 2, unit: 'No' }, { name: 'EAR PLUG', qty: 1, unit: 'No' }] } }, ({ r, portal, app }) => {
+  ok('the items are recognised despite the rewrite: sent and confirmed', r.code === 0 && app.st.status === 'submitted' && newCount(portal) === 1, r.out.slice(-300));
+  ok('what the portal stored has the rewritten quotes', /PU WHEEL 6'' x 1 No; PU WHEEL 6'' WITH BRACKET x 2 No/.test(portal.state.lastSave.items), portal.state.lastSave?.items);
+});
 await scenario('nothing exists on the portal yet today (the Report says No Record Found)', { portal: { startEmpty: true } }, ({ r, portal, app }) => {
   ok('an empty Report is fine: sent and confirmed', r.code === 0 && app.st.status === 'submitted' && newCount(portal) === 1, r.out.slice(-300));
 });

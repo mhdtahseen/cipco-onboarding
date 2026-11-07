@@ -257,10 +257,12 @@ async function fillForm(page, job, result) {
   }
 
   // Read the item list back: each name must appear as many times as the job has it (two lines can share a name).
-  const listText = (await page.locator(id('pnlMaterial')).innerText()).toUpperCase();
-  if (MODE === 'dry') result.itemListText = listText.replace(/\s+/g, ' ').slice(0, 600);   // sample data only: shows how the portal spells what was typed (a real send never prints it)
+  // The portal rewrites some characters when it stores a name: a double quote (the inch mark, PU WHEEL 6") comes back as two single quotes (6''). Compare in that form on both sides.
+  const norm = (t) => String(t).toUpperCase().replace(/"/g, "''").replace(/'+/g, "'").replace(/\s+/g, ' ').trim();
+  const listText = norm(await page.locator(id('pnlMaterial')).innerText());
+  if (MODE === 'dry') result.itemListText = listText.slice(0, 600);   // sample data only: shows how the portal spells what was typed (a real send never prints it)
   const count = (s, sub) => s.split(sub).length - 1;
-  result.itemsMissing = [...new Set(job.items.map((i) => i.name))].filter((n) => count(listText, n.toUpperCase()) < job.items.filter((i) => i.name === n).length);
+  result.itemsMissing = [...new Set(job.items.map((i) => i.name))].filter((n) => count(listText, norm(n)) < job.items.filter((i) => i.name === n).length);
   if (result.itemsMissing.length) throw new Error(`Items not shown in the portal's list: ${result.itemsMissing.length} of ${new Set(job.items.map((i) => i.name)).size} missing.`);
   // The longest text each box accepts, so the app can refuse what the portal would cut off.
   result.fieldLimits = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('input')].filter((e) => ['text', ''].includes(e.type) && e.maxLength > 0 && e.maxLength < 1000).map((e) => [e.id.replace('ContentPlaceHolder1_', ''), e.maxLength])));
