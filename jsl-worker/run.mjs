@@ -23,6 +23,7 @@ const id = (name) => `#ContentPlaceHolder1_${name}`;
 const UNITS = ['FT', 'Inch', 'Kg', 'Meter', 'mm', 'MT', 'No', 'Pcs'];   // the portal's unit dropdown, spelled as it spells them
 const PROOF = { aadhaar: 1, voter: 1 };   // only the allowed ID kinds: the portal's option values are looked up by label
 const REQ_NO = /\b\d{8}-\d+\b/g;          // a requisition number, e.g. 05112026-003
+const COLUMN = /Requ\w*\s*No\b/i;           // the Report's first column. The portal spells it "Requistion No" (a letter short), so match both
 
 // Pick an ID type by the label the portal shows, so a changed option number can never send the wrong ID type.
 async function pickProof(page, selector, kind) {
@@ -123,10 +124,14 @@ async function readReport(page, job, result, label) {
   await settle(page);
   // The list arrives a moment after the click, and a long one can take several seconds: wait until the page shows either the list's column or the "nothing found" notice.
   const read = async () => (await page.locator('body').innerText());
-  const settled = (t) => /Requisition\s*No/i.test(t) || (/Material Requisition Report/i.test(t) && /No Record Found/i.test(t));
+  const settled = (t) => COLUMN.test(t) || (/Material Requisition Report/i.test(t) && /No Record Found/i.test(t));
   let text = await read();
   for (let t = 0; t < Number(process.env.REPORT_WAIT_MS || 20000) && !settled(text); t += 1000) { await page.waitForTimeout(1000); text = await read(); }
-  if (!settled(text)) throw new Error('The Report did not show a "Requisition No" column or its "No Record Found" notice.');
+  if (!settled(text)) {
+    // Only the shape of the page, never its rows: the Report lists real people. Lines about requisitions and the headings, digits masked.
+    result.reportShape = text.split('\n').map((l) => l.trim()).filter((l) => /requ|record|report|error|invalid|select/i.test(l)).slice(0, 8).map((l) => l.slice(0, 80).replace(/\d/g, '#'));
+    throw new Error('The Report did not show a "Requisition No" column or its "No Record Found" notice.');
+  }
   // A number can wrap over two lines in a narrow column ("06112026-" then "001"): join it up. One MRR with several items repeats its number once per item, which the set takes care of.
   const nums = [...new Set(text.replace(/(\d{8}-)\s+(?=\d)/g, '$1').match(REQ_NO) || [])];
   result[label] = { count: nums.length, last: nums.slice(-3) };
@@ -285,7 +290,7 @@ async function dryRun() {
   try {
     await login(page);
     // Safe discovery of the Report: read it before and after filling the form. Nothing is saved, so the numbers must not change.
-    let before = null; try { before = await readReport(page, job, result, 'reportBefore'); } catch (e) { result.reportError = e.message; await page.screenshot({ path: `${OUT}/report-problem.png`, fullPage: true }).catch(() => {}); }
+    let before = null; try { before = await readReport(page, job, result, 'reportBefore'); } catch (e) { result.reportError = e.message; }   // no screenshot: the Report page lists real people and this repository is public
     await fillForm(page, job, result);
     await page.screenshot({ path: `${OUT}/form.png`, fullPage: true });
     if (before) {
@@ -298,7 +303,7 @@ async function dryRun() {
     result.error = e.message;
     result.formInputs ??= await dumpFields(page).catch(() => undefined);
     console.error(`Dry run FAILED: ${e.message}`);
-    await page.screenshot({ path: `${OUT}/failure.png`, fullPage: true }).catch(() => {});
+    if (!(await page.locator(id('ddlReportType')).count().catch(() => 0))) await page.screenshot({ path: `${OUT}/failure.png`, fullPage: true }).catch(() => {});   // never of the Report page
   } finally {
     writeFileSync(`${OUT}/result.json`, JSON.stringify(result, null, 2));
     log(JSON.stringify(result, null, 2));
