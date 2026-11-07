@@ -50,7 +50,7 @@ async function scenario(name, { job = HAND, portal: pf = {}, app: af = {}, env =
   const leaked = /111122223333|ABC1234567|RAMESH|MH12AB1234|MH1220200000000|SUNIL/.test(r.out + JSON.stringify(result)); ok(`${name}: nothing personal in the output`, !leaked);
   await portal.stop(); await app.stop();
 }
-const newCount = (p) => p.state.requisitions.length - 3;
+const newCount = (p) => p.state.requisitions.length - (p.state.flags.startEmpty ? 0 : 3);
 
 // ---------- the dry run (no Save) ----------
 {
@@ -84,6 +84,9 @@ await scenario('happy path, by hand', {}, ({ r, portal, app, result }) => {
 });
 await scenario('happy path, by vehicle with a co-driver', { job: VEH }, ({ r, portal, app }) => {
   ok('exit 0 and submitted', r.code === 0 && app.st.status === 'submitted', r.out.slice(-400)); ok('one new requisition', newCount(portal) === 1);
+});
+await scenario('nothing exists on the portal yet today (the Report says No Record Found)', { portal: { startEmpty: true } }, ({ r, portal, app }) => {
+  ok('an empty Report is fine: sent and confirmed', r.code === 0 && app.st.status === 'submitted' && newCount(portal) === 1, r.out.slice(-300));
 });
 await scenario('the portal is slow to show the new requisition (3 reads)', { portal: { lagReports: 2 }, env: { CONFIRM_TRIES: '5' } }, ({ r, portal, app }) => {
   ok('found on a later read: submitted', r.code === 0 && app.st.status === 'submitted', r.out.slice(-300)); ok('it did not save twice', portal.state.saves === 1);

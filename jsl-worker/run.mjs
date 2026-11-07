@@ -116,7 +116,9 @@ async function readReport(page, job, result, label) {
   await page.getByRole('button', { name: 'Retrieve' }).click();
   await settle(page);
   const text = await page.locator('body').innerText();
-  if (!/Requisition\s*No/i.test(text)) throw new Error('The Report did not show a "Requisition No" column.');
+  // Two shapes are the real Report: a list with a "Requisition No" column, or its own heading with "No Record Found!" when nothing exists yet for the dates. Anything else is not trusted.
+  const isReport = /Material Requisition Report/i.test(text);
+  if (!(isReport && /No Record Found/i.test(text)) && !/Requisition\s*No/i.test(text)) throw new Error('The Report did not show a "Requisition No" column or its "No Record Found" notice.');
   const nums = [...new Set(text.match(REQ_NO) || [])];
   result[label] = { count: nums.length, last: nums.slice(-3) };
   return new Set(nums);

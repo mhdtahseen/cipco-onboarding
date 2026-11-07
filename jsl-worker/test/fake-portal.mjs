@@ -4,7 +4,7 @@
 import http from 'node:http';
 
 export function startPortal(flags = {}) {
-  const state = { requisitions: [{ no: '05112026-001', items: 'OLD' }, { no: '05112026-002', items: 'OLD' }, { no: '06112026-001', items: 'OLD' }], saves: 0, logins: 0, reportReads: 0, hiddenReads: 0, flags: { maxLen: 100, ...flags }, lastSave: null };
+  const state = { requisitions: flags.startEmpty ? [] : [{ no: '05112026-001', items: 'OLD' }, { no: '05112026-002', items: 'OLD' }, { no: '06112026-001', items: 'OLD' }], saves: 0, logins: 0, reportReads: 0, hiddenReads: 0, flags: { maxLen: 100, ...flags }, lastSave: null };
   const nextNo = () => `07112026-${String(state.requisitions.filter((r) => r.no.startsWith('07112026')).length + 4).padStart(3, '0')}`;
   const server = http.createServer(async (req, res) => {
     const u = new URL(req.url, 'http://x');
@@ -65,5 +65,5 @@ $(P+'ImgAdd').onclick=()=>{const n=$(P+'txtMaterialnm').value,q=$(P+'txtQty').va
 $(P+'ImgSave').onclick=async()=>{ await fetch('/api/save',{method:'POST',body:JSON.stringify({no:$(P+'txtReqNo').value,items:items.join('; '),by:$(P+'ddlReceivedby').value,wo:$(P+'txtWorkorder').value})}); alert('ERROR'); };
 $(P+'ibtn_Close').onclick=()=>show('matHome');
 ['txtFrom','txtTo'].forEach((b,i)=>{ $(P+b).onclick=()=>{ $('cal'+(i+1)).hidden=false; }; $('today'+(i+1)).onclick=()=>{ $(P+b).value='07/11/2026'; $('cal'+(i+1)).hidden=true; }; });
-$('retr').onclick=async()=>{ if(!$(P+'txtFrom').value||!$(P+'txtTo').value){ $('table').innerHTML='<p>Select dates</p>'; return; } const r=await (await fetch('/api/report')).json(); $('table').innerHTML = r.broken ? '<p>Something went wrong</p>' : '<table><tr><th>Requisition No</th><th>Material Code</th></tr>'+r.rows.map(n=>'<tr><td>'+n+'</td><td>MC-'+n.slice(-3)+'</td></tr>').join('')+'</table>'; };
+$('retr').onclick=async()=>{ if(!$(P+'txtFrom').value||!$(P+'txtTo').value){ $('table').innerHTML='<p>Select dates</p>'; return; } const r=await (await fetch('/api/report')).json(); $('table').innerHTML = r.broken ? '<p>Something went wrong</p>' : !r.rows.length ? '<h3>Material Requisition Report Date Wise</h3><p>No Record Found!</p>' : '<h3>Material Requisition Report Date Wise</h3><table><tr><th>Requisition No</th><th>Material Code</th></tr>'+r.rows.map(n=>'<tr><td>'+n+'</td><td>MC-'+n.slice(-3)+'</td></tr>').join('')+'</table>'; };
 </script>`;
