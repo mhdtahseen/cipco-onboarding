@@ -10,6 +10,7 @@ import { fmtD } from "@/lib/invoiceData";
 import { swrDrop } from "@/lib/swr";
 import { DEFAULT_UNIT } from "@/lib/units";
 import UnitSelect from "@/components/UnitSelect";
+import { PageLoader } from "@/components/Loader";
 
 type Row = { key: string; id?: string; woItemId: string | null; description: string; unit: string; rate: string; prev: number; cum: string };
 const num = (s: string) => { const n = parseFloat(s); return Number.isFinite(n) ? n : 0; };
@@ -79,7 +80,7 @@ export default function InvoiceView({ id }: { id: string }) {
   }
   async function voidReceipt(r: Receipt) { if (!confirm(`Void this receipt of ₹${money(r.amount)} (TDS ₹${money(r.tds_amount)})? It stays in the list, marked void.`)) return; const { error } = await supabase().from("invoice_receipts").update({ voided_at: new Date().toISOString() }).eq("id", r.id); if (error) setErr(error.message); else { swrDrop("invoices", "workorders"); load(); } }
 
-  if (loading) return <p className="card text-center text-sm text-slate-500">Loading…</p>;
+  if (loading) return <PageLoader />;
   if (!inv || !calc || !wo || !client) return <p className="warn">{err || "This invoice's client or work order could not be loaded."}</p>;
   const out = outstandingOf(inv, receipts), held = retentionHeld(inv, receipts);
   const warnings = [!inv.project_id && "No project is linked to this work order, so the place of supply is the one shown. Check the site's state: another state means IGST.", projState && f.place_of_supply_code !== projState && `The project's site is in ${stateName(projState)}, but the place of supply is ${stateName(f.place_of_supply_code)}. Check this: it decides CGST + SGST or IGST.`, !client.gstin && "The client has no GSTIN, so this will be issued as an unregistered-client invoice.", !BANK.accountNo && "Your bank details are not set (src/lib/company.ts), so the PDF will not show where to pay.", lastIssued && f.invoice_date < lastIssued && `An invoice dated ${fmtD(lastIssued)} has already been issued. Dates normally follow the invoice numbers.`, rows.every((r) => num(r.cum) <= r.prev) && "Nothing is billed yet: enter the quantity done to date against at least one item."].filter(Boolean) as string[];

@@ -8,6 +8,7 @@ import { viewOf, type View } from "@/lib/paymentsDueView";
 import type { PaymentsDue } from "@/lib/paymentsDueData";
 import DueView from "@/components/DueView";
 import SpentView from "@/components/SpentView";
+import { PageLoader } from "@/components/Loader";
 
 type Tab = "due" | "spent";
 const TABS: readonly (readonly [Tab, string])[] = [["due", "Due"], ["spent", "Spent"]];
@@ -47,7 +48,7 @@ export default function ExpensesPage() {
     </button>);
   const scope = project ? data.projects.find((p) => p.id === project)?.name ?? "this project" : "all projects";
 
-  if (!role) return <div className="h-40 rounded-xl bg-slate-100 animate-pulse" />;
+  if (!role) return <PageLoader />;
   if (!see && !mayList) return <p className="text-slate-500">You do not have access to expenses.</p>;
   return (
     <div className="space-y-4">
@@ -75,7 +76,7 @@ export default function ExpensesPage() {
       </div>
 
       {tab === "due" && see && <DueView d={due} err={dueErr} project={project} />}
-      {tab === "spent" && (data.err ? <p className="warn">{data.err}</p> : data.loading ? <div className="h-40 rounded-xl bg-slate-100 animate-pulse" /> :
+      {tab === "spent" && (data.err ? <p className="warn">{data.err}</p> : data.loading ? <PageLoader /> :
         <SpentView projects={data.projects} cats={data.cats} setCats={data.setCats} exps={data.exps} reload={data.reload} project={project} setProject={setProject} openAdd={add} onAddClosed={() => setAdd(false)} />)}
     </div>
   );

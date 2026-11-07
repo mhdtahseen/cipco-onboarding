@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { MEALS, STATUS_LABEL, STATUS_SHORT, addDays, dayName, daysWorked, effectiveStatus, istToday, rateFor, toISO, type AttRow, type MealRate, type Person, type Status, type Vendor } from "@/lib/attendance";
 import { inr } from "@/lib/quote";
+import { PageLoader } from "@/components/Loader";
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const VDOT = ["bg-blue-600", "bg-orange-500", "bg-violet-600", "bg-teal-600", "bg-pink-600"];   // one colour per vendor, same order as the daily sheet
@@ -82,7 +83,7 @@ export default function AttendanceMonth({ projectId, projectName, vendors, rates
         <div className="hidden sm:flex gap-2"><button className="btn justify-center sm:ml-auto" onClick={totalsCsv} disabled={!people.length}>⬇ Totals CSV</button><button className="btn justify-center" onClick={detailCsv} disabled={!rows.length}>⬇ Daily CSV</button></div>
       </div>
       {err && <p className="warn">{err}</p>}
-      {loading && <p className="card text-center text-sm text-slate-500">Loading…</p>}
+      {loading && <PageLoader />}
       {!loading && !err && !people.length && <p className="card text-center text-sm text-slate-500">Nobody on this project for this month.</p>}
       {!loading && people.length > 0 && <>
         {/* phones: a card per person with the month's totals; the day-by-day grid is one tap away */}

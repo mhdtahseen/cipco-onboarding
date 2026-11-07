@@ -9,6 +9,7 @@ import SortControl, { useSortState } from "@/components/SortControl";
 import FilterBar, { FilterSelect } from "@/components/FilterBar";
 import { swrGet, swrSet } from "@/lib/swr";
 import { sortRows, type SortOption } from "@/lib/sorting";
+import { PageLoader } from "@/components/Loader";
 
 type WSort = "created" | "date" | "no" | "client" | "value" | "billed" | "pct" | "balance" | "status";
 const W_SORT: SortOption<WSort>[] = [{ key: "created", label: "Newest added", dir: "desc" }, { key: "date", label: "Order date", dir: "desc" }, { key: "no", label: "Order number", dir: "desc" }, { key: "client", label: "Client", dir: "asc" }, { key: "value", label: "Order value", dir: "desc" }, { key: "billed", label: "Billed so far", dir: "desc" }, { key: "pct", label: "% billed", dir: "desc" }, { key: "balance", label: "Left to bill", dir: "desc" }, { key: "status", label: "Status", dir: "asc" }];
@@ -55,7 +56,7 @@ export default function WorkOrders() {
       </FilterBar>
       {err && <p className="warn">{err}</p>}
       <div className="space-y-2">
-        {loading && <p className="card text-center text-sm text-slate-500">Loading…</p>}
+        {loading && <PageLoader />}
         {!loading && !rows.length && !err && <p className="card text-center text-sm text-slate-500">{q ? "Nothing matches your search." : "No work orders yet. Add the client first, then enter their work order with its items."}</p>}
         {rows.map(({ w, value, billed, count }) => (
           <div key={w.id} className="card !p-3 flex flex-wrap items-center gap-x-4 gap-y-2 fade">

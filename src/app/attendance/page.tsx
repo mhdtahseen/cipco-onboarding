@@ -8,6 +8,7 @@ import AttendanceSheet from "@/components/AttendanceSheet";
 import AttendanceMonth from "@/components/AttendanceMonth";
 import ActivityFeed from "@/components/ActivityFeed";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { PageLoader } from "@/components/Loader";
 
 export default function AttendancePage() {
   const { role, rank } = useRole();
@@ -28,7 +29,7 @@ export default function AttendancePage() {
       <div className="flex flex-wrap items-center gap-2"><h1 className="hidden sm:block text-xl font-semibold sm:mr-auto">Attendance</h1>
         {projects.length > 0 && <select className="inp w-full sm:!w-auto max-w-full" aria-label="Project" value={pid} onChange={(e) => setPid(e.target.value)}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.status === "closed" ? " (closed)" : ""}{p.location ? ` — ${p.location}` : ""}</option>)}</select>}</div>
       {err && <p className="warn">{err}</p>}
-      {loading && <p className="text-slate-500">Loading…</p>}
+      {loading && <PageLoader />}
       {!loading && !err && !projects.length && <p className="card text-center text-sm text-slate-500">{rank === 1 ? "No project has been assigned to you yet. Please ask an admin." : "No projects yet."}</p>}
       {proj && <>
         <div role="tablist" className="flex border-b border-slate-200">{([["day", "Daily sheet"], ["month", "Monthly"], ...(rank >= 2 ? [["activity", "Activity"] as const] : [])] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={`tab flex-1 sm:flex-none justify-center min-h-12 touch-manipulation ${tab === k ? "tab-on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>

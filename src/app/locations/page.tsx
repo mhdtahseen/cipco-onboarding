@@ -5,8 +5,9 @@ import { supabase } from "@/lib/supabase/client";
 import { useRole } from "@/lib/roles";
 import { addDays, istToday } from "@/lib/attendance";
 import { ACTION_COLOR, type GeoPoint } from "@/lib/geoPoints";
+import { PageLoader } from "@/components/Loader";
 
-const LocationsMap = dynamic(() => import("@/components/LocationsMap"), { ssr: false, loading: () => <div className="h-[55vh] min-h-[22rem] rounded-xl bg-slate-100 animate-pulse" /> });
+const LocationsMap = dynamic(() => import("@/components/LocationsMap"), { ssr: false, loading: () => <PageLoader tall /> });
 type Row = { id: string; user_id: string; role: string | null; project_id: string | null; work_date: string | null; action: string; subject: string | null; lat: number | null; lng: number | null; accuracy_m: number | null; geo_status: string; created_at: string };
 const STATUS_LABEL: Record<string, string> = { denied: "refused", unavailable: "no signal / GPS off", timeout: "timed out", unsupported: "not supported" };
 const ago = (iso: string) => new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -66,7 +67,7 @@ export default function Locations() {
           <div className="font-medium">{p.name}</div><div className="text-[11px] text-slate-500">{p.total} entries · <span className={p.located < p.total ? "text-amber-700" : ""}>{p.located} located</span> · {p.people} {p.people === 1 ? "person" : "people"}</div></button>)}
       </div>
 
-      {loading ? <div className="h-[55vh] min-h-[22rem] rounded-xl bg-slate-100 animate-pulse" /> : <>
+      {loading ? <PageLoader tall /> : <>
         <LocationsMap points={points} selectedId={sel} onSelect={setSel} path={path} />
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500" aria-label="Colour key">{Object.entries(ACTION_COLOR).map(([a, c]) => <span key={a}><span className="inline-block h-2.5 w-2.5 rounded-full align-middle mr-1" style={{ background: c }} />{a}</span>)}
           <span className="ml-auto">{points.length} on the map{none.length ? ` · ${none.length} without a location` : ""}</span></div>

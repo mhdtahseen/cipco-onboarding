@@ -7,6 +7,7 @@ import TransportCard from "./TransportCard";
 import DayBar from "./DayBar";
 import { trackEntry } from "@/lib/geo";
 import { MEALS, STATUS_LABEL, addDays, canWriteDay, dayName, effectiveStatus, fmtTime, isFuture, isLocked, isSupervisorRole, isWeeklyOff, istToday, type AttRow, type DayRow, type Meal, type Person, type Run, type Status, type Vehicle, type Vendor } from "@/lib/attendance";
+import { PageLoader } from "@/components/Loader";
 
 const WORK: { s: Status; label: string }[] = [{ s: "present", label: "Present" }, { s: "absent", label: "Absent" }, { s: "half", label: "Half-day" }, { s: "off", label: "Off" }];
 const POLL_MS = Number(process.env.NEXT_PUBLIC_ATT_POLL_MS) || 25000;   // how often to check for other people's changes when the live connection is quiet
@@ -219,7 +220,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
           <button className={`shrink-0 h-11 rounded-full px-4 text-sm border touch-manipulation ${onlyOpen ? "bg-blue-50 border-blue-200 text-blue-800" : "bg-white border-slate-200 text-slate-600"}`} onClick={() => setOnlyOpen(!onlyOpen)} aria-pressed={onlyOpen}>Open only</button></div>}
       </>}
 
-      {loading && <p className="text-center text-sm text-slate-400 py-6">Loading…</p>}
+      {loading && <PageLoader />}
       {!loading && !err && !people.length && <p className="text-center text-sm text-slate-400 py-6">Nobody is on this project for {dayName(date)} {date}. People appear once they have a joining date on or before the day.</p>}
       {!loading && people.length > 0 && !shown.length && <p className="text-center text-sm text-slate-400 py-6">{onlyOpen && !q ? "Everyone is marked ✓" : "No one matches."}</p>}
       {/* meals are shown for everyone: an absent or weekly-off worker still eats, at the accommodation or the site */}
@@ -288,7 +289,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
         : admin && isLocked(date) ? <p className="text-sm bg-blue-50 border border-blue-200 text-blue-900 rounded-lg px-3 py-2">Locked for others — you're editing as an Admin.</p> : null}
       {err && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</p>}
       {msg && <p className="text-sm text-green-700">{msg}</p>}
-      {loading && <p className="card text-center text-sm text-slate-500">Loading…</p>}
+      {loading && <PageLoader />}
       {!loading && !err && !people.length && <p className="card text-center text-sm text-slate-500">Nobody is on this project for {dayName(date)} {date}. People appear once they have a joining date on or before the day.</p>}
       {!loading && people.length > 0 && !shown.length && <p className="card text-center text-sm text-slate-500">{onlyOpen && !q ? "Everyone is marked ✓" : "No one matches."}</p>}
 

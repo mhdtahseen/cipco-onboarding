@@ -9,6 +9,7 @@ import Overview from "@/components/accommodation/Overview";
 import LandlordsRooms from "@/components/accommodation/LandlordsRooms";
 import RentTab from "@/components/accommodation/RentTab";
 import PaymentsTab from "@/components/accommodation/PaymentsTab";
+import { PageLoader } from "@/components/Loader";
 
 type Tab = "overview" | "landlords" | "rent" | "payments";
 const TABS: [Tab, string][] = [["overview", "Overview"], ["landlords", "Landlords & rooms"], ["rent", "Rent"], ["payments", "Payments"]];
@@ -51,7 +52,7 @@ export default function Accommodation() {
       <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold sm:mr-auto">Accommodation</h1><a className="text-xs text-blue-700 underline" href="/payments-due">Payments due report →</a>
         {projects.length > 0 && <select className="inp w-full sm:!w-auto max-w-full" aria-label="Project" value={pid} onChange={(e) => setPid(e.target.value)}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.location ? ` — ${p.location}` : ""}</option>)}</select>}</div>
       <div role="tablist" className="flex border-b border-slate-200 overflow-x-auto">{TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab whitespace-nowrap ${tab === k ? "tab-on" : ""}`} onClick={() => { setTab(k); setFocus(undefined); setPayLandlord(undefined); setHistLandlord(undefined); }}>{l}</button>)}</div>
-      {err && <p className="warn" role="alert">{err}</p>}{msg && <p className="text-sm text-green-700" role="status">{msg}</p>}{loading && <p className="text-slate-500">Loading…</p>}
+      {err && <p className="warn" role="alert">{err}</p>}{msg && <p className="text-sm text-green-700" role="status">{msg}</p>}{loading && <PageLoader />}
 
       {!loading && !err && pid && <>
         {tab === "overview" && <Overview a={acc} people={people} go={go} />}

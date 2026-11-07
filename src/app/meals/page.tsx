@@ -10,6 +10,7 @@ import { uploadBill } from "@/lib/billUpload";
 import PaymentBill from "@/components/PaymentBill";
 import VendorSettings from "@/components/VendorSettings";
 import BillBreakdown from "@/components/BillBreakdown";
+import { PageLoader } from "@/components/Loader";
 
 type MealRow = { employee_id: string; work_date: string; breakfast_vendor_id: string | null; lunch_vendor_id: string | null; dinner_vendor_id: string | null };
 type Pay = { id: string; bill_path?: string | null; vendor_id: string; paid_on: string; amount: number; reference: string; note: string; voided_at: string | null };
@@ -118,7 +119,7 @@ export default function Meals() {
       <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold sm:mr-auto">Meals</h1><a className="text-xs text-blue-700 underline" href="/payments-due">Payments due report →</a>
         {projects.length > 0 && <select className="inp w-full sm:!w-auto max-w-full" aria-label="Project" value={pid} onChange={(e) => { setPid(e.target.value); setPf((f) => ({ ...f, vendor_id: "" })); setStmtVendor(""); }}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.location ? ` — ${p.location}` : ""}</option>)}</select>}</div>
       <div role="tablist" className="flex border-b border-slate-200 overflow-x-auto">{shownTabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab whitespace-nowrap ${tab === k ? "tab-on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>
-      {err && <p className="warn">{err}</p>}{msg && <p className="text-sm text-green-700">{msg}</p>}{loading && <p className="text-slate-500">Loading…</p>}
+      {err && <p className="warn">{err}</p>}{msg && <p className="text-sm text-green-700">{msg}</p>}{loading && <PageLoader />}
 
       {!loading && tab === "overview" && <>
         <div className="flex"><span className="text-xs text-slate-400 self-center">Meals are marked on the <Link className="underline" href="/attendance">Attendance</Link> page.</span><div className="ml-auto">{monthPick}</div></div>

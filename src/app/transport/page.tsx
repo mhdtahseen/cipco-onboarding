@@ -6,6 +6,7 @@ import PayeeBank from "@/components/PayeeBank";
 import { supabase } from "@/lib/supabase/client";
 import { istToday, tripRate, type Billing, type Run, type TransportRate, type Vehicle } from "@/lib/attendance";
 import type { Project } from "@/lib/types";
+import { PageLoader } from "@/components/Loader";
 
 type Money = { id: string; vehicle_id: string; amount: number; voided_at: string | null };
 type Pay = Money & { paid_on: string; reference: string; note: string; bill_path?: string | null };
@@ -67,7 +68,7 @@ export default function TransportPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold sm:mr-auto">Transport</h1><a className="text-xs text-blue-700 underline" href="/payments-due">Payments due report →</a>
         {projects.length > 0 && <select className="inp w-full sm:!w-auto max-w-full" aria-label="Project" value={pid} onChange={(e) => { setPid(e.target.value); setPf((f) => ({ ...f, vehicle_id: "" })); setEf((f) => ({ ...f, vehicle_id: "" })); }}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.location ? ` — ${p.location}` : ""}</option>)}</select>}</div>
-      {err && <p className="warn">{err}</p>}{loading && <p className="text-slate-500">Loading…</p>}
+      {err && <p className="warn">{err}</p>}{loading && <PageLoader />}
       {!loading && <>
         <div className="grid grid-cols-3 gap-3 text-center">{[["This month", tot.month], ["Paid (all time)", tot.paid], ["Balance due", tot.billed - tot.paid]].map(([l, n]) => <div key={l as string} className="rounded-2xl bg-white border border-slate-200/80 p-3"><div className="text-xs text-slate-400">{l}</div><div className="text-lg font-medium tabular-nums">₹{inr(n as number)}</div></div>)}</div>
         <div role="tablist" className="flex border-b border-slate-200 overflow-x-auto">{([["overview", "Overview"], ["daily", "Daily log"], ["vehicles", "Vehicles & prices"], ["errands", "Errands"], ["payments", "Payments"]] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab whitespace-nowrap ${tab === k ? "tab-on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>

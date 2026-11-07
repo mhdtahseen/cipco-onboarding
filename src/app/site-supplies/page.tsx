@@ -7,6 +7,7 @@ import { keepProject, rememberedProject } from "@/lib/lastProject";
 import SiteBills from "@/components/SiteBills";
 import { useGas, type SupplyProject } from "@/components/supplies/useGas";
 import { useEquipment } from "@/components/supplies/useEquipment";
+import { InlineLoader, PageLoader } from "@/components/Loader";
 
 type Tab = "today" | "orders" | "log" | "bills" | "deposits" | "setup";
 const dayLabel = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
@@ -33,7 +34,7 @@ export default function SiteSupplies() {
         {projects.length > 0 && <select className="inp w-full sm:!w-auto max-w-full" aria-label="Project" value={pid} onChange={(e) => { setPid(e.target.value); keepProject(e.target.value); gas.closeForms(); }}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.location ? ` — ${p.location}` : ""}{p.status === "closed" ? " (closed)" : ""}</option>)}</select>}</div>
       <div role="tablist" className="flex border-b border-slate-200 overflow-x-auto tabs-scroll">{tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab whitespace-nowrap ${tab === k ? "tab-on" : ""}`} onClick={() => setTab(k)}>{l}{k === "orders" && gas.awaiting > 0 && money ? ` (${gas.awaiting})` : ""}</button>)}</div>
       {notes.map((n, i) => <p key={i} className="warn" role="alert">{n}</p>)}{oks.map((n, i) => <p key={i} className="text-sm text-green-700" role="status">{n}</p>)}
-      {(!loaded || gas.loading || eq.loading) && <p className="text-slate-500">Loading…</p>}
+      {!loaded ? <PageLoader /> : (gas.loading || eq.loading) ? <InlineLoader /> : null}
       {loaded && !projects.length && !pErr && <p className="text-slate-500">No projects{role === "supervisor" || role === "site_engineer" ? " assigned to you" : ""}.</p>}
 
       {pid && tab === "today" && <div className="space-y-6">{eq.todayNode}{gas.todayNode}

@@ -11,6 +11,7 @@ import type { Client } from "@/lib/invoice";
 import type { Project } from "@/lib/types";
 import LineList from "./LineList";
 import UnitSelect from "./UnitSelect";
+import { PageLoader } from "@/components/Loader";
 
 const COLS = ["client_name", "client_short", "client_address", "kind_attn", "subject", "intro", "quote_date", "items", "show_total", "show_gst", "notes", "terms", "include_scope", "scope", "client_supply", "our_supply", "signatory", "client_id", "project_id"] as const;
 const pick = (q: Quote) => Object.fromEntries(COLS.map((k) => [k, (q as any)[k]]));
@@ -30,7 +31,7 @@ export default function QuoteEditor({ id }: { id: string }) {
   })(); }, [id]);
   const tags = useMemo(() => [...new Set(lib.filter((l) => l.kind === "scope" && l.tag).map((l) => l.tag!))], [lib]);
   useEffect(() => { if (!tag && tags.length) setTag(tags[0]); }, [tags]);
-  if (!q) return <p className={msg ? "warn" : "text-slate-500"}>{msg || "Loading…"}</p>;
+  if (!q) return msg ? <p className="warn">{msg}</p> : <PageLoader />;
   const locked = q.status === "issued"; const t = totals(q.items);
   const set = <K extends keyof Quote>(k: K, v: Quote[K]) => { setQ((p) => ({ ...p!, [k]: v })); setDirty(true); };
   const setItem = (i: number, p: Partial<QItem>) => set("items", q.items.map((x, j) => (j === i ? { ...x, ...p } : x)));

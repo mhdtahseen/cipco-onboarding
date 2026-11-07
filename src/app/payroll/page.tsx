@@ -11,6 +11,7 @@ import RunTab from "@/components/payroll/RunTab";
 import PayTab from "@/components/payroll/PayTab";
 import StatutoryTab from "@/components/payroll/StatutoryTab";
 import AdvancesTab from "@/components/payroll/AdvancesTab";
+import { PageLoader } from "@/components/Loader";
 
 type Tab = "run" | "pay" | "statutory" | "advances";
 const TABS: readonly (readonly [Tab, string])[] = [["run", "Payroll run"], ["pay", "Pay"], ["statutory", "Statutory"], ["advances", "Advances"]];
@@ -33,7 +34,7 @@ export default function Payroll() {
         <label className="flex items-center gap-2 text-sm text-slate-500">Month<input type="month" className="inp !w-40" aria-label="Payroll month" value={ym} onChange={(e) => e.target.value && setYm(e.target.value)} /></label></div>
       <p className="text-xs text-slate-500">{monthName(ym)} salary · calculated on {new Date(`${ym}-01T00:00:00`).toLocaleDateString("en-IN", { month: "short" })} {new Date(Number(ym.slice(0, 4)), Number(ym.slice(5)), 0).getDate()}, credited {win.from.slice(8)}–{win.to.slice(8)} {new Date(`${win.from}T00:00:00`).toLocaleDateString("en-IN", { month: "short", year: "numeric" })}. Joined after the 20th: paid in the next run.</p>
       <div role="tablist" className="flex border-b border-slate-200 overflow-x-auto">{shownTabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab whitespace-nowrap ${tab === k ? "tab-on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>
-      {P.err && <p className="warn">{P.err}</p>}{P.loading && <p className="text-slate-500">Loading…</p>}
+      {P.err && <p className="warn">{P.err}</p>}{P.loading && <PageLoader />}
       {!P.loading && P.d && <div key={tab} className="fade-in space-y-4">
         {tab === "run" && <RunTab P={P} pid={pid} ym={ym} today={today} projectName={proj?.name ?? ""} />}
         {tab === "pay" && <PayTab P={P} ym={ym} today={today} />}

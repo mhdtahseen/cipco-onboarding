@@ -89,18 +89,25 @@ export default function SpentView({ projects, cats, setCats, exps, reload, proje
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + rows.map((r) => r.map(qt).join(",")).join("\n")], { type: "text/csv" })); a.download = `expenses ${month || "all"}${project ? " - " + pName(project) : ""}.csv`; a.click();
   }
 
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const off = () => setMenu(null), key = (ev: KeyboardEvent) => { if (ev.key === "Escape") off(); };
+    window.addEventListener("click", off); window.addEventListener("scroll", off, true); window.addEventListener("resize", off); window.addEventListener("keydown", key);
+    return () => { window.removeEventListener("click", off); window.removeEventListener("scroll", off, true); window.removeEventListener("resize", off); window.removeEventListener("keydown", key); };
+  }, [menu]);
+
   const row = (e: ProjectExpense) => { const k = sourceKind(e);
     return (
-      <div key={e.id} className="grid grid-cols-[1fr_auto] md:grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_5rem_7rem_auto] items-center gap-x-3 gap-y-0.5 px-3 py-2.5 border-t border-slate-100 first:border-t-0 text-sm hover:bg-slate-50">
-        <div className="min-w-0"><div className="font-medium truncate">{e.description || cName(e.category_id)}</div><div className="md:hidden text-xs text-slate-500 truncate">{pName(e.project_id)} · {cName(e.category_id)} · {dmy(e.expense_date)}</div></div>
+      <div key={e.id} className="grid grid-cols-[minmax(0,1fr)_auto_2rem] md:grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_4.5rem_6.5rem_8.5rem_2rem_2rem] items-center gap-x-3 gap-y-0.5 px-3 py-2.5 border-t border-slate-100 first:border-t-0 text-sm hover:bg-slate-50">
+        <div className="min-w-0"><div className="font-medium truncate">{e.description || cName(e.category_id)}</div><div className="md:hidden text-xs text-slate-500 truncate">{pName(e.project_id)} · {cName(e.category_id)} · {dmy(e.expense_date)}{k !== "typed" && ` · 🔒 ${SOURCE_LABEL[k]}`}</div></div>
         <div className="hidden md:block text-slate-500 truncate">{pName(e.project_id)}</div><div className="hidden md:block text-slate-500 truncate">{cName(e.category_id)}</div><div className="hidden md:block text-slate-500 tabular-nums">{dmy(e.expense_date)}</div>
         <div className="text-right font-semibold tabular-nums">₹{inr(Number(e.amount))}</div>
-        <div className="col-span-2 md:col-span-1 flex items-center justify-end gap-1.5 whitespace-nowrap">
-          {e.bill_path && <a className="btn btn-sm" href={`/api/docs/view?path=${encodeURIComponent(e.bill_path)}`} target="_blank">Bill</a>}
-          {k === "typed" ? <><button className="btn btn-sm" onClick={() => edit(e)}>Edit</button><button className="btn btn-sm btn-danger" onClick={() => del(e)} aria-label="Delete expense">✕</button></>
-            : <a className="pill hover:opacity-80" href={sourceHref(e)} title={k === "bill" ? "This expense came from a bill in Inventory. Reopen or void the bill to change it." : "This expense came from a payment. Void the payment to remove it."}>🔒 {SOURCE_LABEL[k]}</a>}
-        </div>
+        <div className="hidden md:flex justify-start">{k === "typed" ? null : <a className="pill hover:opacity-80" href={sourceHref(e)} title={k === "bill" ? "This expense came from a bill in Inventory. Reopen or void the bill to change it." : "This expense came from a payment. Void the payment to remove it."}>🔒 {SOURCE_LABEL[k]}</a>}</div>
+        <div className="flex justify-center">{e.bill_path && <a className="btn btn-sm !px-1.5" href={`/api/docs/view?path=${encodeURIComponent(e.bill_path)}`} target="_blank" title="View bill" aria-label="View bill"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg></a>}</div>
+        <div className="flex justify-center">{k === "typed" && <button className="btn btn-sm !px-1.5" aria-label="More options" aria-haspopup="menu" title="More options" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); setMenu(menu?.id === e.id ? null : { id: e.id, x: r.right, y: r.bottom + 4 }); }}><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden><circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" /></svg></button>}</div>
       </div>); };
+  const menuRow = menu ? exps.find((x) => x.id === menu.id) : null;
 
   return (
     <div className="space-y-3">
@@ -130,6 +137,10 @@ export default function SpentView({ projects, cats, setCats, exps, reload, proje
 
       <div className="md:hidden fixed right-4 z-30 bottom-[calc(var(--bottom-nav-h,0px)+1rem)]"><button className="btn btn-primary shadow-lg" onClick={openNew}>+ Add expense</button></div>
 
+      {menu && menuRow && <div role="menu" className="fixed z-50 min-w-[9rem] rounded-lg border border-slate-200 bg-white py-1 shadow-lg text-sm" style={{ top: menu.y, left: Math.max(8, menu.x - 144) }} onClick={(ev) => ev.stopPropagation()}>
+        <button role="menuitem" className="block w-full px-3 py-2 text-left hover:bg-slate-50" onClick={() => { setMenu(null); edit(menuRow); }}>Edit</button>
+        <button role="menuitem" className="block w-full px-3 py-2 text-left text-red-600 hover:bg-red-50" onClick={() => { setMenu(null); del(menuRow); }}>Delete</button>
+      </div>}
       {panel && <div className="fixed inset-0 z-50 flex items-end md:items-stretch md:justify-end" role="dialog" aria-modal="true" aria-label={editId ? "Edit expense" : "Add expense"}>
         <div className="absolute inset-0 bg-slate-900/40" onClick={close} />
         <div className="relative w-full md:w-[26rem] max-h-[92vh] md:max-h-none flex flex-col bg-white rounded-t-2xl md:rounded-none shadow-xl pt-[env(safe-area-inset-top)] md:pt-0 fade-in">

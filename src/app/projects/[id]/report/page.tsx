@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { stageLabel } from "@/lib/pipeline";
 import { inr } from "@/lib/quote";
 import { fmtD, useProjectData } from "@/lib/projectData";
+import { PageLoader } from "@/components/Loader";
 
 export default function ProjectReport() {
   const { id } = useParams<{ id: string }>();
@@ -15,7 +16,7 @@ export default function ProjectReport() {
       ...r.live.map((e) => [e.full_name, e.emp_no, e.designation, e.department, e.employment_type, e.join_date, stageLabel(e.stage), e.phone, e.monthly_ctc])];
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + rows.map((x) => x.map(q).join(",")).join("\n")], { type: "text/csv" })); a.download = `${p?.name || "project"} - people.csv`; a.click();
   }
-  if (loading) return <p className="text-slate-500">Loading…</p>;
+  if (loading) return <PageLoader />;
   if (err || !p) return <p className="warn">{err || "Project not found"}</p>;
   const card = (label: string, value: string, sub?: string) => <div className="card !p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold">{value}</div>{sub && <div className="text-xs text-slate-400">{sub}</div>}</div>;
   const bars = (rows: (readonly [string, number])[], max: number, money = false) => <div className="space-y-1.5">{rows.map(([k, n]) => <div key={k} className="flex items-center gap-2 text-sm"><span className="w-28 sm:w-44 truncate" title={k}>{k}</span><div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-[#1e4fa3]" style={{ width: `${(n / Math.max(1, max)) * 100}%` }} /></div><span className={`${money ? "w-24" : "w-8"} text-right text-slate-500`}>{money ? `₹${inr(n)}` : n}</span></div>)}{!rows.length && <p className="text-sm text-slate-400">No data.</p>}</div>;

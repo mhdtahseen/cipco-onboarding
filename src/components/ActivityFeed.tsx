@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { ROLE_LABEL } from "@/lib/roles";
+import { InlineLoader } from "@/components/Loader";
 
 type Log = { id: number; at: string; tx: number; user_name: string | null; user_role: string | null; work_date: string | null; employee_name: string | null; field: string; old_value: string | null; new_value: string | null; action: string; overrode: string | null };
 const FIELD: Record<string, string> = { status: "work", breakfast: "breakfast", lunch: "lunch", dinner: "dinner", pickup: "pickup", drop: "drop", day: "day" };
@@ -24,7 +25,7 @@ export default function ActivityFeed({ projectId }: { projectId: string }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2"><button type="button" aria-pressed={only} onClick={() => setOnly(!only)} className={`h-9 rounded-full px-3 text-sm border touch-manipulation ${only ? "bg-blue-50 border-blue-200 text-blue-800" : "bg-white border-slate-200 text-slate-600"}`}>Overrides only</button><span className="text-xs text-slate-400">Newest first · times in India</span></div>
-      {err && <p className="warn">{err}</p>}{loading && <p className="text-sm text-slate-400">Loading…</p>}
+      {err && <p className="warn">{err}</p>}{loading && <InlineLoader />}
       {!loading && !err && !shown.length && <p className="card text-center text-sm text-slate-500">{only ? "No overrides yet." : "No changes recorded yet."}</p>}
       <ul className="rounded-2xl bg-white border border-slate-200/80 divide-y divide-slate-100" data-activity>
         {shown.map((r) => <li key={r.id} className="px-4 py-2.5 text-sm text-slate-600 flex flex-wrap gap-x-2">

@@ -10,6 +10,7 @@ import SortControl, { useSortState } from "@/components/SortControl";
 import FilterBar, { FilterSelect } from "@/components/FilterBar";
 import { swrGet, swrSet } from "@/lib/swr";
 import { sortRows, type SortOption } from "@/lib/sorting";
+import { PageLoader } from "@/components/Loader";
 
 type InvSort = "created" | "date" | "number" | "client" | "total" | "outstanding" | "due" | "status";
 const INV_SORT: SortOption<InvSort>[] = [{ key: "created", label: "Newest added", dir: "desc" }, { key: "date", label: "Invoice date", dir: "desc" }, { key: "number", label: "Invoice number", dir: "desc" }, { key: "client", label: "Client", dir: "asc" }, { key: "total", label: "Amount", dir: "desc" }, { key: "outstanding", label: "Outstanding", dir: "desc" }, { key: "due", label: "Due date", dir: "asc" }, { key: "status", label: "Status", dir: "asc" }];
@@ -89,7 +90,7 @@ export default function Invoices() {
           <FilterSelect label="Financial year" value={fyF} onChange={setFyF} width="!w-40"><option value="">All years</option>{fyOptions.map((y) => <option key={y} value={y}>FY {y}</option>)}</FilterSelect>
         </FilterBar>
         <div className="space-y-2">
-          {loading && <p className="card text-center text-sm text-slate-500">Loading…</p>}
+          {loading && <PageLoader />}
           {!loading && !shown.length && !err && <p className="card text-center text-sm text-slate-500">{invs.length ? "Nothing matches the filters." : "No invoices yet. Choose a work order above to raise the first running bill."}</p>}
           {shown.map((x) => { const out = outstandingOf(x, rOf(x.id)); const late = x.status === "issued" && out > 0 && x.due_date && daysBetween(x.due_date, today) > 0; return (
             <Link key={x.id} href={`/invoices/${x.id}`} className="card !p-3 flex flex-wrap items-center gap-x-4 gap-y-1 hover:bg-slate-50 fade">

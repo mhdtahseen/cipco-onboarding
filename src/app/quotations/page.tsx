@@ -9,6 +9,7 @@ import { swrGet, swrSet } from "@/lib/swr";
 import { fyOf, type Client } from "@/lib/invoice";
 import { useRole } from "@/lib/roles";
 import { sortRows, type SortOption } from "@/lib/sorting";
+import { PageLoader } from "@/components/Loader";
 
 type QSort = "created" | "date" | "ref" | "client" | "amount" | "status" | "project";
 const Q_SORT: SortOption<QSort>[] = [{ key: "created", label: "Newest added", dir: "desc" }, { key: "date", label: "Quotation date", dir: "desc" }, { key: "ref", label: "Reference no.", dir: "desc" }, { key: "client", label: "Client", dir: "asc" }, { key: "amount", label: "Amount", dir: "desc" }, { key: "project", label: "Project", dir: "asc" }, { key: "status", label: "Status", dir: "asc" }];
@@ -56,7 +57,7 @@ export default function QuotationsPage() {
       </FilterBar>
       {err && <p className="warn">{err}</p>}
       <div className="space-y-2">
-        {loading && <p className="card text-center text-sm text-slate-500">Loading…</p>}
+        {loading && <PageLoader />}
         {!loading && !shown.length && !err && <p className="card text-center text-sm text-slate-500">{q ? "Nothing matches your search." : "No quotations yet."}</p>}
         {shown.map((r) => (
           <Link key={r.id} href={`/quotations/${r.id}`} className="card !p-3 flex flex-wrap items-center gap-x-4 gap-y-1 hover:bg-slate-50">

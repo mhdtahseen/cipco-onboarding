@@ -16,6 +16,7 @@ import { useRole } from "@/lib/roles";
 import { usePerms } from "@/lib/perms";
 import { baseScenario, forecast, type ForecastInput } from "@/lib/forecast";
 import { guessState, STATE_OPTIONS, type Client } from "@/lib/invoice";
+import { PageLoader } from "@/components/Loader";
 
 type Tab = "overview" | "people" | "forecast" | "documents";
 
@@ -35,7 +36,7 @@ export default function ProjectPage() {
   const [tab, setTab] = useState<Tab>("overview"); const [edit, setEdit] = useState(false); const [ed, setEd] = useState({ name: "", location: "", description: "", client_id: "", state_code: "" }); const [clients, setClients] = useState<Client[]>([]);
   useEffect(() => { supabase().from("clients").select("*").eq("active", true).order("name").then(({ data }) => setClients((data || []) as Client[])); }, []);
   const [docOpen, setDocOpen] = useState(0); const [msg, setMsg] = useState("");
-  if (d.loading) return <p className="text-slate-500">Loading…</p>;
+  if (d.loading) return <PageLoader />;
   if (d.err || !p) return <p className="warn">{d.err || "Project not found"}</p>;
 
   async function save() {
@@ -113,7 +114,7 @@ export default function ProjectPage() {
             {!r.live.length && <tr><td className="p-6 text-center text-slate-500" colSpan={5}>Nobody is assigned to this project yet. Pick this project in a person's <b>Project</b> field to add them.</td></tr>}</tbody></table>
       </div>}
 
-      {tab === "forecast" && (!showForecast ? <p className="text-sm text-slate-500">The forecast is only for active projects.</p> : fcErr ? <p className="warn" role="alert">{fcErr}</p> : !fc ? <div className="h-40 rounded-xl bg-slate-100 animate-pulse" /> : fcEmpty ? <p className="card text-sm text-slate-500">Nothing to forecast yet: this project has no people, rooms or costs.</p> : <div className="mob"><ForecastView key={fc.projectId} input={fc} /></div>)}
+      {tab === "forecast" && (!showForecast ? <p className="text-sm text-slate-500">The forecast is only for active projects.</p> : fcErr ? <p className="warn" role="alert">{fcErr}</p> : !fc ? <PageLoader /> : fcEmpty ? <p className="card text-sm text-slate-500">Nothing to forecast yet: this project has no people, rooms or costs.</p> : <div className="mob"><ForecastView key={fc.projectId} input={fc} /></div>)}
       {tab === "documents" && (d.docErr ? <p className="warn">{d.docErr}</p> : <ProjectDocuments project={p} types={dTypes} setTypes={d.setDTypes} docs={pdocs} reload={d.loadDocs} openSignal={docOpen} />)}
     </div>
   );

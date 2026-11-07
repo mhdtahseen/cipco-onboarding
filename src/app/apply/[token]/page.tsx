@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
 import { FIELD_GROUPS, validate } from "@/lib/fields";
+import { PageLoader } from "@/components/Loader";
 
 // Public page: the candidate fills in their own details. Talks to Supabase only through the invite_* functions.
 const GROUPS = [
@@ -57,7 +58,7 @@ export default function ApplyPage() {
   }
 
   const shell = (c: React.ReactNode) => <div className="apply max-w-2xl mx-auto space-y-4 pb-4"><div className="flex items-center gap-3"><Logo className="h-8 w-auto" /><span className="text-sm font-semibold text-slate-500">Joining details</span></div>{c}</div>;
-  if (state === "loading") return shell(<p className="text-slate-500">Loading…</p>);
+  if (state === "loading") return shell(<PageLoader />);
   if (state === "bad") return shell(<div className="card"><h1 className="font-bold text-lg">This link isn't active</h1><p className="text-sm text-slate-600 mt-1">It may have expired or been replaced. Please contact the CIPCO HR team for a new link.</p></div>);
   if (state === "applied") return shell(<div className="card"><h1 className="font-bold text-lg">Thank you</h1><p className="text-sm text-slate-600 mt-1">Your details have already been received. Nothing more is needed here.</p></div>);
   if (state === "done") return shell(<div className="card space-y-2"><h1 className="font-bold text-lg">Thank you, {v.full_name?.split(" ")[0]} ✓</h1><p className="text-sm text-slate-600">Your details and documents have been sent to the CIPCO HR team. You can reopen this link to correct anything until they confirm it.</p><button className="btn" onClick={() => setState("form")}>Edit my answers</button></div>);

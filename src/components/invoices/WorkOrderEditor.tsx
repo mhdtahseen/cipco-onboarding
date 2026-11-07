@@ -10,6 +10,7 @@ import { DEFAULT_UNIT } from "@/lib/units";
 import UnitSelect from "@/components/UnitSelect";
 import type { Project } from "@/lib/types";
 import type { QItem } from "@/lib/quote";
+import { PageLoader } from "@/components/Loader";
 
 type QuoteRef = { id: string; ref_no: string | null; subject: string; client_id: string | null; client_name: string; project_id: string | null; items: QItem[]; quote_date: string };
 
@@ -89,7 +90,7 @@ export default function WorkOrderEditor({ id }: { id: string }) {
   }
   async function newBill() { setErr(""); setBusy(true); const r = await createDraftBill(id); setBusy(false); if (r.error) setErr(r.error); else router.push(`/invoices/${r.id}`); }
 
-  if (loading) return <p className="card text-center text-sm text-slate-500">Loading…</p>;
+  if (loading) return <PageLoader />;
   const field = (label: string, k: keyof Head, props: React.InputHTMLAttributes<HTMLInputElement> = {}) => <div><label className="lbl">{label}</label><input className="inp" value={h[k]} onChange={(e) => set(k, e.target.value)} {...props} /></div>;
 
   return (

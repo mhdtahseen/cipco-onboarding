@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { GSTIN_RE, stateName, type Client } from "@/lib/invoice";
 import { swrDrop, swrGet, swrSet } from "@/lib/swr";
+import { PageLoader } from "@/components/Loader";
 
 type Form = { id?: string; name: string; short_name: string; address: string; state_code: string; gstin: string; pan: string; contact_person: string; email: string; phone: string };
 const BLANK: Form = { name: "", short_name: "", address: "", state_code: "27", gstin: "", pan: "", contact_person: "", email: "", phone: "" };
@@ -62,7 +63,7 @@ export default function ClientsPage() {
         <p className="text-xs text-slate-500">State is taken from the GSTIN (currently {stateName(f.state_code)}, code {f.state_code}). A client with no GSTIN is invoiced as unregistered.</p>
         <div className="flex gap-2"><button className="btn btn-primary" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save client"}</button><button className="btn" onClick={() => setF(null)}>Cancel</button></div></section>}
       <div className="space-y-2">
-        {loading && <p className="card text-center text-sm text-slate-500">Loading…</p>}
+        {loading && <PageLoader />}
         {!loading && !shown.length && !err && <p className="card text-center text-sm text-slate-500">{q ? "Nothing matches your search." : "No clients yet. Add the first one to start invoicing."}</p>}
         {shown.map((c) => (
           <div key={c.id} className={`card !p-3 flex flex-wrap items-center gap-x-4 gap-y-1 fade ${c.active ? "" : "opacity-60"}`}>

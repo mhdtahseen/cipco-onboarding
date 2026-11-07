@@ -20,7 +20,7 @@ export default function Login() {
     <div className="min-h-screen grid lg:grid-cols-[1.05fr_1fr]">
       <aside className="keep-light hidden lg:flex relative overflow-hidden flex-col justify-between p-12 text-white bg-gradient-to-br from-[#173f85] via-[#1e4fa3] to-[#2b6ad1]">
         <svg aria-hidden className="absolute -right-24 -bottom-24 w-[520px] h-[520px] opacity-10" viewBox="0 0 64 64"><path fill="#fff" fillRule="evenodd" d="M27.8 4h8.4l1 6.2 5.5 2.3 5.1-3.7 5.9 5.9-3.7 5.1 2.3 5.5 6.2 1v8.4l-6.2 1-2.3 5.5 3.7 5.1-5.9 5.9-5.1-3.7-5.5 2.3-1 6.2h-8.4l-1-6.2-5.5-2.3-5.1 3.7-5.9-5.9 3.7-5.1-2.3-5.5-6.2-1v-8.4l6.2-1 2.3-5.5-3.7-5.1 5.9-5.9 5.1 3.7 5.5-2.3zM32 22a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" /></svg>
-        <img src="/branding/logo-white.svg" alt="CIPCO" className="h-12 w-fit" />
+        <img src="/branding/logo-sm.png" alt="CIPCO" width={360} height={144} className="logo-white h-12 w-fit" />
         <div className="relative max-w-md">
           <h1 className="text-4xl font-bold leading-tight">Operations, onboarding and documents — in one place.</h1>
           <p className="mt-4 text-blue-100 leading-relaxed">Prepare offer and appointment letters, joining kits and employee records for Chandrika Industrial Projects Company.</p>

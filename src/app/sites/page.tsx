@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { fmtTime, istToday, type DayRow } from "@/lib/attendance";
 import type { Project } from "@/lib/types";
+import { PageLoader } from "@/components/Loader";
 
 const POLL_MS = Number(process.env.NEXT_PUBLIC_ATT_POLL_MS) || 30000;
 type Row = { p: Project; people: number; marked: number; present: number; noShows: number; day: DayRow | null };
@@ -30,7 +31,7 @@ export default function SitesToday() {
   return (
     <div className="space-y-4">
       <div><h1 className="text-xl font-semibold">Sites today</h1><p className="text-sm text-slate-500">{new Date(today + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p></div>
-      {err && <p className="warn">{err}</p>}{loading && <p className="text-slate-500">Loading…</p>}
+      {err && <p className="warn">{err}</p>}{loading && <PageLoader />}
       {!loading && !err && !rows.length && <p className="card text-center text-sm text-slate-500">No active projects.</p>}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {rows.map((r) => { const state = r.day?.verified_at ? ["Verified", fmtTime(r.day.verified_at), "text-emerald-700 bg-emerald-50"] : r.day?.submitted_at ? ["Submitted", fmtTime(r.day.submitted_at), "text-blue-700 bg-blue-50"] : r.marked ? ["In progress", "", "text-amber-800 bg-amber-50"] : ["Not started", "", "text-slate-500 bg-slate-100"]; return (

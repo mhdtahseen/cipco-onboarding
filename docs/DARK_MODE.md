@@ -12,7 +12,7 @@ The choice is kept in this browser only (`cipco_theme` in local storage). A new 
 
 Printing and PDFs are always light.
 
-**The logo** is the blue one in light mode and a white one in dark mode, with no tile behind either. Use `<Logo />` (`src/components/Logo.tsx`) wherever the logo is shown; it picks the right file (`public/branding/logo-hd.png` and `logo-white.svg`). The sign-in screen's blue panel always uses the white logo. PDFs still use `logo.png`.
+**The logo** is blue in light mode and white in dark mode, with no tile behind it. It is one small image (`public/branding/logo-sm.png`, about 22 KB) that a filter turns white in dark mode, so there is only one download. Use `<Logo />` (`src/components/Logo.tsx`) wherever the logo is shown. The sign-in screen's blue panel always shows it white (`.logo-white`). PDFs still use `logo.png`.
 
 ## How it works (for whoever changes the screens)
 

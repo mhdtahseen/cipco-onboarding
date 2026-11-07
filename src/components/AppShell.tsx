@@ -15,6 +15,9 @@ import { clearPerms, resetPerms, setShellLevel, usePerms } from "@/lib/perms";
 import { Icon } from "./NavIcons";
 import ThemeSwitch from "./ThemeSwitch";
 import PermGuard from "./PermGuard";
+import ActivityBar from "./ActivityBar";
+import BusyButtons from "./BusyButtons";
+import PullToRefresh from "./PullToRefresh";
 
 // The frame around every signed-in page.
 //  desktop (≥1280px): a sidebar with section headings, collapsible to an icon rail
@@ -120,7 +123,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
     <div className={`min-h-screen ${minimal ? "" : "shell-has-bar"}`}>
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[60] focus:bg-white focus:px-3 focus:py-2 focus:rounded-lg focus:shadow">Skip to content</a>
       <NotificationGate role={role} />
-      <PermGuard />
+      <PermGuard /><ActivityBar /><BusyButtons /><PullToRefresh />
       {!minimal && <PermissionPrompt role={role} />}
 
       {!minimal && <aside aria-label="Sidebar" className={`hidden md:flex flex-col fixed inset-y-0 left-0 z-30 bg-white border-r border-slate-200 print:hidden transition-[width] duration-200 ease-out ${collapsed ? "w-16" : "w-16 xl:w-64"}`}>

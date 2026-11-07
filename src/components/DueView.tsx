@@ -4,6 +4,7 @@ import { istToday } from "@/lib/attendance";
 import { CATEGORY_LABEL } from "@/lib/paymentsDueLabels";
 import type { PaymentsDue } from "@/lib/paymentsDueData";
 import { monthGrid, titleOf, viewOf, type Lens, type PayeeView, type Scope, type View } from "@/lib/paymentsDueView";
+import { PageLoader } from "@/components/Loader";
 
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const noBank = (v: PayeeView) => v.pending > 0 && v.payee.mode !== "portal" && v.payee.mode !== "cash" && !v.payee.bank;
@@ -38,7 +39,7 @@ export default function DueView({ d, err, project }: { d: PaymentsDue | null; er
         <a className={`btn btn-primary keep ${chosen.length ? "" : "pointer-events-none opacity-50"}`} href={`/api/payments-due/pdf?${q}`} target="_blank">⬇ Download PDF report</a>
       </div>
       {err && <p className="warn">{err}</p>}
-      {!d && !err && <div className="h-40 rounded-xl bg-slate-100 animate-pulse" />}
+      {!d && !err && <PageLoader />}
       {d && <>
         <div className="flex flex-wrap items-center gap-2">
           <div role="tablist" aria-label="What to show" className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">{SCOPES.map(([k, l]) => <button key={k} role="tab" aria-selected={scope === k} className={`px-3 py-1.5 text-sm rounded-md ${scope === k ? "bg-blue-50 text-blue-800 font-semibold" : "text-slate-600 hover:bg-slate-50"}`} onClick={() => setScope(k)}>{l}</button>)}</div>

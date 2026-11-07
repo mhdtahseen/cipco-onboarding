@@ -6,6 +6,7 @@ import { keepProject, rememberedProject } from "@/lib/lastProject";
 import { gasItemName, inr, JSL_LABEL, stageOf, stockFrom, type InvBill, type InvItem } from "@/lib/inventory";
 import BillEditor from "@/components/inventory/BillEditor";
 import CsvImport from "@/components/inventory/CsvImport";
+import { InlineLoader, PageLoader } from "@/components/Loader";
 
 type Project = { id: string; name: string; status: string };
 const dmy = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
@@ -87,7 +88,7 @@ export default function Inventory() {
       {(bills.length > 0) && <input className="inp md:!w-72" type="search" aria-label="Search" placeholder={tab === "bills" ? "Search vendor or bill number" : "Search items"} value={q} onChange={(e) => setQ(e.target.value)} />}
       </div>
       {err && <p className="warn" role="alert">{err}</p>}
-      {(!loaded || busy) && <p className="text-slate-500">Loading…</p>}
+      {!loaded ? <PageLoader /> : busy ? <InlineLoader /> : null}
       {loaded && !projects.length && !err && <p className="text-slate-500">No projects{canEnter && !["admin", "staff"].includes(role ?? "") ? " assigned to you" : ""}.</p>}
 
       {pid && tab === "bills" && live.length > 0 && <div className="flex flex-wrap gap-2" role="group" aria-label="Show">{([["all", "All", live.length], ["submitted", "Waiting for review", waiting], ["returned", "Sent back", live.filter((b) => b.status === "returned").length], ["draft", "Drafts", live.filter((b) => b.status === "draft").length], ["recorded", "Approved", inExp.length]] as const).filter(([k, , n]) => k === "all" || n > 0 || chip === k).map(([k, l, n]) => <button key={k} className={`text-sm rounded-full border px-3 py-1 ${chip === k ? "bg-[#1e4fa3] border-[#1e4fa3] text-white" : "bg-white border-slate-300 text-slate-700"}`} aria-pressed={chip === k} onClick={() => setChip(k)}>{l} ({n})</button>)}</div>}

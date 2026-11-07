@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase/client";
 import { resetPerms } from "@/lib/perms";
 import { visibleItemsWith } from "@/lib/nav";
 import { CONTROLLED_ROLES, DEFAULTS, LEVELS, LEVEL_INFO, MODULES, SECTIONS, levelRank, tabKey, type Level, type Matrix, type Module, type RoleKey } from "@/lib/permissions";
+import { PageLoader } from "@/components/Loader";
 
 type Val = Level | "inherit";   // a tab can take its module's level
 const SHORT: Record<Level, string> = { none: "None", view: "View", create: "Create", edit: "Edit", full: "Full" };
@@ -87,7 +88,7 @@ export default function PermissionsPage() {
 
       <div className="grid gap-2 sm:grid-cols-5 text-xs">{LEVELS.map((l) => <div key={l} className="rounded-lg border border-slate-200 bg-white p-2"><div className="font-semibold text-slate-700">{LEVEL_INFO[l].label}</div><div className="text-slate-500">{LEVEL_INFO[l].help}</div></div>)}</div>
 
-      {!loaded ? <div className="h-40 rounded-xl bg-slate-100 animate-pulse" /> : <div className="grid gap-4 lg:grid-cols-[1fr_16rem] items-start">
+      {!loaded ? <PageLoader /> : <div className="grid gap-4 lg:grid-cols-[1fr_16rem] items-start">
         <div className="space-y-3">{SECTIONS.map((s) => { const list = MODULES.filter((m) => m.section === s); return list.length ? <section key={s} className="card !p-3"><h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">{s}</h2>{list.map(row)}</section> : null; })}
           <section className="card !p-3"><h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Always Admin only</h2><p className="text-sm text-slate-500">Users, Permissions, approving or reopening a payroll run, the bank transfer letter, and authorizing a bill for the JSL portal. These cannot be handed to another role.</p></section></div>
         <aside className="card !p-3 lg:sticky lg:top-20"><h2 className="text-sm font-semibold">Menu for {info.label}</h2><p className="text-xs text-slate-400 mb-2">What they will see, with the choices on this page.</p>

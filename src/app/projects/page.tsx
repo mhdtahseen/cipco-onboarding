@@ -9,6 +9,7 @@ import { swrDrop, swrGet, swrSet } from "@/lib/swr";
 
 type PSnap = { projects: Project[]; clients: Client[]; people: Record<string, number>; spent: Record<string, number> };
 import type { Project } from "@/lib/types";
+import { PageLoader } from "@/components/Loader";
 
 export default function ProjectsPage() {
   const router = useRouter(); const snap = swrGet<PSnap>("projects");   // last result, shown at once while a fresh one loads
@@ -56,7 +57,7 @@ export default function ProjectsPage() {
       <div className="flex gap-2">{(["active", "closed", "all"] as const).map((k) => <button key={k} className={`btn ${filter === k ? "btn-primary" : ""}`} onClick={() => setFilter(k)}>{k === "active" ? `Active (${nActive})` : k === "closed" ? `Closed (${projects.length - nActive})` : "All"}</button>)}</div>
       {err && <p className="warn">{err}</p>}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {loading && <p className="card text-center text-sm text-slate-500 sm:col-span-full">Loading…</p>}
+        {loading && <div className="sm:col-span-full"><PageLoader /></div>}
         {!loading && !shown.length && !err && <p className="card text-center text-sm text-slate-500 sm:col-span-full">{q ? "Nothing matches your search." : filter === "closed" ? "No closed projects." : "No projects yet — add your first one."}</p>}
         {shown.map((p) => (
           <Link key={p.id} href={`/projects/${p.id}`} className={`card !p-4 hover:bg-slate-50 space-y-1 ${p.status === "closed" ? "opacity-80" : ""}`}>
