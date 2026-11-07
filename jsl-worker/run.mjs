@@ -121,11 +121,14 @@ async function readReport(page, job, result, label) {
   result.reportRange = { from: await page.locator(id('txtFrom')).inputValue(), to: await page.locator(id('txtTo')).inputValue() };
   await page.getByRole('button', { name: 'Retrieve' }).click();
   await settle(page);
-  const text = await page.locator('body').innerText();
-  // Two shapes are the real Report: a list with a "Requisition No" column, or its own heading with "No Record Found!" when nothing exists yet for the dates. Anything else is not trusted.
-  const isReport = /Material Requisition Report/i.test(text);
-  if (!(isReport && /No Record Found/i.test(text)) && !/Requisition\s*No/i.test(text)) throw new Error('The Report did not show a "Requisition No" column or its "No Record Found" notice.');
-  const nums = [...new Set(text.match(REQ_NO) || [])];
+  // The list arrives a moment after the click, and a long one can take several seconds: wait until the page shows either the list's column or the "nothing found" notice.
+  const read = async () => (await page.locator('body').innerText());
+  const settled = (t) => /Requisition\s*No/i.test(t) || (/Material Requisition Report/i.test(t) && /No Record Found/i.test(t));
+  let text = await read();
+  for (let t = 0; t < Number(process.env.REPORT_WAIT_MS || 20000) && !settled(text); t += 1000) { await page.waitForTimeout(1000); text = await read(); }
+  if (!settled(text)) throw new Error('The Report did not show a "Requisition No" column or its "No Record Found" notice.');
+  // A number can wrap over two lines in a narrow column ("06112026-" then "001"): join it up. One MRR with several items repeats its number once per item, which the set takes care of.
+  const nums = [...new Set(text.replace(/(\d{8}-)\s+(?=\d)/g, '$1').match(REQ_NO) || [])];
   result[label] = { count: nums.length, last: nums.slice(-3) };
   return new Set(nums);
 }

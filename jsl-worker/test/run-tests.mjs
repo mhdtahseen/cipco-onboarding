@@ -88,6 +88,9 @@ await scenario('happy path, by vehicle with a co-driver', { job: VEH }, ({ r, po
 await scenario('nothing exists on the portal yet today (the Report says No Record Found)', { portal: { startEmpty: true } }, ({ r, portal, app }) => {
   ok('an empty Report is fine: sent and confirmed', r.code === 0 && app.st.status === 'submitted' && newCount(portal) === 1, r.out.slice(-300));
 });
+await scenario('a slow Report whose numbers wrap over two lines', { portal: { slowReport: 3000, wrapNumbers: true } }, ({ r, portal, app }) => {
+  ok('waits for the list and joins wrapped numbers: sent and confirmed', r.code === 0 && app.st.status === 'submitted' && newCount(portal) === 1, r.out.slice(-300));
+});
 await scenario('the portal is slow to show the new requisition (3 reads)', { portal: { lagReports: 2 }, env: { CONFIRM_TRIES: '5' } }, ({ r, portal, app }) => {
   ok('found on a later read: submitted', r.code === 0 && app.st.status === 'submitted', r.out.slice(-300)); ok('it did not save twice', portal.state.saves === 1);
 });

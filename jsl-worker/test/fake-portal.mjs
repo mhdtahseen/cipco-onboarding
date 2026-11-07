@@ -19,7 +19,7 @@ export function startPortal(flags = {}) {
     if (u.pathname === '/api/report') {
       state.reportReads++; res.setHeader('content-type', 'application/json');
       const list = state.requisitions.filter((r) => { if (r.hiddenFor > 0) { r.hiddenFor--; state.hiddenReads++; return false; } return true; });
-      res.end(JSON.stringify({ broken: !!state.flags.brokenReport || (state.flags.brokenAfterSave && state.saves > 0), rows: list.map((r) => r.no) })); return;
+      res.end(JSON.stringify({ delay: state.flags.slowReport || 0, wrap: !!state.flags.wrapNumbers, broken: !!state.flags.brokenReport || (state.flags.brokenAfterSave && state.saves > 0), rows: list.map((r) => r.no) })); return;
     }
     res.setHeader('content-type', 'text/html'); res.end(PAGE.replaceAll('__MAXLEN__', String(state.flags.maxLen)).replaceAll('__NOCONTRACTOR__', String(!!state.flags.noContractor)));
   });
@@ -65,5 +65,5 @@ $(P+'ImgAdd').onclick=()=>{const n=$(P+'txtMaterialnm').value,q=$(P+'txtQty').va
 $(P+'ImgSave').onclick=async()=>{ await fetch('/api/save',{method:'POST',body:JSON.stringify({no:$(P+'txtReqNo').value,items:items.join('; '),by:$(P+'ddlReceivedby').value,wo:$(P+'txtWorkorder').value})}); alert('ERROR'); };
 $(P+'ibtn_Close').onclick=()=>show('matHome');
 ['txtFrom','txtTo'].forEach((b,i)=>{ $(P+b).onclick=()=>{ $('cal'+(i+1)).hidden=false; }; $('today'+(i+1)).onclick=()=>{ $(P+b).value='07/11/2026'; $('cal'+(i+1)).hidden=true; }; });
-$('retr').onclick=async()=>{ if(!$(P+'txtFrom').value||!$(P+'txtTo').value){ $('table').innerHTML='<p>Select dates</p>'; return; } const r=await (await fetch('/api/report')).json(); $('table').innerHTML = r.broken ? '<p>Something went wrong</p>' : !r.rows.length ? '<h3>Material Requisition Report Date Wise</h3><p>No Record Found!</p>' : '<h3>Material Requisition Report Date Wise</h3><table><tr><th>Requisition No</th><th>Material Code</th></tr>'+r.rows.map(n=>'<tr><td>'+n+'</td><td>MC-'+n.slice(-3)+'</td></tr>').join('')+'</table>'; };
+$('retr').onclick=async()=>{ if(!$(P+'txtFrom').value||!$(P+'txtTo').value){ $('table').innerHTML='<p>Select dates</p>'; return; } $('table').innerHTML='<h3>Material Requisition Report Date Wise</h3>'; const r=await (await fetch('/api/report')).json(); if(r.delay) await new Promise(x=>setTimeout(x,r.delay)); const fmt=(n)=>r.wrap?n.slice(0,9)+'<br>'+n.slice(9):n; $('table').innerHTML = r.broken ? '<p>Something went wrong</p>' : !r.rows.length ? '<h3>Material Requisition Report Date Wise</h3><p>No Record Found!</p>' : '<h3>Material Requisition Report Date Wise</h3><table><tr><th>Requisition No</th><th>Material Code</th></tr>'+r.rows.map(n=>'<tr><td>'+fmt(n)+'</td><td>MC-'+n.slice(-3)+'</td></tr>').join('')+'</table>'; };
 </script>`;
