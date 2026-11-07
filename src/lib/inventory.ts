@@ -6,7 +6,7 @@ export type NoteField = "" | "vendor" | "gstin" | "bill_no" | "date" | "total" |
 export type ReviewNote = { id: string; bill_id: string; item_id: string | null; item_name: string; field: NoteField; note: string; state: "open" | "done"; created_at: string; resolved_at: string | null };
 export type BillEvent = { id: string; bill_id: string; kind: "submitted" | "returned" | "approved" | "recorded" | "reopened" | "voided"; note: string; created_at: string };
 export type JslStatus = "none" | "authorized" | "sending" | "submitting" | "submitted" | "failed" | "needs_check";
-export type InvBill = { id: string; project_id: string; vendor_name: string; vendor_gstin: string; bill_no: string; bill_date: string; bill_total: number; other_charges: number; bill_path: string | null; note: string; status: BillStatus; kind: "bill" | "no_bill"; submitted_by: string | null; submitted_at: string | null; jsl_status: JslStatus; jsl_wanted: boolean; jsl_authorized_at: string | null; jsl_ref: string | null; jsl_error: string | null; jsl_submitted_at: string | null; created_at: string; voided_at: string | null; void_reason: string | null };
+export type InvBill = { id: string; project_id: string; vendor_name: string; vendor_gstin: string; bill_no: string; bill_date: string; bill_total: number; other_charges: number; bill_path: string | null; note: string; status: BillStatus; kind: "bill" | "no_bill" | "gas"; source: string | null; submitted_by: string | null; submitted_at: string | null; jsl_status: JslStatus; jsl_wanted: boolean; jsl_authorized_at: string | null; jsl_ref: string | null; jsl_error: string | null; jsl_submitted_at: string | null; created_at: string; voided_at: string | null; void_reason: string | null };
 export type InvItem = { id: string; bill_id: string; line_no: number; name: string; hsn: string; qty: number; unit: string; rate: number; gst_pct: number; amount: number };
 export type Gatepass = { wo_no: string; received_by: "hand" | "vehicle"; person_source: "employee" | "other"; person_employee_id: string | null; person_name: string; person_id_type: string; person_id_no: string; vehicle_no: string; driver_name: string; driver_dl_no: string; codriver_name: string; codriver_id_type: string; codriver_id_no: string };
 export type ProjectPerson = { employee_id: string; full_name: string; designation: string | null; aadhaar_last4: string | null; is_default: boolean };
@@ -55,6 +55,9 @@ export function gatepassGaps(g: Gatepass | null, people: ProjectPerson[]): strin
   return out;
 }
 
+/** How a gas product is named on an Inventory entry and on the JSL portal: LPG with capacity 19kg is "LPG CYLINDER 19KG". The database builds the same name (inventory_gas_name). */
+export const gasItemName = (name: string, capacity?: string | null) => `${name.trim().toUpperCase()} CYLINDER${capacity && capacity.trim() ? ` ${capacity.trim().toUpperCase()}` : ""}`;
+
 export const maskLast4 = (last4: string) => `••••••••${last4}`;
 export const maskId = (s: string) => (s.length > 4 ? "•".repeat(s.length - 4) + s.slice(-4) : s);
 
@@ -82,12 +85,12 @@ export function stockFrom(items: InvItem[], recordedBillIds: Set<string>): Stock
 }
 
 /** What the list and the screen call an entry's stage. */
-export function stageOf(b: Pick<InvBill, "status" | "voided_at">): { key: string; text: string; cls: string } {
+export function stageOf(b: Pick<InvBill, "status" | "voided_at"> & Partial<Pick<InvBill, "kind" | "bill_total">>): { key: string; text: string; cls: string } {
   if (b.voided_at) return { key: "void", text: "Void", cls: "bg-slate-100 text-slate-600" };
   if (b.status === "submitted") return { key: "submitted", text: "Waiting for review", cls: "bg-blue-50 text-blue-800" };
   if (b.status === "returned") return { key: "returned", text: "Sent back", cls: "bg-red-50 text-red-700" };
   if (b.status === "draft") return { key: "draft", text: "Draft", cls: "bg-amber-50 text-amber-800" };
-  return { key: "recorded", text: "In expenses", cls: "bg-green-50 text-green-800" };
+  return { key: "recorded", text: b.kind && b.kind !== "bill" && !(Number(b.bill_total) > 0) ? "Received" : "In expenses", cls: "bg-green-50 text-green-800" };   // an entry with no amount adds nothing to expenses: it is only received
 }
 
 /** The parts of an entry a reviewer can mark, in the words the reviewer sees. */

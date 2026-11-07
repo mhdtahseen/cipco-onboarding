@@ -196,6 +196,10 @@ Checks: serial numbers cannot outnumber the cylinders; you cannot take back more
 
 Choose **Lost** or **Damaged (valve / cap)** in **What happened**, then the product, how many, and optional serial numbers, challan and note. These reduce the count of cylinders with us, like a pick-up, and are charged at the vendor's lost / damaged charge (see 6.2). A cylinder cannot be marked lost or damaged beyond what you hold.
 
+### 5.3a Inventory and the JSL portal
+
+Each trip with cylinders delivered makes **one entry in Inventory** (kind *Gas delivery*), already recorded, with the products, the challan number, the order and the challan photo. It adds nothing to expenses. An Admin can send it to the JSL portal from there. Voiding the delivery here takes it off that entry, unless it has already gone to the portal. See "Gas deliveries" in `INVENTORY.md`.
+
 ### 5.4 Fixing a mistake
 
 In the **Log** tab, an entry's cylinders and quantity cannot be edited. **Void** it (it stays in the list, marked void, and the count corrects) and enter it again.
@@ -390,6 +394,7 @@ Voiding an entry keeps it listed, marked void.
 | --- | --- | --- | --- |
 | Order approved | no | no | no |
 | Refills delivered, trip, lost, damaged | no | **yes** | no |
+| Cylinders delivered (an Inventory entry is made, stock only) | no | no | no |
 | Equipment hours logged or verified | no | no | no |
 | Vendor bill recorded (not approved) | no | no | listed as "not included" |
 | Vendor bill **approved** | no | no | **yes** (billed) |

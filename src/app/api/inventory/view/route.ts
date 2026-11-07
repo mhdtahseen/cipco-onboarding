@@ -10,8 +10,9 @@ export async function GET(req: NextRequest) {
   if (!u.user) return new NextResponse("Unauthorized", { status: 401 });
   const id = req.nextUrl.searchParams.get("bill") || "";
   if (!/^[0-9a-f-]{36}$/i.test(id)) return new NextResponse("Bad request", { status: 400 });
-  const { data } = await sb.from("inventory_bills").select("project_id, bill_path").eq("id", id).maybeSingle();
+  const { data } = await sb.from("inventory_bills").select("*").eq("id", id).maybeSingle();
   const path = data?.bill_path || "";
-  if (!path || path.includes("..") || !path.startsWith(`inv-${data!.project_id}/`)) return new NextResponse("Not found", { status: 404 });
+  const own = path.startsWith(`inv-${data!.project_id}/`) || (data!.kind === "gas" && path.startsWith(`gas/${data!.project_id}/`));   // a gas delivery's entry shows the delivery's own challan photo
+  if (!path || path.includes("..") || !own) return new NextResponse("Not found", { status: 404 });
   return NextResponse.redirect(await r2SignedGetUrl(path), 302);
 }

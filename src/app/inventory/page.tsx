@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRole } from "@/lib/roles";
 import { keepProject, rememberedProject } from "@/lib/lastProject";
-import { inr, JSL_LABEL, stageOf, stockFrom, type InvBill, type InvItem } from "@/lib/inventory";
+import { gasItemName, inr, JSL_LABEL, stageOf, stockFrom, type InvBill, type InvItem } from "@/lib/inventory";
 import BillEditor from "@/components/inventory/BillEditor";
 import CsvImport from "@/components/inventory/CsvImport";
 
@@ -18,7 +18,7 @@ export default function Inventory() {
   const [projects, setProjects] = useState<Project[]>([]); const [pid, setPid] = useState(""); const [loaded, setLoaded] = useState(false);
   const [bills, setBills] = useState<InvBill[]>([]); const [items, setItems] = useState<InvItem[]>([]); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   // approval: true once 2026-11-inventory-approval.sql has been run. Until then the page works as it did before it: no submit or review buttons, nothing sent that the database would not understand.
-  const [tab, setTab] = useState<"bills" | "received">("bills"); const [openId, setOpenId] = useState<string | "new" | null>(null); const [newKind, setNewKind] = useState<"bill" | "no_bill">("bill"); const [chip, setChip] = useState<"all" | "submitted" | "returned" | "draft" | "recorded">("all"); const [q, setQ] = useState(""); const [showVoid, setShowVoid] = useState(false); const [approval, setApproval] = useState(false); const [importing, setImporting] = useState(false);
+  const [tab, setTab] = useState<"bills" | "received">("bills"); const [openId, setOpenId] = useState<string | "new" | null>(null); const [newKind, setNewKind] = useState<"bill" | "no_bill">("bill"); const [chip, setChip] = useState<"all" | "submitted" | "returned" | "draft" | "recorded">("all"); const [q, setQ] = useState(""); const [showVoid, setShowVoid] = useState(false); const [approval, setApproval] = useState(false); const [gasHeld, setGasHeld] = useState<{ name: string; qty: number }[]>([]); const [importing, setImporting] = useState(false);
 
   useEffect(() => { (async () => {
     const { data, error } = await supabase().from("projects").select("id, name, status").order("status").order("name");
@@ -42,6 +42,12 @@ export default function Inventory() {
         all.push(...((r.data ?? []) as InvItem[])); if ((r.data ?? []).length < 1000) break;
       }
     }
+    // Gas cylinders are swapped on every truck visit, not used up, so their stock is the count we hold now (from Site supplies), not a total of every delivery
+    const [gm, gp] = await Promise.all([sb.from("gas_movements").select("product_id, kind, qty").eq("project_id", pid).is("voided_at", null), sb.from("gas_products").select("id, name, capacity")]);
+    if (!gm.error && !gp.error) {
+      const held = new Map<string, number>(); for (const m of (gm.data ?? []) as { product_id: string; kind: string; qty: number }[]) held.set(m.product_id, (held.get(m.product_id) ?? 0) + (m.kind === "delivery" ? Number(m.qty) : -Number(m.qty)));
+      setGasHeld(((gp.data ?? []) as { id: string; name: string; capacity: string | null }[]).filter((x) => held.has(x.id)).map((x) => ({ name: gasItemName(x.name, x.capacity), qty: held.get(x.id) ?? 0 })).sort((a, b) => a.name.localeCompare(b.name)));
+    } else setGasHeld([]);
     setBills(list); setItems(all); setBusy(false);
   }, [pid]);
   useEffect(() => { void load(); }, [load]);
@@ -50,15 +56,15 @@ export default function Inventory() {
   const live = bills.filter((b) => !b.voided_at); const voided = bills.length - live.length;
   const inStage = (b: InvBill, k: typeof chip) => k === "all" || (k === "submitted" ? b.status === "submitted" : k === "returned" ? b.status === "returned" : k === "draft" ? b.status === "draft" : b.status === "recorded");
   const shown = (showVoid ? bills : live).filter((b) => (showVoid || inStage(b, chip)) && (!q.trim() || `${b.vendor_name} ${b.bill_no} ${b.note}`.toLowerCase().includes(q.trim().toLowerCase())));
-  const recorded = useMemo(() => new Set(live.filter((b) => b.status === "recorded").map((b) => b.id)), [live]);
+  const recorded = useMemo(() => new Set(live.filter((b) => b.status === "recorded" && b.kind !== "gas").map((b) => b.id)), [live]);   // gas deliveries are counted from the cylinders held, below
   const stock = useMemo(() => stockFrom(items, recorded).filter((s) => !q.trim() || s.name.toLowerCase().includes(q.trim().toLowerCase())), [items, recorded, q]);
   const openBill = openId && openId !== "new" ? bills.find((b) => b.id === openId) ?? null : null;
-  const titleOf = (b: InvBill) => (b.kind === "no_bill" ? (b.vendor_name ? `No bill · ${b.vendor_name}` : "Entry without a bill") : b.vendor_name);
-  const subOf = (b: InvBill) => (b.kind === "no_bill" ? (b.note.length > 48 ? `${b.note.slice(0, 48)}…` : b.note) : `bill ${b.bill_no}`);
-  const amountOf = (b: InvBill) => (b.kind === "no_bill" && !(Number(b.bill_total) > 0) ? "—" : `₹${inr(Number(b.bill_total))}`);
+  const titleOf = (b: InvBill) => (b.kind === "gas" ? `Gas delivery · ${b.vendor_name}` : b.kind === "no_bill" ? (b.vendor_name ? `No bill · ${b.vendor_name}` : "Entry without a bill") : b.vendor_name);
+  const subOf = (b: InvBill) => (b.kind === "gas" ? (b.bill_no ? `challan ${b.bill_no}` : "no challan number") : b.kind === "no_bill" ? (b.note.length > 48 ? `${b.note.slice(0, 48)}…` : b.note) : `bill ${b.bill_no}`);
+  const amountOf = (b: InvBill) => (b.kind !== "bill" && !(Number(b.bill_total) > 0) ? "—" : `₹${inr(Number(b.bill_total))}`);
   const pillsOf = (b: InvBill) => {
     const sg = stageOf(b); const j = JSL_LABEL[b.jsl_status]; const recd = b.status === "recorded" && !b.voided_at;
-    return <><span className={`${pill} ${sg.cls}`}>{recd && b.kind === "no_bill" && !(Number(b.bill_total) > 0) ? "Received" : sg.text}</span>{recd && b.jsl_wanted && <span className={`${pill} ${b.jsl_status === "none" ? "bg-blue-50 text-blue-800" : j.cls}`}>{b.jsl_status === "none" ? "For the JSL portal" : j.text}</span>}</>;
+    return <><span className={`${pill} ${sg.cls}`}>{sg.text}</span>{b.kind === "gas" && <span className={`${pill} bg-cyan-50 text-cyan-800`}>Gas</span>}{recd && b.jsl_wanted && <span className={`${pill} ${b.jsl_status === "none" ? "bg-blue-50 text-blue-800" : j.cls}`}>{b.jsl_status === "none" ? "For the JSL portal" : j.text}</span>}</>;
   };
   const inExp = live.filter((b) => b.status === "recorded"); const spent = inExp.reduce((t, b) => t + Number(b.bill_total), 0);
   const waiting = live.filter((b) => b.status === "submitted").length; const open = live.filter((b) => b.status === "draft" || b.status === "returned").length;
@@ -110,8 +116,11 @@ export default function Inventory() {
       </div>}
 
       {pid && tab === "received" && <div className="card !p-3 space-y-2">
+        {gasHeld.length > 0 && <div className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-3 space-y-1"><div className="text-sm font-semibold">Gas cylinders with us now</div>
+          <ul className="text-sm divide-y divide-cyan-100">{gasHeld.filter((g) => !q.trim() || g.name.toLowerCase().includes(q.trim().toLowerCase())).map((g) => <li key={g.name} className="py-1 flex justify-between gap-3"><span>{g.name}</span><b className="tabular-nums whitespace-nowrap">{g.qty} No</b></li>)}</ul>
+          <p className="text-xs text-slate-500">Cylinders are swapped on every truck visit, not used up, so this is the number we hold, counted from <a className="underline" href="/site-supplies">Site supplies</a>. Each delivery is also an entry on the Bills tab, for the JSL portal.</p></div>}
         <p className="text-xs text-slate-500">Everything received on recorded bills. Issues and returns are not taken off yet.</p>
-        {!stock.length ? <p className="text-sm text-slate-500">Nothing received yet.</p> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-left text-slate-500 border-b"><tr><th className="py-2 pr-3">Item</th><th className="pr-3 text-right">Received</th><th className="pr-3 text-right">Rate</th><th className="text-right">Bills</th></tr></thead>
+        {!stock.length ? (gasHeld.length ? null : <p className="text-sm text-slate-500">Nothing received yet.</p>) : <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-left text-slate-500 border-b"><tr><th className="py-2 pr-3">Item</th><th className="pr-3 text-right">Received</th><th className="pr-3 text-right">Rate</th><th className="text-right">Bills</th></tr></thead>
           <tbody>{stock.map((s) => <tr key={s.key} className="border-b border-slate-100"><td className="py-2 pr-3">{s.name}</td><td className="pr-3 text-right whitespace-nowrap tabular-nums">{s.qty.toLocaleString("en-IN", { maximumFractionDigits: 3 })} {s.unit}</td><td className="pr-3 text-right whitespace-nowrap tabular-nums">₹{inr(s.minRate)}{s.maxRate !== s.minRate ? ` to ₹${inr(s.maxRate)}` : ""}</td><td className="text-right tabular-nums">{s.bills}</td></tr>)}</tbody></table></div>}
       </div>}
     </div>

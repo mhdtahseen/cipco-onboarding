@@ -189,3 +189,17 @@ Every submit, send back and approval is kept in the entry's History.
 **An entry without a bill** (**+ Entry without a bill**): a cash purchase where the shop gave no bill, a transfer from another site, stock found. It has a reason (required), where it came from, the date received, an optional photo and an optional amount paid. Items need no rate. It goes through the same approval. If an amount was paid it posts to expenses on approval, described as "Entry without a bill"; with no amount it is stock only. It can be sent to the JSL portal like any other entry.
 
 `supabase/migrations/2026-11-inventory-approval.sql` adds the stages, \`kind\`, the corrections table and the history table, and the functions \`inventory_submit_bill\`, \`inventory_return_bill\`, \`inventory_record_bill\` (now approves, and takes \`p_portal\`), \`inventory_note_add\`, \`inventory_note_remove\` and \`inventory_note_set_done\`. Run it after the three earlier inventory migrations. The page checks whether it has been run: until then it works as it did before (no submit or review buttons, nothing sent that the database would not understand), so the code can be deployed first.
+
+## Gas deliveries
+
+A gas truck visit recorded on **Site supplies** (cylinders delivered) makes an Inventory entry by itself, so it can go to the JSL portal like any other items. Nobody enters it twice.
+
+- **One entry per visit**, already recorded. The gas order was approved, so it needs no review. It lists each product as the portal names it (for example `OXYGEN CYLINDER 7 M3`, `LPG CYLINDER 19KG`), in **No**, with the challan number, the order number and the challan photo. Several products on one visit are one entry; a second visit is a second entry.
+- **No money.** The gas money already flows through the vendor's bills and payments, so the entry adds nothing to expenses and nothing is counted twice. Its list label is **Received**, with a **Gas** tag.
+- **Stock is the count held, not a total.** Cylinders are swapped on each visit, not used up, so the **Received** tab shows **Gas cylinders with us now** (delivered, less empties taken back, lost and damaged), counted from Site supplies. The delivery entries are the record for the portal and are left out of the running totals.
+- **The JSL portal** works as for a bill: an Admin switches it on for that entry, then the details are entered. For a truck that is **By vehicle**: vehicle number, driver and licence. Nothing about the portal is asked on the trip form.
+- **Changing or removing one** is done on Site supplies: **void the delivery** there and the entry follows. Only the products of that delivery come off; if nothing is left the entry is voided. If the entry has already gone to the portal, voiding is refused. An authorization that was given for the old quantities is taken back. Reopening or voiding the entry from Inventory is refused.
+- **Empties going out** do not make an entry. The entry has a *direction* (in or out) so that, if the portal ever needs a pass for the empties, an outgoing entry can be made the same way.
+- Two visits with the same vendor, date, challan number and challan photo count as one visit. Give each visit its own challan number or photo.
+
+`supabase/migrations/2026-11-inventory-gas.sql` adds the link (`source`, `source_ref`, `direction`), a new entry kind `gas`, and the triggers on `gas_movements`. Run it after 2026-11-gas.sql and 2026-11-inventory-approval.sql. It also creates entries for deliveries that were already recorded, and is safe to run twice.
