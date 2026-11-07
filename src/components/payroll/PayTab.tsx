@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { useRole } from "@/lib/roles";
 import { creditWindow, monthName } from "@/lib/payroll";
 import type { usePayroll } from "@/lib/payrollData";
 import BankLetter from "./BankLetter";
@@ -11,6 +12,7 @@ const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 
 
 // Who to pay and how much, after the payroll is approved. Bank transfers go out as a CSV; UPI payments open the UPI app pre-filled.
 export default function PayTab({ P, ym, today }: { P: P; ym: string; today: string }) {
+  const { admin } = useRole();   // the bank transfer letter stays with an Admin
   const d = P.d!; const run = d.run; const win = creditWindow(ym);
   const [err, setErr] = useState(""); const [msg, setMsg] = useState(""); const [form, setForm] = useState<{ id: string; amount: string; paid_on: string; reference: string } | null>(null); const [busy, setBusy] = useState(false);
   const note = (m: string) => { setMsg(m); setTimeout(() => setMsg(""), 5000); };
@@ -45,9 +47,9 @@ export default function PayTab({ P, ym, today }: { P: P; ym: string; today: stri
       <div className="grid grid-cols-3 gap-3 text-center">{[["Net to pay", totals.net], ["Paid", totals.paid], ["Still to pay", Math.max(0, totals.net - totals.paid)]].map(([l, n]) => <div key={l as string} className="rounded-2xl bg-white border border-slate-200/80 p-3"><div className="text-xs text-slate-400">{l}</div><div className="text-lg font-medium tabular-nums">₹{inr(n as number)}</div></div>)}</div>
       <p className={`text-sm rounded-xl px-3 py-2 ${overdue ? "bg-rose-50 text-rose-800" : "bg-slate-50 text-slate-600"}`} data-window>{overdue ? <><b>{due.length}</b> {due.length === 1 ? "person is" : "people are"} still unpaid after the credit window.</> : <>Salary is credited between {win.from.slice(8)} and {win.to.slice(8)} {new Date(`${win.from}T00:00:00`).toLocaleDateString("en-IN", { month: "long" })}.</>}</p>
       {err && <p className="warn">{err}</p>}{msg && <p className="text-sm text-green-700">{msg}</p>}
-      <p className="text-xs"><a className="text-blue-700 underline" href="/payments-due">Everything due across all projects: Payments due report →</a></p>
+      <p className="text-xs"><a className="text-blue-700 underline" href="/expenses?tab=due">Everything due across all projects: Expenses, Due tab →</a></p>
       <div className="flex flex-wrap gap-2"><button className="btn" onClick={bankCsv} disabled={!due.some((r) => r.l.pay_mode === "bank")}>⬇ Bank transfer CSV</button><button className="btn" onClick={upiCsv} disabled={!due.some((r) => r.l.pay_mode === "upi")}>⬇ UPI list CSV</button>
-      <BankLetter runId={run.id} ym={ym} rows={due.filter((r) => r.l.pay_mode === "bank").map((r) => { const b = bankOf(r); return { id: r.l.id, name: r.name, left: r.left, account: b.account, ifsc: b.ifsc, bank: b.bank }; })} />
+      {admin && <BankLetter runId={run.id} ym={ym} rows={due.filter((r) => r.l.pay_mode === "bank").map((r) => { const b = bankOf(r); return { id: r.l.id, name: r.name, left: r.left, account: b.account, ifsc: b.ifsc, bank: b.bank }; })} />}
         <button className="btn btn-primary" disabled={busy || !due.some((r) => r.l.pay_mode === "bank")} onClick={() => payAll("bank")}>Mark all bank paid</button><button className="btn btn-primary" disabled={busy || !due.some((r) => r.l.pay_mode === "upi")} onClick={() => payAll("upi")}>Mark all UPI paid</button></div>
       <div className="card !p-0 overflow-x-auto"><table className="w-full text-sm min-w-[50rem]"><thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="text-left p-2.5">Employee</th><th className="text-left">Pay by</th><th className="text-left">Payee details</th><th className="text-right">Net</th><th className="text-right">Paid</th><th className="text-right">Left</th><th className="text-left pl-3">Status</th><th></th></tr></thead>
         <tbody className="divide-y divide-slate-100">{rows.map((r) => <>

@@ -1,7 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { REMEMBER_COOKIE, withLifetime } from "@/lib/supabase/session";
 import { NextResponse, type NextRequest } from "next/server";
-import { canAccess, homeFor, roleFromClaims, signedInAtMs } from "@/lib/nav";
+import { canAccessWith, homeFor, roleFromClaims, signedInAtMs } from "@/lib/nav";
+import { normRole, type Level, type Matrix } from "@/lib/permissions";
 
 // Roles change rarely, but every request needs one. Remembering it for a minute in this server's memory saves a database round trip per request
 // (nothing is stored in the browser, so it cannot be tampered with). The database still enforces every read and write against the real role at once;
@@ -16,6 +17,18 @@ async function reloginBefore(sb: { rpc: (fn: string) => PromiseLike<{ data: unkn
   if (reloginCache.size > 500) reloginCache.clear();
   reloginCache.set(uid, { at: Date.now(), ms: Number.isFinite(ms) ? ms : null });   // before the migration is run the function does not exist: that simply means nobody is forced out
   return reloginCache.get(uid)!.ms;
+}
+
+// The permission matrix for a role (2026-11-role-permissions.sql), remembered for a minute like the role itself. null = the table does not exist yet: the built-in defaults apply.
+const matrixCache = new Map<string, { m: Matrix | null; at: number }>();
+async function matrixFor(sb: { from: (t: string) => any }, role: string): Promise<Matrix | null> {
+  const r = normRole(role); if (r === "admin" || r === "none") return null;
+  const hit = matrixCache.get(r); if (hit && Date.now() - hit.at < ROLE_TTL_MS) return hit.m;
+  const { data, error } = await sb.from("role_permissions").select("module, level").eq("role", r);
+  const rows = (data ?? []) as { module: string; level: Level }[];
+  const m: Matrix | null = error || !rows.length ? null : Object.fromEntries(rows.map((x) => [x.module, x.level]));   // no rows at all = never configured: the defaults apply (an Admin who sets everything to None leaves explicit None rows)
+  if (!error) { if (matrixCache.size > 20) matrixCache.clear(); matrixCache.set(r, { m, at: Date.now() }); }   // never remember a failed lookup
+  return m;
 }
 
 // Keeps the Supabase session fresh and sends logged-out visitors to /login.
@@ -64,7 +77,7 @@ export async function middleware(req: NextRequest) {
   }
   const home = homeFor(role);
   if (isLogin) return NextResponse.redirect(new URL(home, req.url));
-  if (!canAccess(role, path, req.method)) return isApi ? NextResponse.json({ error: "Not allowed" }, { status: 403 }) : NextResponse.redirect(new URL(home, req.url));
+  if (!canAccessWith(role, path, req.method, await matrixFor(sb as any, role))) return isApi ? NextResponse.json({ error: "Not allowed" }, { status: 403 }) : NextResponse.redirect(new URL(home, req.url));
   return res;
 }
 export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|branding/|icons/|sw.js|manifest.webmanifest).*)"] };

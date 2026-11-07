@@ -1,3 +1,4 @@
+import { mayView } from "@/lib/permsServer";
 import { NextRequest, NextResponse } from "next/server";
 import { serverClient } from "@/lib/supabase/server";
 import { loadPaymentsDue } from "@/lib/paymentsDueData";
@@ -12,7 +13,7 @@ const toPayee = (v: PayeeView): Payee => ({ ...v.payee, total: v.total, paid: v.
 // the Admin unticked on the page; `project` limits it to one project. Admin only.
 export async function GET(req: NextRequest) {
   const sb = await serverClient(); const { data: u } = await sb.auth.getUser(); if (!u.user) return new NextResponse("Unauthorized", { status: 401 });
-  const { data: admin } = await sb.rpc("is_admin"); const { data: viewer } = await sb.rpc("is_viewer"); if (!admin && !viewer) return new NextResponse("Not allowed", { status: 403 });
+  if (!(await mayView(sb, "expenses", "due"))) return new NextResponse("Not allowed", { status: 403 });
   const p = req.nextUrl.searchParams; const exclude = new Set((p.get("exclude") || "").split(",").filter(Boolean)), only = p.get("project") || "";
   if (only && !/^[0-9a-f-]{36}$/.test(only)) return new NextResponse("Bad request", { status: 400 });
   let d; try { d = await loadPaymentsDue(sb); } catch (e: any) { return new NextResponse(e?.message || "Could not load", { status: 500 }); }

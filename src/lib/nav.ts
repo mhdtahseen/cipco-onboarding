@@ -1,8 +1,9 @@
 // The ONE list of pages in the app. The sidebar, the phone tab bar, the slide-out menu and the route guard all read it,
 // so adding a module (Payroll, Invoices, Inventory…) means adding an entry here and nothing else.
 // Pure data + helpers (no React), so the server-side route guard can import it too.
+import { apiModuleOf, levelRank, levelIn, openLevel, type Matrix } from "./permissions";
 export type NavRole = "admin" | "staff" | "site_engineer" | "supervisor" | "attendance" | "viewer";   // "attendance" = the old name for Supervisor, kept so the app still works before the migration renames it
-export type IconName = "users" | "clipboard" | "folder" | "file" | "book" | "mail" | "list" | "sliders" | "shield" | "building" | "truck" | "utensils" | "bed" | "wallet" | "pin" | "cylinder" | "box" | "calendar" | "receipt" | "briefcase" | "hard-hat" | "wrench";
+export type IconName = "users" | "clipboard" | "folder" | "file" | "book" | "mail" | "list" | "sliders" | "shield" | "building" | "truck" | "utensils" | "bed" | "wallet" | "pin" | "cylinder" | "box" | "calendar" | "receipt" | "briefcase" | "hard-hat" | "wrench" | "key";
 export type NavItem = {
   href: string;            // where the link goes
   label: string;
@@ -10,6 +11,7 @@ export type NavItem = {
   section: string;         // heading in the sidebar (see NAV_SECTIONS for the order)
   roles: NavRole[];        // who sees it AND who may open it (admin may always open everything)
   paths: string[];         // addresses that belong to this item; "/" matches only the home page, others match themselves and anything under them
+  module?: string;         // the permission module this page belongs to (see permissions.ts); pages without one follow `roles`
   bar?: boolean | NavRole[];   // also shown on the phone's bottom bar (the first four that a role can see): true for every role, or only for the listed roles
 };
 
@@ -22,32 +24,35 @@ const CONSUMABLES_ROLES: NavRole[] = SITE_ROLES_GET_CONSUMABLES ? ["admin", "sta
 const CONSUMABLES_BAR: NavRole[] = SITE_ROLES_GET_CONSUMABLES ? ["site_engineer", "supervisor", "attendance"] : [];
 
 export const NAV: NavItem[] = [
-  { href: "/", label: "Employees", icon: "users", section: "People", roles: ["admin", "staff", "viewer"], paths: ["/", "/employees"], bar: true },
-  { href: "/payroll", label: "Payroll", icon: "wallet", section: "People", roles: ["admin", "viewer"], paths: ["/payroll"] },
-  { href: "/attendance", label: "Attendance", icon: "clipboard", section: "People", roles: ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"], paths: ["/attendance"], bar: true },
-  { href: "/projects", label: "Projects", icon: "folder", section: "Operations", roles: ["admin", "staff", "viewer"], paths: ["/projects"], bar: true },
-  { href: "/sites", label: "Sites today", icon: "hard-hat", section: "Operations", roles: ["admin", "viewer"], paths: ["/sites"], bar: ["viewer"] },
-  { href: "/transport", label: "Transport", icon: "truck", section: "Operations", roles: ["admin", "viewer"], paths: ["/transport"] },
-  { href: "/meals", label: "Meals", icon: "utensils", section: "Operations", roles: ["admin", "viewer"], paths: ["/meals"] },
-  { href: "/accommodation", label: "Accommodation", icon: "bed", section: "Operations", roles: ["admin", "viewer"], paths: ["/accommodation"] },
-  { href: "/site-supplies", label: "Site supplies", icon: "cylinder", section: "Operations", roles: CONSUMABLES_ROLES, paths: ["/site-supplies", "/gas", "/equipment", "/api/gas"], bar: CONSUMABLES_BAR },
-  { href: "/inventory", label: "Inventory", icon: "box", section: "Operations", roles: ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"], paths: ["/inventory", "/api/inventory"], bar: ["site_engineer", "supervisor", "attendance"] },
-  { href: "/payments-due", label: "Payments due", icon: "calendar", section: "Operations", roles: ["admin", "viewer"], paths: ["/payments-due"] },
-  { href: "/quotations", label: "Quotations", icon: "file", section: "Sales", roles: ["admin", "staff", "viewer"], paths: ["/quotations"], bar: true },
-  { href: "/invoices", label: "Invoices", icon: "receipt", section: "Sales", roles: ["admin", "viewer"], paths: ["/invoices"] },
-  { href: "/work-orders", label: "Work orders", icon: "briefcase", section: "Sales", roles: ["admin", "viewer"], paths: ["/work-orders"] },
-  { href: "/clients", label: "Clients", icon: "building", section: "Sales", roles: ["admin", "staff", "viewer"], paths: ["/clients"] },
-  { href: "/clauses", label: "Clause library", icon: "book", section: "Templates", roles: ["admin", "staff", "viewer"], paths: ["/clauses"] },
-  { href: "/mail-templates", label: "Mail templates", icon: "mail", section: "Templates", roles: ["admin", "staff", "viewer"], paths: ["/mail-templates"] },
-  { href: "/quote-library", label: "Quotation wording", icon: "list", section: "Templates", roles: ["admin", "staff", "viewer"], paths: ["/quote-library"] },
-  { href: "/settings", label: "Settings", icon: "sliders", section: "Admin", roles: ["admin", "staff", "viewer"], paths: ["/settings"] },
-  { href: "/locations", label: "Locations", icon: "pin", section: "Admin", roles: ["admin", "viewer"], paths: ["/locations"] },
+  { href: "/", label: "Employees", icon: "users", section: "People", module: "employees", roles: ["admin", "staff", "viewer"], paths: ["/", "/employees"], bar: true },
+  { href: "/payroll", label: "Payroll", icon: "wallet", section: "People", module: "payroll", roles: ["admin", "viewer"], paths: ["/payroll"] },
+  { href: "/attendance", label: "Attendance", icon: "clipboard", section: "People", module: "attendance", roles: ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"], paths: ["/attendance"], bar: true },
+  { href: "/projects", label: "Projects", icon: "folder", section: "Operations", module: "projects", roles: ["admin", "staff", "viewer"], paths: ["/projects"], bar: true },
+  { href: "/sites", label: "Sites today", icon: "hard-hat", section: "Operations", module: "sites", roles: ["admin", "viewer"], paths: ["/sites"], bar: ["viewer"] },
+  { href: "/transport", label: "Transport", icon: "truck", section: "Operations", module: "transport", roles: ["admin", "viewer"], paths: ["/transport"] },
+  { href: "/meals", label: "Meals", icon: "utensils", section: "Operations", module: "meals", roles: ["admin", "viewer"], paths: ["/meals"] },
+  { href: "/accommodation", label: "Accommodation", icon: "bed", section: "Operations", module: "accommodation", roles: ["admin", "viewer"], paths: ["/accommodation"] },
+  { href: "/site-supplies", label: "Site supplies", icon: "cylinder", section: "Operations", module: "site_supplies", roles: CONSUMABLES_ROLES, paths: ["/site-supplies", "/gas", "/equipment", "/api/gas"], bar: CONSUMABLES_BAR },
+  { href: "/inventory", label: "Inventory", icon: "box", section: "Operations", module: "inventory", roles: ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"], paths: ["/inventory", "/api/inventory"], bar: ["site_engineer", "supervisor", "attendance"] },
+  { href: "/expenses", label: "Expenses", icon: "calendar", section: "Operations", module: "expenses", roles: ["admin", "staff", "viewer"], paths: ["/expenses", "/payments-due"] },
+  { href: "/quotations", label: "Quotations", icon: "file", section: "Sales", module: "quotations", roles: ["admin", "staff", "viewer"], paths: ["/quotations"], bar: true },
+  { href: "/invoices", label: "Invoices", icon: "receipt", section: "Sales", module: "invoices", roles: ["admin", "viewer"], paths: ["/invoices"] },
+  { href: "/work-orders", label: "Work orders", icon: "briefcase", section: "Sales", module: "work_orders", roles: ["admin", "viewer"], paths: ["/work-orders"] },
+  { href: "/clients", label: "Clients", icon: "building", section: "Sales", module: "clients", roles: ["admin", "staff", "viewer"], paths: ["/clients"] },
+  { href: "/clauses", label: "Clause library", icon: "book", section: "Templates", module: "clauses", roles: ["admin", "staff", "viewer"], paths: ["/clauses"] },
+  { href: "/mail-templates", label: "Mail templates", icon: "mail", section: "Templates", module: "mail_templates", roles: ["admin", "staff", "viewer"], paths: ["/mail-templates"] },
+  { href: "/quote-library", label: "Quotation wording", icon: "list", section: "Templates", module: "quote_library", roles: ["admin", "staff", "viewer"], paths: ["/quote-library"] },
+  { href: "/settings", label: "Settings", icon: "sliders", section: "Admin", module: "settings", roles: ["admin", "staff", "viewer"], paths: ["/settings"] },
+  { href: "/locations", label: "Locations", icon: "pin", section: "Admin", module: "locations", roles: ["admin", "viewer"], paths: ["/locations"] },
   { href: "/users", label: "Users", icon: "shield", section: "Admin", roles: ["admin"], paths: ["/users"] },
+  { href: "/permissions", label: "Permissions", icon: "key", section: "Admin", roles: ["admin"], paths: ["/permissions"] },
   // Coming: People → Payroll · Sales → Invoices, Clients · Operations → Stock, Suppliers  (see to-do.md)
 ];
 
 const matches = (path: string, p: string) => (p === "/" ? path === "/" : path === p || path.startsWith(p + "/"));
 export const itemFor = (path: string) => NAV.find((i) => i.paths.some((p) => matches(path, p)));
+/** The menu for a role under the permission matrix (null = the built-in defaults): a page shows when the role can open its module; pages with no module follow `roles`. */
+export const visibleItemsWith = (role: string | null | undefined, m: Matrix | null) => NAV.filter((i) => !!role && (role === "admin" || (i.module ? levelRank(openLevel(role, m, i.module)) > 0 : i.roles.includes(role as NavRole))));
 export const visibleItems = (role: string | null | undefined) => NAV.filter((i) => !!role && i.roles.includes(role as NavRole));
 /** When this login session began, in ms: the latest sign-in time recorded in the token ("amr"), which stays the same when the token is quietly renewed,
  *  else the token's own issue time. null when the token says neither. Used to sign out everyone who signed in before a chosen moment. */
@@ -76,4 +81,18 @@ export function canAccess(role: string, path: string, method = "GET"): boolean {
   // a Viewer reads only: the menu pages above, and data routes (documents, PDFs, exports) when they are asked for with GET. Every route that saves or sends something is POST and is refused.
   if (role === "viewer" && !item) return method === "GET" || method === "HEAD";
   return item ? item.roles.includes(role as NavRole) : role === "staff";
+}
+
+/** The same question as canAccess, under the permission matrix (null = the built-in defaults). A page opens when the role can open its module (or the tab a data route belongs to);
+ *  anything that saves or sends needs Create or more. Pages with no module (Users, Permissions) are Admin only; unknown data routes keep the old rules. */
+export function canAccessWith(role: string, path: string, method: string, m: Matrix | null): boolean {
+  if (role === "admin" || path === "/no-access") return true;
+  if (role === "none") return false;
+  const write = !(method === "GET" || method === "HEAD");
+  const item = itemFor(path);
+  if (item?.module) return levelRank(openLevel(role, m, item.module)) >= (write ? 2 : 1);
+  if (item) return item.roles.includes(role as NavRole);
+  const api = apiModuleOf(path);
+  if (api) { const have = api[2] ? levelIn(role, m, api[1], api[2]) : openLevel(role, m, api[1]); return levelRank(have) >= (write ? 2 : 1); }
+  return canAccess(role, path, method);
 }

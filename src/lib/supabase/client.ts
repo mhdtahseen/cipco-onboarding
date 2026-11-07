@@ -1,7 +1,7 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { REMEMBER_COOKIE, withLifetime } from "./session";
 import { guard } from "./readOnly";
-export { setReadOnly, VIEW_ONLY_MESSAGE } from "./readOnly";
+export { setReadOnly, setWriteLevel, VIEW_ONLY_MESSAGE } from "./readOnly";
 
 const read = () => document.cookie.split("; ").filter(Boolean).map((c) => { const i = c.indexOf("="); return { name: c.slice(0, i), value: decodeURIComponent(c.slice(i + 1)) }; });
 

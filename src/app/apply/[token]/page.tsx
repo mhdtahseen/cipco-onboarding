@@ -1,4 +1,5 @@
 "use client";
+import Logo from "@/components/Logo";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
@@ -55,7 +56,7 @@ export default function ApplyPage() {
     setState("done"); window.scrollTo(0, 0);
   }
 
-  const shell = (c: React.ReactNode) => <div className="apply max-w-2xl mx-auto space-y-4 pb-4"><div className="flex items-center gap-3"><img src="/branding/logo.png" alt="CIPCO" className="h-8 w-auto" /><span className="text-sm font-semibold text-slate-500">Joining details</span></div>{c}</div>;
+  const shell = (c: React.ReactNode) => <div className="apply max-w-2xl mx-auto space-y-4 pb-4"><div className="flex items-center gap-3"><Logo className="h-8 w-auto" /><span className="text-sm font-semibold text-slate-500">Joining details</span></div>{c}</div>;
   if (state === "loading") return shell(<p className="text-slate-500">Loading…</p>);
   if (state === "bad") return shell(<div className="card"><h1 className="font-bold text-lg">This link isn't active</h1><p className="text-sm text-slate-600 mt-1">It may have expired or been replaced. Please contact the CIPCO HR team for a new link.</p></div>);
   if (state === "applied") return shell(<div className="card"><h1 className="font-bold text-lg">Thank you</h1><p className="text-sm text-slate-600 mt-1">Your details have already been received. Nothing more is needed here.</p></div>);

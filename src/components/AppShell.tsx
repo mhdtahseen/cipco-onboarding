@@ -1,4 +1,5 @@
 "use client";
+import Logo from "./Logo";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -9,8 +10,10 @@ import { dropPush } from "@/lib/pushClient";
 import PermissionPrompt from "./PermissionPrompt";
 import NotificationGate from "./NotificationGate";
 import { swrClear } from "@/lib/swr";
-import { NAV_SECTIONS, itemFor, visibleItems, type NavItem, type NavRole } from "@/lib/nav";
+import { NAV_SECTIONS, itemFor, visibleItemsWith, type NavItem, type NavRole } from "@/lib/nav";
+import { clearPerms, resetPerms, setShellLevel, usePerms } from "@/lib/perms";
 import { Icon } from "./NavIcons";
+import ThemeSwitch from "./ThemeSwitch";
 
 // The frame around every signed-in page.
 //  desktop (≥1280px): a sidebar with section headings, collapsible to an icon rail
@@ -67,7 +70,7 @@ function Account({ email, name, role }: { email: string; name: string; role: str
     return () => { document.removeEventListener("mousedown", down); document.removeEventListener("keydown", key); };
   }, [open]);
   const who = role ? ROLE_LABEL[role] : "";
-  async function signOut() { await dropPush(); await supabase().auth.signOut(); resetMe(); swrClear(); router.push("/login"); router.refresh(); }
+  async function signOut() { await dropPush(); await supabase().auth.signOut(); resetMe(); resetPerms(); swrClear(); router.push("/login"); router.refresh(); }
   return (
     <div ref={ref} className="relative">
       <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label="Account menu" onClick={() => setOpen(!open)} className="flex items-center gap-2 rounded-full p-1 md:pr-2 hover:bg-slate-100 touch-manipulation min-h-11">
@@ -77,7 +80,8 @@ function Account({ email, name, role }: { email: string; name: string; role: str
       </button>
       {open && <div role="menu" className="pop-in absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50">
         <div className="px-3 py-2 border-b border-slate-100"><div className="text-sm font-medium break-all">{name || email}</div>{name && <div className="text-xs text-slate-500 break-all">{email}</div>}<div className="text-xs text-slate-500">{who}</div></div>
-        <button type="button" role="menuitem" onClick={signOut} className="w-full flex items-center gap-2 px-3 min-h-11 mt-1 rounded-lg text-sm text-left hover:bg-slate-100"><Icon name="logout" className="h-4 w-4" />Sign out</button>
+        <ThemeSwitch />
+        <button type="button" role="menuitem" onClick={signOut} className="w-full flex items-center gap-2 px-3 min-h-11 mt-1 border-t border-slate-100 rounded-lg text-sm text-left hover:bg-slate-100"><Icon name="logout" className="h-4 w-4" />Sign out</button>
       </div>}
     </div>
   );
@@ -86,7 +90,7 @@ function Account({ email, name, role }: { email: string; name: string; role: str
 function Shell({ path, children }: { path: string; children: React.ReactNode }) {
   const router = useRouter(); const { role } = useRole(); const [email, setEmail] = useState(peekMe()?.email ?? ""); const [name, setName] = useState(peekMe()?.name ?? ""); const [collapsed, setCollapsed] = useState(false); const [drawer, setDrawer] = useState(false); const [hint, setHint] = useState<"min" | "full">("full");
   const closeRef = useRef<HTMLButtonElement>(null);
-  const items = visibleItems(role);
+  const perms = usePerms(); const items = visibleItemsWith(role, perms.matrix);
   const minimal = role ? items.length <= 1 : hint === "min";   // a single-purpose login gets no sidebar or bottom bar
   const item = itemFor(path); const title = path === "/no-access" ? "No access" : item?.label ?? "CIPCO Operations";
 
@@ -96,7 +100,8 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
   useEffect(() => { if (role) try { localStorage.setItem("cipco_nav_min", items.length <= 1 ? "1" : "0"); } catch { /* ignore */ } }, [role, items.length]);
   useEffect(() => { setDrawer(false); }, [path]);
   const viewOnly = role === "viewer";   // the read-only role: edit controls are hidden everywhere (globals.css) and anything that slips through is refused (supabase/client.ts)
-  useEffect(() => { document.documentElement.toggleAttribute("data-readonly", viewOnly); return () => document.documentElement.removeAttribute("data-readonly"); }, [viewOnly]);
+  const pageModule = itemFor(path)?.module; const pageLevel = !role ? "full" : pageModule ? perms.open(pageModule) : viewOnly ? "view" : "full";
+  useEffect(() => { setShellLevel(viewOnly ? "view" : pageLevel); return () => clearPerms(); }, [pageLevel, viewOnly]);   // the save and delete controls, and what the browser lets through, follow the person's level in the module on show
   useEffect(() => {   // slide-out menu: Escape closes, the page behind does not scroll, and it closes if the window grows to desktop size
     if (!drawer) return;
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") setDrawer(false); };
@@ -105,7 +110,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
     return () => { document.removeEventListener("keydown", key); mq.removeEventListener("change", wide); document.body.style.overflow = ""; };
   }, [drawer]);
 
-  async function signOut() { await dropPush(); await supabase().auth.signOut(); resetMe(); swrClear(); router.push("/login"); router.refresh(); }
+  async function signOut() { await dropPush(); await supabase().auth.signOut(); resetMe(); resetPerms(); swrClear(); router.push("/login"); router.refresh(); }
   const toggleSide = () => { if (window.matchMedia("(min-width: 1280px)").matches) { const v = !collapsed; setCollapsed(v); try { localStorage.setItem("cipco_nav_collapsed", v ? "1" : "0"); } catch { /* ignore */ } } else setDrawer(true); };
   const barItems = items.filter((i) => i.bar === true || (Array.isArray(i.bar) && !!role && i.bar.includes(role as NavRole))).slice(0, 4);
   const crumb = item ? <><span className="text-slate-400 hidden md:inline">{item.section}</span><span className="text-slate-300 hidden md:inline"> › </span><span className="font-semibold text-slate-800">{item.label}</span></> : <span className="font-semibold text-slate-800">{title}</span>;
@@ -118,7 +123,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
 
       {!minimal && <aside aria-label="Sidebar" className={`hidden md:flex flex-col fixed inset-y-0 left-0 z-30 bg-white border-r border-slate-200 print:hidden transition-[width] duration-200 ease-out ${collapsed ? "w-16" : "w-16 xl:w-64"}`}>
         <div className={`h-14 shrink-0 flex items-center gap-2 border-b border-slate-100 px-3 ${collapsed ? "justify-center" : "justify-center xl:justify-between"}`}>
-          <Link href="/" aria-label="CIPCO home" className={`items-center gap-2 min-w-0 ${collapsed ? "hidden" : "hidden xl:flex"}`}><img src="/branding/logo.png" alt="CIPCO" className="h-7 w-auto" /><span className="text-sm font-semibold text-slate-500">Operations</span></Link>
+          <Link href="/" aria-label="CIPCO home" className={`items-center gap-2 min-w-0 ${collapsed ? "hidden" : "hidden xl:flex"}`}><Logo className="h-7 w-auto" /><span className="text-sm font-semibold text-slate-500">Operations</span></Link>
           <button type="button" onClick={toggleSide} aria-label={collapsed ? "Expand sidebar" : "Menu"} title={collapsed ? "Expand sidebar" : "Menu"} className="h-10 w-10 grid place-items-center rounded-lg text-slate-500 hover:bg-slate-100 touch-manipulation"><Icon name={collapsed ? "chevron-right" : "menu"} /></button>
         </div>
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-2"><NavList items={items} path={path} showLabels="wide" collapsed={collapsed} /></div>
@@ -128,7 +133,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
       <div className={`transition-[padding] duration-200 ease-out ${minimal ? "" : collapsed ? "md:pl-16" : "md:pl-16 xl:pl-64"}`}>
         <header className="sticky top-0 z-20 h-14 bg-white border-b border-slate-200 flex items-center gap-2 px-3 sm:px-4 print:hidden">
           {!minimal && <button type="button" onClick={() => setDrawer(true)} aria-label="Open menu" className="md:hidden h-11 w-11 -ml-1 grid place-items-center rounded-lg text-slate-600 hover:bg-slate-100 touch-manipulation"><Icon name="menu" /></button>}
-          <Link href="/" aria-label="CIPCO home" className={`shrink-0 items-center gap-2 ${minimal ? "flex" : "hidden"}`}><img src="/branding/logo.png" alt="CIPCO" className="h-7 w-auto" /></Link>
+          <Link href="/" aria-label="CIPCO home" className={`shrink-0 items-center gap-2 ${minimal ? "flex" : "hidden"}`}><Logo className="h-7 w-auto" /></Link>
           <div className="min-w-0 flex-1 truncate text-sm">{crumb}</div>
           <Account email={email} name={name} role={role} />
         </header>
@@ -148,10 +153,10 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
       <div className="overlay z-50 xl:hidden print:hidden" data-open={drawer} role="dialog" aria-modal="true" aria-label="Menu">
         <div className="overlay-bg bg-slate-900/40" onClick={() => setDrawer(false)} />
         <div className="overlay-panel from-left absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-white shadow-xl flex flex-col pt-[env(safe-area-inset-top)]">
-          <div className="h-14 shrink-0 px-4 flex items-center gap-2 border-b border-slate-100"><img src="/branding/logo.png" alt="CIPCO" className="h-7 w-auto" /><span className="text-sm font-semibold text-slate-500">Operations</span>
+          <div className="h-14 shrink-0 px-4 flex items-center gap-2 border-b border-slate-100"><Logo className="h-7 w-auto" /><span className="text-sm font-semibold text-slate-500">Operations</span>
             <button ref={closeRef} type="button" onClick={() => setDrawer(false)} aria-label="Close menu" className="ml-auto h-11 w-11 -mr-2 grid place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><Icon name="x" /></button></div>
           <div className="flex-1 overflow-y-auto p-3"><NavList items={items} path={path} showLabels="always" onNavigate={() => setDrawer(false)} /></div>
-          <div className="border-t border-slate-100 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><div className="px-3 pb-2"><div className="text-sm font-medium break-all">{name || email}</div>{name && <div className="text-xs text-slate-500 break-all">{email}</div>}<div className="text-xs text-slate-500">{role ? ROLE_LABEL[role] : ""}</div></div><button type="button" onClick={signOut} className="w-full flex items-center gap-3 px-3 min-h-11 rounded-lg text-sm text-slate-600 hover:bg-slate-100"><Icon name="logout" />Sign out</button></div>
+          <div className="border-t border-slate-100 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><div className="px-3 pb-2"><div className="text-sm font-medium break-all">{name || email}</div>{name && <div className="text-xs text-slate-500 break-all">{email}</div>}<div className="text-xs text-slate-500">{role ? ROLE_LABEL[role] : ""}</div></div><ThemeSwitch /><button type="button" onClick={signOut} className="w-full flex items-center gap-3 px-3 min-h-11 rounded-lg text-sm text-slate-600 hover:bg-slate-100"><Icon name="logout" />Sign out</button></div>
         </div>
       </div>
     </div>

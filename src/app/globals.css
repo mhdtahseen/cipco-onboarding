@@ -1,29 +1,30 @@
 @import "tailwindcss";
-body { background: #f6f7fb; color: #1b2233; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-.card { background: #fff; border: 1px solid #e3e6ee; border-radius: 12px; padding: 20px; }
-.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; font-size: 14px; font-weight: 500; border: 1px solid #cfd5e3; background: #fff; cursor: pointer; }
-.btn:hover { background: #f0f3fa; }
-.btn-primary { background: #1e4fa3; color: #fff; border-color: #1e4fa3; }
-.btn-primary:hover { background: #173f85; }
-.btn-danger { color: #b42318; border-color: #f1b8b2; }
-.inp { width: 100%; border: 1px solid #cfd5e3; border-radius: 8px; padding: 8px 10px; font-size: 14px; background: #fff; }
-.inp:focus { outline: 2px solid #9db8e8; border-color: #1e4fa3; }
-.lbl { display: block; font-size: 12px; font-weight: 600; color: #4a5470; margin-bottom: 4px; }
-.warn { font-size: 12px; color: #b54708; margin-top: 3px; }
-.tab { padding: 8px 14px; font-size: 14px; border-bottom: 2px solid transparent; cursor: pointer; color: #4a5470; }
-.tab-on { border-color: #1e4fa3; color: #1e4fa3; font-weight: 600; }
+:root { --app-bg: #f6f7fb; --surface: #fff; --ink: #1b2233; --ink2: #4a5470; --line: #e3e6ee; --line2: #cfd5e3; --hover: #f0f3fa; --brand: #1e4fa3; --brand-hover: #173f85; --brand-text: #1e4fa3; --brand-ink: #173f85; --brand-soft: #eaf0fb; --focus: #9db8e8; --disabled-bg: #f3f4f8; --disabled-ink: #7a8299; --danger: #b42318; --danger-line: #f1b8b2; --warn-ink: #b54708; --sk1: #eef0f6; --sk2: #f6f7fb; }
+body { background: var(--app-bg); color: var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; font-size: 14px; font-weight: 500; border: 1px solid var(--line2); background: var(--surface); cursor: pointer; }
+.btn:hover { background: var(--hover); }
+.btn-primary { background: var(--brand); color: #fff; border-color: var(--brand); }
+.btn-primary:hover { background: var(--brand-hover); }
+.btn-danger { color: var(--danger); border-color: var(--danger-line); }
+.inp { width: 100%; border: 1px solid var(--line2); border-radius: 8px; padding: 8px 10px; font-size: 14px; background: var(--surface); }
+.inp:focus { outline: 2px solid var(--focus); border-color: var(--brand); }
+.lbl { display: block; font-size: 12px; font-weight: 600; color: var(--ink2); margin-bottom: 4px; }
+.warn { font-size: 12px; color: var(--warn-ink); margin-top: 3px; }
+.tab { padding: 8px 14px; font-size: 14px; border-bottom: 2px solid transparent; cursor: pointer; color: var(--ink2); }
+.tab-on { border-color: var(--brand); color: var(--brand-text); font-weight: 600; }
 /* Small controls shared by the employee list and page (instead of per-use !important overrides) */
 .btn-sm { padding: 5px 10px; font-size: 12px; }
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; border: 1px solid #cfd5e3; background: #fff; color: #4a5470; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
-.chip:hover { background: #f0f3fa; }
-.chip-on { background: #eaf0fb; border-color: #1e4fa3; color: #173f85; }
-.pill { display: inline-block; font-size: 12px; border-radius: 999px; padding: 2px 10px; background: #eaf0fb; color: #173f85; white-space: nowrap; }
-.skeleton { background: linear-gradient(90deg, #eef0f6 25%, #f6f7fb 50%, #eef0f6 75%); background-size: 200% 100%; animation: sk 1.2s ease-in-out infinite; border-radius: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; border: 1px solid var(--line2); background: var(--surface); color: var(--ink2); cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+.chip:hover { background: var(--hover); }
+.chip-on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-ink); }
+.pill { display: inline-block; font-size: 12px; border-radius: 999px; padding: 2px 10px; background: var(--brand-soft); color: var(--brand-ink); white-space: nowrap; }
+.skeleton { background: linear-gradient(90deg, var(--sk1) 25%, var(--sk2) 50%, var(--sk1) 75%); background-size: 200% 100%; animation: sk 1.2s ease-in-out infinite; border-radius: 6px; }
 @keyframes sk { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
-.btn:focus-visible, .tab:focus-visible, a:focus-visible { outline: 2px solid #1e4fa3; outline-offset: 2px; }
-.inp:disabled { background: #f3f4f8; color: #7a8299; }
+.btn:focus-visible, .tab:focus-visible, a:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.inp:disabled { background: var(--disabled-bg); color: var(--disabled-ink); }
 .tab { background: none; border: 0; border-bottom: 2px solid transparent; white-space: nowrap; }
 @media (max-width: 640px) { .btn { padding: 10px 14px; } }
 
@@ -53,7 +54,7 @@ body { overflow-x: clip; }   /* clip (not hidden) so the sticky nav keeps workin
 .mob .inp { font-size: 14px; min-height: 36px; }
 .mob .btn { min-height: 36px; }
 .mob input[type="date"].inp, .mob input[type="month"].inp, .mob input[type="time"].inp { display: block; min-width: 0; -webkit-appearance: none; appearance: none; }
-.mob .tlink { color: #1e4fa3; text-decoration: underline; font-size: 12px; }
+.mob .tlink { color: var(--brand-text); text-decoration: underline; font-size: 12px; }
 @media (max-width: 1023px), (pointer: coarse) { .mob .inp { font-size: 16px; min-height: 44px; } .mob textarea.inp { min-height: 0; } .mob .btn { min-height: 44px; } .mob input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; } }
 @media (max-width: 640px) {
   .mob .items-end > div { flex: 1 1 100%; min-width: 0; }
@@ -61,13 +62,16 @@ body { overflow-x: clip; }   /* clip (not hidden) so the sticky nav keeps workin
   .mob .items-end .inp { width: 100% !important; }
   .mob .items-end > .btn, .mob .form-actions .btn { width: 100%; justify-content: center; }
   .mob .form-actions { display: grid; grid-template-columns: 1fr 1fr; }
-  .mob .tlink { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 12px; border: 1px solid #cfd5e3; border-radius: 8px; background: #fff; text-decoration: none; font-size: 13px; font-weight: 500; }
-  .mob .tlink-danger { color: #b42318; border-color: #f1b8b2; }
+  .mob .tlink { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 12px; border: 1px solid var(--line2); border-radius: 8px; background: var(--surface); text-decoration: none; font-size: 13px; font-weight: 500; }
+  .mob .tlink-danger { color: var(--danger); border-color: var(--danger-line); }
   .mob .tabs-scroll { margin-left: -16px; margin-right: -16px; padding-left: 8px; padding-right: 8px; }
 }
 /* The read-only role (Viewer): hide the controls that save, send, approve or delete. Anything that slips through is refused by the database and by supabase/client.ts. */
 [data-readonly] .btn-primary, [data-readonly] .btn-danger, [data-readonly] .tlink-danger, [data-readonly] input[type="file"],
 [data-readonly] button.text-red-700, [data-readonly] button.text-rose-700, [data-readonly] button.text-red-600 { display: none !important; }
+/* A level below Full (no delete or void): the danger buttons go too. A download that is styled as a primary button opts out with .keep, since it changes nothing. */
+[data-nodelete] .btn-danger, [data-nodelete] .tlink-danger, [data-nodelete] button.text-red-700, [data-nodelete] button.text-rose-700, [data-nodelete] button.text-red-600 { display: none !important; }
+[data-readonly] .btn-primary.keep { display: inline-flex !important; }
 /* App shell: on phones the bottom tab bar is fixed, so page-level bars that stick to the bottom sit just above it. */
 .shell-has-bar { --bottom-nav-h: 0px; }
 @media (max-width: 767px) { .shell-has-bar { --bottom-nav-h: calc(56px + env(safe-area-inset-bottom, 0px)); } }
@@ -118,3 +122,5 @@ details.card[open]::details-content { block-size: auto; }
   .tab { min-height: 44px; }
   input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; flex-shrink: 0; }
 }
+
+.logo-dark { display: none; }   /* the white logo shows only in dark mode (dark.css) */

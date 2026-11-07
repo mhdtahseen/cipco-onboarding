@@ -368,7 +368,7 @@ Only **approved** bills count as owed.
 
 ### 9.5 The Payments due report
 
-**Operations → Payments due** lists gas and equipment hire as separate categories per project, from **approved bills** only, with what is paid, what is pending, the **bank details** (Admin sees them), and how many days overdue. Payments are applied to the oldest approved bill first. For gas, a bill dated the 1st–15th is due on the first due day of the same month, and one dated the 16th or later on the second due day of the next month. Equipment has no payment-days rule, so the due date is the bill date. Bills not yet approved are listed under "not included".
+**Operations → Expenses → Due tab** (formerly Payments due) lists gas and equipment hire as separate categories per project, from **approved bills** only, with what is paid, what is pending, the **bank details** (Admin sees them), and how many days overdue. Payments are applied to the oldest approved bill first. For gas, a bill dated the 1st–15th is due on the first due day of the same month, and one dated the 16th or later on the second due day of the next month. Equipment has no payment-days rule, so the due date is the bill date. Bills not yet approved are listed under "not included".
 
 ---
 

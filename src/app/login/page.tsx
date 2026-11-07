@@ -1,4 +1,5 @@
 "use client";
+import Logo from "@/components/Logo";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, setRemember } from "@/lib/supabase/client";
@@ -17,9 +18,9 @@ export default function Login() {
   }
   return (
     <div className="min-h-screen grid lg:grid-cols-[1.05fr_1fr]">
-      <aside className="hidden lg:flex relative overflow-hidden flex-col justify-between p-12 text-white bg-gradient-to-br from-[#173f85] via-[#1e4fa3] to-[#2b6ad1]">
+      <aside className="keep-light hidden lg:flex relative overflow-hidden flex-col justify-between p-12 text-white bg-gradient-to-br from-[#173f85] via-[#1e4fa3] to-[#2b6ad1]">
         <svg aria-hidden className="absolute -right-24 -bottom-24 w-[520px] h-[520px] opacity-10" viewBox="0 0 64 64"><path fill="#fff" fillRule="evenodd" d="M27.8 4h8.4l1 6.2 5.5 2.3 5.1-3.7 5.9 5.9-3.7 5.1 2.3 5.5 6.2 1v8.4l-6.2 1-2.3 5.5 3.7 5.1-5.9 5.9-5.1-3.7-5.5 2.3-1 6.2h-8.4l-1-6.2-5.5-2.3-5.1 3.7-5.9-5.9 3.7-5.1-2.3-5.5-6.2-1v-8.4l6.2-1 2.3-5.5-3.7-5.1 5.9-5.9 5.1 3.7 5.5-2.3zM32 22a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" /></svg>
-        <div className="bg-white rounded-xl px-5 py-3 w-fit shadow-lg"><img src="/branding/logo.png" alt="CIPCO" className="h-10 w-auto" /></div>
+        <img src="/branding/logo-white.svg" alt="CIPCO" className="h-12 w-fit" />
         <div className="relative max-w-md">
           <h1 className="text-4xl font-bold leading-tight">Operations, onboarding and documents — in one place.</h1>
           <p className="mt-4 text-blue-100 leading-relaxed">Prepare offer and appointment letters, joining kits and employee records for Chandrika Industrial Projects Company.</p>
@@ -29,7 +30,7 @@ export default function Login() {
 
       <main className="flex items-center justify-center p-6 bg-[#f6f7fb]">
         <div className="w-full max-w-sm">
-          <img src="/branding/logo.png" alt="CIPCO" className="h-10 w-auto mb-8 lg:hidden" />
+          <div className="mb-8 lg:hidden"><Logo className="h-10 w-auto" /></div>
           <h2 className="text-2xl font-bold text-slate-900">Welcome back</h2>
           <p className="text-sm text-slate-500 mt-1 mb-6">Sign in to CIPCO Operations</p>
           <form onSubmit={submit} className="space-y-4" noValidate={false}>
