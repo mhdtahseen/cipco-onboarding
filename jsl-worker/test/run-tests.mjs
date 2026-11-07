@@ -81,6 +81,7 @@ await scenario('happy path, by hand', {}, ({ r, portal, app, result }) => {
   ok('the saved MRR has both items', /GRINDING DISC 4 INCH x 10 Pcs; EAR PLUG x 2.5 No/.test(portal.state.lastSave.items), portal.state.lastSave?.items);
   ok('Save was pressed once', portal.state.saves === 1);
   ok('the Report was read before filling and after Save', portal.state.reportReads >= 2);
+  ok('only the Requisition column was read (material codes ignored)', result.reportBeforeParse === 'column' && result.reportBefore.count === 3 && (result.newNumbers || []).length === 1, JSON.stringify([result.reportBeforeParse, result.reportBefore, result.newNumbers]));
 });
 await scenario('happy path, by vehicle with a co-driver', { job: VEH }, ({ r, portal, app }) => {
   ok('exit 0 and submitted', r.code === 0 && app.st.status === 'submitted', r.out.slice(-400)); ok('one new requisition', newCount(portal) === 1);

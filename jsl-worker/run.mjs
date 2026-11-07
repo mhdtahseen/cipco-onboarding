@@ -133,7 +133,16 @@ async function readReport(page, job, result, label) {
     throw new Error('The Report did not show a "Requisition No" column or its "No Record Found" notice.');
   }
   // A number can wrap over two lines in a narrow column ("06112026-" then "001"): join it up. One MRR with several items repeats its number once per item, which the set takes care of.
-  const nums = [...new Set(text.replace(/(\d{8}-)\s+(?=\d)/g, '$1').match(REQ_NO) || [])];
+  // Take the numbers from the "Requistion No" COLUMN only. The Report also has a per-item Material Code in the same style (07112026-00011), which must never be mistaken for a requisition.
+  const col = await page.evaluate((src) => {
+    const head = [...document.querySelectorAll('th, td')].find((c) => new RegExp(src, 'i').test((c.innerText || '').trim()) && c.closest('tr') && c.closest('table'));
+    if (!head) return null;
+    const table = head.closest('table'), at = head.cellIndex, rows = [...table.querySelectorAll('tr')].filter((r) => r !== head.closest('tr'));
+    return rows.map((r) => (r.cells[at]?.innerText || '').replace(/\s+/g, ''));
+  }, '^Requ\\w*\\s*No\\.?$').catch(() => null);
+  let nums;
+  if (col) { nums = [...new Set(col.filter((v) => /^\d{8}-\d+$/.test(v)))]; result[`${label}Parse`] = 'column'; }
+  else { nums = [...new Set(text.replace(/(\d{8}-)\s+(?=\d)/g, '$1').match(REQ_NO) || [])]; result[`${label}Parse`] = 'text'; }   // no table found: fall back to the whole page, and say so
   result[label] = { count: nums.length, last: nums.slice(-3) };
   return new Set(nums);
 }
