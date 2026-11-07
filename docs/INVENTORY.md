@@ -6,7 +6,7 @@ The **Inventory** page (menu: **Operations → Inventory**) records purchase bil
 | --- | --- | --- |
 | Lines in the **Received** list | It is recorded | Inventory → Received |
 | One **project expense** for the bill's total | It is recorded | Project → Expenses, category Site consumables, marked "From bill" |
-| One **MRR** on the JSL portal. **Optional** | An Admin switches "Send to the JSL portal" on for that bill, then authorizes it, and the portal worker is built | Not sent yet: see "Not built yet" |
+| One **MRR** on the JSL portal. **Optional** | An Admin switches "Send to the JSL portal" on for that bill, then authorizes it, and the portal worker is built | See "Sending to the JSL portal" |
 
 ## Steps
 
@@ -54,9 +54,43 @@ Supervisors see rates and amounts on this page, unlike Site supplies, because th
 
 Bill photos go through `/api/inventory/upload` and `/api/inventory/view`, not `/api/docs`, because `/api/docs/view` opens any path and must stay closed to site roles.
 
-## Not built yet
+## Sending to the JSL portal
 
-**Sending to the portal.** Authorizing only records the decision: nothing reaches JSL. The worker that logs in, fills the form and reads the confirmation still needs the portal's page details. It will move a bill through `sending`, `submitting`, then `submitted`, `failed` or `needs_check`. `needs_check` is never retried by itself, because the MRR may already exist.
+An Admin sends an authorized bill with **Send to the JSL portal now** (section 4 of the bill). A robot (`jsl-worker/`, run by GitHub Actions) then logs in to the portal, fills the Material Requisition in, presses Save, and checks the portal's **Report** for the new Requisition No. The bill moves through these states:
+
+| State on the bill | What it means | What you do |
+| --- | --- | --- |
+| **Authorized, not sent** | Approved by an Admin, not sent | Press **Send to the JSL portal now**, or withdraw the authorization |
+| **Sending to JSL** | Queued or running. **Save has not been pressed**, so nothing is on the portal | Wait (about a minute). The page updates by itself |
+| **Saving on JSL** | The robot pressed Save and is confirming in the Report | Wait |
+| **On JSL portal** | The Report shows the new requisition. Its number is saved on the bill ("JSL reference") | Nothing |
+| **JSL send failed** | The robot stopped **before** pressing Save, so nothing is on the portal. The reason is shown | Fix what it says, **Authorize** again, **Send** again |
+| **Check on JSL portal** | Save was pressed but the Report did not show it, or the robot went quiet after Save. It may or may not exist | Look at the portal's Report, then answer (below). Nothing is ever retried by itself |
+
+**Why it is built this way:** a second MRR on the portal cannot be taken back from here, so the robot is careful in this order. (1) The app gives it the job once. (2) It reads the Report before filling anything, which both lists what already exists and proves the Report works; if it cannot be read, nothing is saved. (3) The form shows the requisition number it is about to use; it must look right and must not exist yet. (4) Nothing is cut off: a name or ID longer than its box on the portal stops the send. (5) It tells the app "about to press Save" and the app must accept **before** Save is pressed. If the app cannot be reached, Save is not pressed. (6) After Save it reads the Report up to four times (the portal can be slow) and looks for that exact number.
+
+**When a bill says "Check on JSL portal":** open the portal, Report, and look for the requisition number named in the message. Then, on the bill: type the number and press **It is on the portal**, or, if it is truly not there, press **It is not there** (the bill can then be authorized and sent again). Choose "not there" only after looking.
+
+**When a run goes quiet** (the page still says Sending or Saving after about 15 minutes): press **Check status**. A run that never reached Save becomes "failed" (safe to send again); a run that went quiet after Save becomes "Check on JSL portal".
+
+**Not changeable while the bill is with the portal:** it cannot be reopened, voided, or switched off for the portal once it is Sending, Saving, On the portal or needs a check.
+
+### One-time setup (Admin / whoever looks after the hosting)
+
+1. **Database:** run `supabase/migrations/2026-11-inventory-jsl-send.sql` in Supabase (after the inventory migrations). It adds the send rules and the log.
+2. **GitHub repository secrets** (Settings → Secrets and variables → Actions): `JSL_USER` and `JSL_PASSWORD` (already there for the dry run) and a new `JSL_WORKER_KEY`: any random string of 24 or more characters.
+3. **App settings** (where the app is hosted, with the other server settings): the **same** `JSL_WORKER_KEY`, plus `GITHUB_DISPATCH_TOKEN`: a fine-grained GitHub token for this repository with only **Actions: Read and write**. Optional: `GITHUB_REPO` (default `mhdtahseen/cipco-onboarding`) and `GITHUB_REF_NAME` (default `main`).
+4. Optional repository variable `JSL_APP_URL` if the app is not at `https://ops.cipcogroup.com`.
+
+Until 2 and 3 are done, pressing Send shows "Sending is not set up yet" and nothing is queued.
+
+**Safety rails:** only an Admin can send. The robot has no login to the app, only the shared key, and it can only take a job for a bill that is queued, once per send. A real send never takes screenshots and never prints names or ID numbers; only requisition numbers and counts are kept (for 3 days). A send and a dry run never run at the same time.
+
+### Trying it without raising anything
+
+**Dry run** (GitHub → Actions → *JSL dry run*): fills the form from a sample and reads the portal's Report, but has no Save. It reports whether the Report could be read, whether the requisition number on the form is new, and that the Report did not change.
+
+**The robot's own tests** (`jsl-worker/test/run-tests.mjs`, also run by GitHub on every change to the robot) use a fake portal and a fake app, so they raise nothing: a normal send by hand and by vehicle, a slow portal, a portal that ignores Save, a second MRR appearing, the Report broken before and after Save, the app unreachable at the "about to save" step, a value too long for its box, a missing contractor, a refused job, and a check that no names or ID numbers appear in any output.
 
 ## Units and the JSL portal's required fields
 

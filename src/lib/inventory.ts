@@ -63,7 +63,7 @@ export const maskId = (s: string) => (s.length > 4 ? "•".repeat(s.length - 4) 
 
 export const JSL_LABEL: Record<JslStatus, { text: string; cls: string }> = {
   none: { text: "Not sent to JSL", cls: "bg-slate-100 text-slate-600" },
-  authorized: { text: "Authorized for JSL", cls: "bg-blue-50 text-blue-800" },
+  authorized: { text: "Authorized, not sent", cls: "bg-blue-50 text-blue-800" },
   sending: { text: "Sending to JSL", cls: "bg-blue-50 text-blue-800" },
   submitting: { text: "Saving on JSL", cls: "bg-blue-50 text-blue-800" },
   submitted: { text: "On JSL portal", cls: "bg-green-50 text-green-800" },

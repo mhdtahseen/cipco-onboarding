@@ -1,5 +1,5 @@
 name: JSL dry run
-# Manual only. Logs in to the JSL portal, fills an MRR from a sample job, reads it back and stops. It never saves, so no MRR is raised.
+# Manual only. Logs in to the JSL portal, fills an MRR from a sample job, reads the portal's Report, reads the form back and stops. It never saves, so no MRR is raised.
 # Needs the repository secrets JSL_USER and JSL_PASSWORD.
 on:
   workflow_dispatch:
@@ -13,6 +13,9 @@ on:
         description: Skip the WO / contractor check (use while SAP is down)
         type: boolean
         default: true
+concurrency:
+  group: jsl-portal
+  cancel-in-progress: false
 jobs:
   dry-run:
     runs-on: ubuntu-latest

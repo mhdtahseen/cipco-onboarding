@@ -91,6 +91,24 @@ export default function BillEditor({ projectId, bill, newKind = "bill", approval
     flash(`${editItem ? "Updated" : "Added"}: ${row.name}`); setEditItem(null); setF((x) => ({ ...BLANK_ITEM, unit: x.unit, gst_pct: x.gst_pct })); await onChanged(); nameRef.current?.focus();
   }
   async function delItem(i: InvItem) { if (!confirm(`Remove ${i.name}?`)) return; const { error } = await supabase().from("inventory_bill_items").delete().eq("id", i.id); if (error) return setErr(error.message); if (editItem === i.id) { setEditItem(null); setF(blank); } await onChanged(); }
+  // ---- sending to the JSL portal ----
+  const [refIn, setRefIn] = useState("");
+  async function sendNow() {
+    if (!bill) return; setBusy(true); setMsg(""); setErr("");
+    const r = await fetch("/api/inventory/jsl-send", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bill: bill.id }) });
+    const j = await r.json().catch(() => ({})); setBusy(false);
+    if (!r.ok) { setErr(j.error || `Could not send (${r.status}).`); await onChanged(); return; }
+    flash("Sent to the robot. It takes about a minute."); await onChanged(); await loadExtras();
+  }
+  // While the robot works, look again every few seconds. A run that has gone quiet is settled by the "Check status" button.
+  const running = bill?.jsl_status === "sending" || bill?.jsl_status === "submitting";
+  useEffect(() => { if (!running) return; const t = setInterval(() => { onChanged(); }, 6000); return () => clearInterval(t); }, [running]);   // eslint-disable-line react-hooks/exhaustive-deps
+  async function checkStatus() {
+    if (!bill) return; setBusy(true); setMsg(""); setErr("");
+    const { data, error } = await supabase().rpc("inventory_jsl_settle", { p_bill: bill.id }); setBusy(false);
+    if (error) return setErr(error.message);
+    flash(data === "nothing to settle" ? "Still running: give it a few more minutes." : data === "failed" ? "The robot never got as far as Save, so nothing is on the portal." : "The robot went quiet after Save: check the portal."); await onChanged();
+  }
   async function act(fn: string, args: Record<string, unknown>, done: string) { setBusy(true); setMsg(""); setErr(""); const { error } = await supabase().rpc(fn, args); setBusy(false); if (error) return setErr(error.message); flash(done); await onChanged(); await loadExtras(); }
   const headChanged = !!bill && (Number(h.bill_total || 0) !== Number(bill.bill_total) || Number(h.other_charges || 0) !== Number(bill.other_charges) || h.note.trim() !== (bill.note ?? "").trim());
   async function record() { if (!bill) return; if (headChanged) return setErr("You changed the details. Save them first."); await act("inventory_record_bill", { p_bill: bill.id }, Number(bill.bill_total) > 0 ? "Recorded ✓ The total is now in the project's expenses." : "Recorded ✓ The items are counted as received."); }
@@ -240,8 +258,14 @@ export default function BillEditor({ projectId, bill, newKind = "bill", approval
           {!viewer && gaps.length > 0 && <p className="text-sm text-amber-700">Still needed: {gaps.join(", ")}.</p>}
           {staff && (wos.length === 0 ? <p className="text-sm text-amber-700">This project has no active work order. Add one under Work orders first.</p> : wos.length === 1 ? <p className="text-sm text-slate-600">WO {wos[0].wo_no}</p> : admin ? <div><label className="lbl">Work order</label><select className="inp" value={wo} onChange={(e) => setWo(e.target.value)}><option value="">Choose…</option>{wos.map((w) => <option key={w.wo_no} value={w.wo_no}>{w.wo_no} · {w.title}</option>)}</select></div> : <p className="text-sm text-slate-600">This project has {wos.length} active work orders. The Admin chooses one when authorizing.</p>)}
           {admin ? <button className="btn btn-primary" disabled={busy || gaps.length > 0 || !wo} onClick={() => confirm(`Authorize ${items.length} item${items.length === 1 ? "" : "s"} from bill ${bill.bill_no} as one MRR on the JSL portal, against WO ${wo}?`) && act("inventory_authorize_jsl", { p_bill: bill.id, p_wo: wo }, "Authorized ✓")}>Authorize for JSL portal</button> : <p className="text-sm text-slate-500">Waiting for an Admin to authorize.</p>}</>}
-        {bill.jsl_status === "authorized" && <><p className="text-sm text-slate-600">Authorized{staff && wo ? ` against WO ${wo}` : ""}. Automatic sending is not switched on yet, so nothing has gone to the portal.</p>{admin && <button className="btn" disabled={busy} onClick={() => act("inventory_withdraw_jsl", { p_bill: bill.id }, "Authorization withdrawn.")}>Withdraw authorization</button>}</>}
-        {bill.jsl_status === "needs_check" && <p className="text-sm text-amber-800">The run stopped around the moment of saving, so the MRR may or may not exist. Check the portal before doing anything: this bill is not retried by itself.{bill.jsl_error ? ` (${bill.jsl_error})` : ""}</p>}
+        {bill.jsl_status === "authorized" && <><p className="text-sm text-slate-600">Authorized{staff && wo ? ` against WO ${wo}` : ""}. It has not been sent yet.</p>
+          {admin && <div className="flex flex-wrap gap-2"><button className="btn btn-primary" disabled={busy} onClick={() => confirm(`Send ${items.length} item${items.length === 1 ? "" : "s"} from bill ${bill.bill_no} to the JSL portal now?\n\nThis raises a real Material Requisition on the portal. Once it is saved it cannot be undone from here.`) && sendNow()}>Send to the JSL portal now</button><button className="btn" disabled={busy} onClick={() => act("inventory_withdraw_jsl", { p_bill: bill.id }, "Authorization withdrawn.")}>Withdraw authorization</button></div>}</>}
+        {running && <div className="space-y-2"><p className="text-sm text-slate-700" role="status">{bill.jsl_status === "sending" ? "The robot is logging in and filling in the form. Nothing is saved on the portal yet." : "The robot has pressed Save and is checking the portal's Report for the new requisition."} This page updates by itself.</p>
+          {admin && <button className="btn btn-sm" disabled={busy} onClick={checkStatus}>Check status</button>}</div>}
+        {bill.jsl_status === "needs_check" && <div className="space-y-2"><p className="text-sm text-amber-800">The robot pressed Save but could not confirm it, so the MRR may or may not exist. Look on the JSL portal (Report) and then tell the app what you found. Nothing is sent again by itself.{bill.jsl_error ? ` (${bill.jsl_error})` : ""}</p>
+          {admin && <div className="flex flex-wrap items-end gap-2"><div><label className="lbl" htmlFor="jsl-ref">Requisition No on the portal</label><input id="jsl-ref" className="inp !w-48" placeholder="e.g. 07112026-004" value={refIn} onChange={(e) => setRefIn(e.target.value)} /></div>
+            <button className="btn btn-primary" disabled={busy || !/^\d{8}-\d+$/.test(refIn.trim())} onClick={() => act("inventory_jsl_resolve", { p_bill: bill.id, p_exists: true, p_ref: refIn.trim() }, "Recorded as on the portal.")}>It is on the portal</button>
+            <button className="btn" disabled={busy} onClick={() => confirm("Only choose this if you have looked at the portal's Report and the requisition is NOT there. The bill can then be authorized and sent again.") && act("inventory_jsl_resolve", { p_bill: bill.id, p_exists: false, p_ref: null }, "Marked as not sent. You can authorize it again.")}>It is not there</button></div>}</div>}
         {bill.jsl_status === "submitted" && <p className="text-sm text-green-800">JSL reference: <b>{bill.jsl_ref || "—"}</b></p>}
         {admin && ["none", "authorized", "failed"].includes(bill.jsl_status) && <button className="btn btn-sm" disabled={busy} onClick={() => confirm("Take this bill off the JSL portal? It stays an expense. Any authorization is withdrawn; the portal details stay saved.") && act("inventory_set_jsl_wanted", { p_bill: bill.id, p_on: false }, "Switched off: this bill is an expense only.")}>Don't send this bill to the portal</button>}
       </section>}

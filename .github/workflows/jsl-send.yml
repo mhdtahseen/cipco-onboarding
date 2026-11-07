@@ -1,0 +1,49 @@
+name: JSL send
+run-name: Send bill ${{ inputs.bill }} to the JSL portal
+# Raises ONE real Material Requisition on the JSL portal for a bill an Admin authorized and pressed "Send" on in the app.
+# Started by the app (never by hand: the app refuses the job unless the bill is queued, so a stray run does nothing). It needs the repository secrets JSL_USER, JSL_PASSWORD and
+# JSL_WORKER_KEY, and optionally the repository variable JSL_APP_URL (default https://ops.cipcogroup.com).
+# Never run together with another send or a dry run: they share the portal login.
+on:
+  workflow_dispatch:
+    inputs:
+      bill:
+        description: The bill's id (from the app)
+        type: string
+        required: true
+concurrency:
+  group: jsl-portal
+  cancel-in-progress: false
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: jsl-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - name: Send
+        env:
+          MODE: send
+          CONFIRM_SEND: "yes"
+          BILL_ID: ${{ inputs.bill }}
+          APP_URL: ${{ vars.JSL_APP_URL || 'https://ops.cipcogroup.com' }}
+          JSL_WORKER_KEY: ${{ secrets.JSL_WORKER_KEY }}
+          JSL_USER: ${{ secrets.JSL_USER }}
+          JSL_PASSWORD: ${{ secrets.JSL_PASSWORD }}
+        run: node run.mjs
+      # Only the outcome (requisition numbers and counts, no names or ID numbers) is kept. Screenshots are never taken in a real send.
+      - name: Keep the outcome for 3 days
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: send-result
+          path: jsl-worker/out/result.json
+          retention-days: 3
+          if-no-files-found: ignore
