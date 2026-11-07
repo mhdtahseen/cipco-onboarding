@@ -1,0 +1,11 @@
+{
+  "receivedBy": "hand",
+  "wo": "1909000093",
+  "department": "MECHANICAL",
+  "hand": { "name": "TEST PERSON", "idType": "aadhaar", "idNo": "000000000000" },
+  "items": [
+    { "name": "PU WHEEL 6\"", "qty": 1, "unit": "No" },
+    { "name": "PU WHEEL 6\" WITH BRACKET", "qty": 1, "unit": "No" },
+    { "name": "GRINDING DISC 4 INCH", "qty": 2, "unit": "No" }
+  ]
+}

@@ -7,7 +7,7 @@ on:
       sample:
         description: Which sample to fill in
         type: choice
-        options: [hand, vehicle]
+        options: [hand, vehicle, inch]
         default: hand
       back_days:
         description: Read the Report this many days back (to prove real rows can be read; 0 = today only)

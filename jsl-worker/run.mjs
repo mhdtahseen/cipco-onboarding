@@ -258,6 +258,7 @@ async function fillForm(page, job, result) {
 
   // Read the item list back: each name must appear as many times as the job has it (two lines can share a name).
   const listText = (await page.locator(id('pnlMaterial')).innerText()).toUpperCase();
+  if (MODE === 'dry') result.itemListText = listText.replace(/\s+/g, ' ').slice(0, 600);   // sample data only: shows how the portal spells what was typed (a real send never prints it)
   const count = (s, sub) => s.split(sub).length - 1;
   result.itemsMissing = [...new Set(job.items.map((i) => i.name))].filter((n) => count(listText, n.toUpperCase()) < job.items.filter((i) => i.name === n).length);
   if (result.itemsMissing.length) throw new Error(`Items not shown in the portal's list: ${result.itemsMissing.length} of ${new Set(job.items.map((i) => i.name)).size} missing.`);
