@@ -128,3 +128,9 @@ details.card[open]::details-content { block-size: auto; }
 /* PermGuard (components/PermGuard.tsx): controls the person may not use are hidden; the boxes of a read-only editor look read-only */
 [data-ro-hide] { display: none !important; }
 [data-ro-lock] { background: var(--disabled-bg); color: var(--ink); cursor: default; }
+
+/* A file picker that reads as a field: same height and edges as a text box, dashed to say "choose a file". Shows the file name, or what is already attached. */
+.filebtn { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 38px; padding: 6px 10px; border: 1px dashed var(--line2); border-radius: 8px; background: var(--surface); color: var(--ink2); font-size: 14px; cursor: pointer; }
+.filebtn:hover { background: var(--hover); }
+.filebtn:focus-within { outline: 2px solid var(--brand); outline-offset: 2px; }
+@media (pointer: coarse) { .filebtn { min-height: 44px; font-size: 16px; } }
