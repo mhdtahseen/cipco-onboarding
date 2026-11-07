@@ -109,7 +109,7 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
       await sb.from("salary_history").upsert(rows, { onConflict: "employee_id,effective_from" });
     }
     setBusy(false);
-    if (res.error) { setMsg(/duplicate key|unique/i.test(res.error.message) ? "A record with the same phone, email, Aadhaar or PAN already exists." : res.error.message); return; }
+    if (res.error) { setMsg(/emp_no/i.test(res.error.message) && /duplicate key|unique/i.test(res.error.message) ? "That employee number is already used by someone else." : /duplicate key|unique/i.test(res.error.message) ? "A record with the same phone, email, Aadhaar or PAN already exists." : res.error.message); return; }
     swrDrop("employees"); setMsg("Saved ✓"); onSaved?.(res.data);
     if (!v.id) router.push(`/employees/${res.data.id}`);
   }
@@ -132,7 +132,7 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
         <button type="button" className="btn btn-sm shrink-0 !px-2" title={`Show ${f.label}`} aria-label={`Show ${f.label}`} onClick={() => setShown([...shown, f.key])}><Icon name="eye" className="h-4 w-4" /></button>
         {copyBtn(f)}</div>);
     const a = INPUT[f.key] ?? {};
-    const field = <input className={`inp ${a.upper ? "uppercase" : ""} ${sensitive ? "flex-1 min-w-0" : ""}`} type={a.type ?? f.type ?? "text"} inputMode={a.mode} maxLength={a.max} autoComplete={a.auto} autoCapitalize={a.upper ? "characters" : undefined} aria-invalid={!!warn[f.key]} value={v[f.key] ?? ""} onChange={(e) => set(f.key, a.upper ? e.target.value.toUpperCase() : e.target.value)} />;
+    const field = <input disabled={f.key === "emp_no"} placeholder={f.key === "emp_no" ? "Assigned after onboarding" : undefined} className={`inp ${a.upper ? "uppercase" : ""} ${sensitive ? "flex-1 min-w-0" : ""}`} type={a.type ?? f.type ?? "text"} inputMode={a.mode} maxLength={a.max} autoComplete={a.auto} autoCapitalize={a.upper ? "characters" : undefined} aria-invalid={!!warn[f.key]} value={v[f.key] ?? ""} onChange={(e) => set(f.key, a.upper ? e.target.value.toUpperCase() : e.target.value)} />;
     // once shown, it can be hidden again (what was typed is kept)
     if (sensitive) return (
       <div className="flex items-center gap-1.5">{field}

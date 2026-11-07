@@ -1,7 +1,7 @@
 export type FieldDef = { key: string; label: string; type?: "text" | "date" | "number" | "select" | "textarea"; options?: string[]; wide?: boolean; hint?: string };
 export const FIELD_GROUPS: { title: string; fields: FieldDef[] }[] = [
   { title: "Employment", fields: [
-    { key: "full_name", label: "Full name (as in Aadhaar)" }, { key: "emp_no", label: "Employee no." },
+    { key: "full_name", label: "Full name (as in Aadhaar)" }, { key: "emp_no", label: "Employee no.", hint: "Assigned automatically after onboarding." },
     { key: "designation", label: "Designation / role" }, { key: "department", label: "Department" },
     { key: "project", label: "Project" }, { key: "site_location", label: "Work location / site" },
     { key: "base_location", label: "Base location" },

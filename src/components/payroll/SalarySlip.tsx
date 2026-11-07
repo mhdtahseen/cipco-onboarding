@@ -57,7 +57,7 @@ export const SAMPLE_SLIP: SlipData = {
     { kind: "earning", label: "Basic", amount: 11680, note: "29 of 31 days" }, { kind: "earning", label: "House rent allowance", amount: 4672 }, { kind: "earning", label: "Special allowance", amount: 5848 }, { kind: "earning", label: "Site bonus", amount: 2800, note: "Adjustment" },
     { kind: "deduction", label: "Provident fund (employee)", amount: 1800 }, { kind: "deduction", label: "Professional tax", amount: 200 }, { kind: "deduction", label: "Advance recovery", amount: 1150, note: "Instalment 2 of 4" },
   ],
-  snapshot: { name: "Sample Employee", emp_no: "CIPCO-0000", designation: "Site Supervisor", department: "Operations", join_date: "2026-01-12", pan: "ABCDE1234F", uan: "100000000000", pay_mode: "bank", bank_name: "Sample Bank", account_no: "000000001234", counts: { present: 24, half: 0, absent: 2, off: 5 } },
+  snapshot: { name: "Sample Employee", emp_no: "CIP-EMP-051", designation: "Site Supervisor", department: "Operations", join_date: "2026-01-12", pan: "ABCDE1234F", uan: "100000000000", pay_mode: "bank", bank_name: "Sample Bank", account_no: "000000001234", counts: { present: 24, half: 0, absent: 2, off: 5 } },
 };
 
 /** A daily-wage worker: one wage line (no basic / HRA split) and no deductions section; the company pays ESI as an added cost. Made-up figures. */
@@ -66,5 +66,5 @@ export const SAMPLE_DAILY_SLIP: SlipData = {
   items: [
     { kind: "earning", label: "Daily wages (₹650 × 26 days)", amount: 16900 },
   ],
-  snapshot: { name: "Sample Worker", emp_no: "CIPCO-0001", designation: "Helper", department: "Operations", join_date: "2026-03-02", pan: "—", uan: "100000000001", pay_mode: "upi", upi_id: "sample@upi", counts: { present: 22, half: 8, absent: 0, off: 1 } },
+  snapshot: { name: "Sample Worker", emp_no: "CIP-EMP-052", designation: "Helper", department: "Operations", join_date: "2026-03-02", pan: "—", uan: "100000000001", pay_mode: "upi", upi_id: "sample@upi", counts: { present: 22, half: 8, absent: 0, off: 1 } },
 };
