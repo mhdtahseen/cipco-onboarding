@@ -50,7 +50,7 @@ const PAGE = `<!doctype html><meta charset=utf-8><title>Portal</title><body>
     <tr><td>Material</td><td><input id=${P}txtMaterialnm maxlength=__MAXLEN__> <input id=${P}txtQty> <select id=${P}ddlUnit><option>FT</option><option>Inch</option><option>Kg</option><option>Meter</option><option>mm</option><option>MT</option><option>No</option><option>Pcs</option></select> <input type=button id=${P}ImgAdd value=Add></td></tr>
   </table><div id=${P}pnlMaterial></div><input type=button id=${P}ImgSave value=Save> <input type=button id=${P}ibtn_Close value=Close></div>
   <div id=rep hidden><select id=${P}ddlReportType><option value=1>A</option><option value=2>Material Requisition</option></select><select id=${P}ddltype><option value=1>x</option><option value=4>y</option></select>
-    <select id=${P}ddDept><option value=0>All</option><option value=7>MECHANICAL</option></select><input id=${P}txtFrom value="07/11/2026"><input id=${P}txtTo value="07/11/2026"><button id=retr>Retrieve</button><div id=table></div></div>
+    <select id=${P}ddDept><option value=0>All</option><option value=7>MECHANICAL</option></select><input id=${P}txtFrom><input id=${P}txtTo><div id=cal hidden style="border:1px solid #999;width:200px"><div>November, 2026</div><div id=today style="cursor:pointer">Today: November 7, 2026</div></div><button id=retr>Retrieve</button><div id=table></div></div>
 </div>
 <script>
 const $=(i)=>document.getElementById(i), P='${P}'; let items=[], upClicks={};
@@ -64,5 +64,6 @@ for(const b of ['txtNoofPersoninH','txtNoofPersonIn']){ $(P+b+'_bUp').onclick=()
 $(P+'ImgAdd').onclick=()=>{const n=$(P+'txtMaterialnm').value,q=$(P+'txtQty').value; if(!n||!q) return; items.push(n+' x '+q+' '+$(P+'ddlUnit').value); $(P+'pnlMaterial').innerHTML=items.map(i=>'<div>'+i.toUpperCase()+'</div>').join(''); $(P+'txtMaterialnm').value=$(P+'txtQty').value='';};
 $(P+'ImgSave').onclick=async()=>{ await fetch('/api/save',{method:'POST',body:JSON.stringify({no:$(P+'txtReqNo').value,items:items.join('; '),by:$(P+'ddlReceivedby').value,wo:$(P+'txtWorkorder').value})}); alert('ERROR'); };
 $(P+'ibtn_Close').onclick=()=>show('matHome');
-$('retr').onclick=async()=>{ const r=await (await fetch('/api/report')).json(); $('table').innerHTML = r.broken ? '<p>Something went wrong</p>' : '<table><tr><th>Requisition No</th><th>Material Code</th></tr>'+r.rows.map(n=>'<tr><td>'+n+'</td><td>MC-'+n.slice(-3)+'</td></tr>').join('')+'</table>'; };
+let calFor=null; for(const b of ['txtFrom','txtTo']) $(P+b).onclick=()=>{calFor=P+b;$('cal').hidden=false;}; $('today').onclick=()=>{ if(calFor) $(calFor).value='07/11/2026'; $('cal').hidden=true; };
+$('retr').onclick=async()=>{ if(!$(P+'txtFrom').value||!$(P+'txtTo').value){ $('table').innerHTML='<p>Select dates</p>'; return; } const r=await (await fetch('/api/report')).json(); $('table').innerHTML = r.broken ? '<p>Something went wrong</p>' : '<table><tr><th>Requisition No</th><th>Material Code</th></tr>'+r.rows.map(n=>'<tr><td>'+n+'</td><td>MC-'+n.slice(-3)+'</td></tr>').join('')+'</table>'; };
 </script>`;

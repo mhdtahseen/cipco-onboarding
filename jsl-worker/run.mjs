@@ -104,7 +104,15 @@ async function readReport(page, job, result, label) {
   const dept = await page.locator(id('ddDept')).evaluate((el, d) => { const o = [...el.options].find((x) => x.text.trim().toUpperCase() === d); return o ? o.value : null; }, (job.department || 'MECHANICAL').toUpperCase()).catch(() => null);
   await page.locator(id('ddDept')).selectOption(dept ?? '7').catch(() => {});   // by label when it can be found, else the value recorded for MECHANICAL
   await settle(page);
-  result.reportRange = { from: await page.locator(id('txtFrom')).inputValue().catch(() => null), to: await page.locator(id('txtTo')).inputValue().catch(() => null) };
+  // The Report lists nothing until both dates are set, and the boxes start empty. Clicking a box opens a calendar; its "Today" line fills the box. Today to today is enough:
+  // a requisition number starts with the date, so a new one always falls in today's list.
+  for (const box of ['txtFrom', 'txtTo']) {
+    await page.locator(id(box)).click();
+    await page.getByText(/Today:\s/).first().click({ timeout: 6000 });
+    await page.waitForTimeout(400);
+    if (!(await page.locator(id(box)).inputValue()).trim()) throw new Error(`Could not set the Report's ${box === 'txtFrom' ? 'From' : 'To'} date.`);
+  }
+  result.reportRange = { from: await page.locator(id('txtFrom')).inputValue(), to: await page.locator(id('txtTo')).inputValue() };
   await page.getByRole('button', { name: 'Retrieve' }).click();
   await settle(page);
   const text = await page.locator('body').innerText();
@@ -242,7 +250,7 @@ async function login(page) {
 
 async function newBrowser(result) {
   const browser = await chromium.launch();
-  const page = await (await browser.newContext({ locale: 'en-IN', viewport: { width: 1400, height: 1000 } })).newPage();
+  const page = await (await browser.newContext({ locale: 'en-IN', timezoneId: 'Asia/Kolkata', viewport: { width: 1400, height: 1000 } })).newPage();   // India time: the portal's calendar says "Today" by the browser's clock
   page.setDefaultTimeout(Number(process.env.STEP_TIMEOUT_MS || 20000));
   page.on('dialog', (d) => d.accept().catch(() => {}));   // the portal's alert always says ERROR even when it worked, so its text is ignored
   // Background calls the portal makes that fail (paths only, never the query or body): this is how we would see the portal refusing a GitHub server.
