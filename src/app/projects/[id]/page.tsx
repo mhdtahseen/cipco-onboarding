@@ -13,6 +13,7 @@ import SalaryCost from "@/components/SalaryCost";
 import ProjectCommercial from "@/components/ProjectCommercial";
 import ForecastView from "@/components/ForecastView";
 import { useRole } from "@/lib/roles";
+import { usePerms } from "@/lib/perms";
 import { baseScenario, forecast, type ForecastInput } from "@/lib/forecast";
 import { guessState, STATE_OPTIONS, type Client } from "@/lib/invoice";
 
@@ -28,7 +29,8 @@ export default function ProjectPage() {
   latest.current = { spent: d.cost.spent, people: d.r.live.length };
   useEffect(() => { if (!d.loading && !seen.current) seen.current = { ...latest.current }; });
   useEffect(() => () => { const s = seen.current, l = latest.current; if (s && (s.spent !== l.spent || s.people !== l.people)) swrDrop("projects"); }, []);
-  const { admin } = useRole(); const showForecast = admin && p?.status === "active"; const [fc, setFc] = useState<ForecastInput | null>(null); const [fcErr, setFcErr] = useState("");
+  // Edit, Close and Reopen need Edit on Projects (Permissions page)
+  const { admin } = useRole(); const mayEdit = usePerms().can("projects", "edit"); const showForecast = admin && p?.status === "active"; const [fc, setFc] = useState<ForecastInput | null>(null); const [fcErr, setFcErr] = useState("");
   useEffect(() => { if (!showForecast) { setFc(null); return; } let live = true; (async () => { const res = await fetch(`/api/forecast?project=${id}`); if (!live) return; if (!res.ok) { setFcErr(await res.text()); return; } const list = (await res.json()) as ForecastInput[]; if (live) { setFc(list[0] ?? null); setFcErr(""); } })(); return () => { live = false; }; }, [showForecast, id, exps.length]);   // fresh after an expense is added or removed
   const [tab, setTab] = useState<Tab>("overview"); const [edit, setEdit] = useState(false); const [ed, setEd] = useState({ name: "", location: "", description: "", client_id: "", state_code: "" }); const [clients, setClients] = useState<Client[]>([]);
   useEffect(() => { supabase().from("clients").select("*").eq("active", true).order("name").then(({ data }) => setClients((data || []) as Client[])); }, []);
@@ -45,7 +47,7 @@ export default function ProjectPage() {
   }
   async function setStatus(status: "active" | "closed") {
     if (status === "closed" && !confirm(`Close “${p!.name}”? It disappears from the employee dropdown (people already on it keep it).`)) return;
-    await supabase().from("projects").update({ status, closed_on: status === "closed" ? todayISO() : null }).eq("id", p!.id); d.loadProject();
+    const { error } = await supabase().from("projects").update({ status, closed_on: status === "closed" ? todayISO() : null }).eq("id", p!.id); if (error) { setMsg(error.message); return; } setMsg(""); d.loadProject();
   }
   const expensesHref = `/expenses?tab=spent&project=${id}`; const goDoc = () => { setTab("documents"); setDocOpen((n) => n + 1); };
   const card = (label: string, value: string, sub?: string, onClick?: () => void) => <button type="button" onClick={onClick} className="card !p-3 text-left hover:bg-slate-50"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold">{value}</div>{sub && <div className="text-xs text-slate-400">{sub}</div>}</button>;
@@ -60,8 +62,8 @@ export default function ProjectPage() {
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold">{p.name}</h1>
         <span className={`text-xs rounded-full px-2 py-0.5 ${p.status === "active" ? "bg-green-50 text-green-800" : "bg-slate-100 text-slate-600"}`}>{p.status === "active" ? "Active" : `Closed ${fmtD(p.closed_on)}`}</span>
-        <div className="flex gap-2 sm:ml-auto"><Link className="btn btn-primary" href={`/projects/${id}/report`}>Report</Link><button className="btn" onClick={() => { setEd({ name: p.name, location: p.location, description: p.description, client_id: p.client_id ?? "", state_code: p.state_code ?? "" }); setEdit(!edit); }}>Edit</button>
-          {p.status === "active" ? <button className="btn" onClick={() => setStatus("closed")}>Close project</button> : <button className="btn" onClick={() => setStatus("active")}>Reopen</button>}</div>
+        <div className="flex gap-2 sm:ml-auto"><Link className="btn btn-primary" href={`/projects/${id}/report`}>Report</Link>{mayEdit && <button className="btn" onClick={() => { setEd({ name: p.name, location: p.location, description: p.description, client_id: p.client_id ?? "", state_code: p.state_code ?? "" }); setEdit(!edit); }}>Edit</button>}
+          {mayEdit && (p.status === "active" ? <button className="btn" onClick={() => setStatus("closed")}>Close project</button> : <button className="btn" onClick={() => setStatus("active")}>Reopen</button>)}</div>
       </div>
       {edit ? (
         <div className="card space-y-3"><div className="grid gap-3 sm:grid-cols-2"><div><label className="lbl">Project name</label><input className="inp" value={ed.name} onChange={(e) => setEd({ ...ed, name: e.target.value })} /></div><div><label className="lbl">Location</label><input className="inp" value={ed.location} onChange={(e) => setEd({ ...ed, location: e.target.value })} /></div>
@@ -71,6 +73,8 @@ export default function ProjectPage() {
           <p className="text-xs text-slate-400">Renaming updates the project name on its employees. Changing the location does not change employees already assigned.</p>
           <div className="flex items-center gap-2"><button className="btn btn-primary" onClick={save}>Save</button><button className="btn" onClick={() => { setEdit(false); setMsg(""); }}>Cancel</button>{msg && <span className="text-sm text-red-700">{msg}</span>}</div></div>
       ) : <p className="text-sm text-slate-500">{p.location || "No location set"}{p.description ? ` · ${p.description}` : ""}</p>}
+
+      {!edit && msg && <p className="warn" role="alert">{msg}</p>}
 
       <div role="tablist" className="flex border-b border-slate-200 overflow-x-auto">{tabs.map(([k, label, n]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? "tab-on" : ""}`} onClick={() => setTab(k)}>{label}{n !== null && <span className="ml-1.5 text-xs text-slate-400">{n}</span>}</button>)}</div>
 

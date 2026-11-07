@@ -69,7 +69,7 @@ These are the defaults, and they are also what applies before anything is saved.
 | Layer | What it does |
 | --- | --- |
 | Menu and page guard | A page with level None is not shown and its address redirects. Data routes (payroll register, payments due, vendor statement, quotation and invoice downloads) follow their module. |
-| Controls | Below Create the save and add buttons are hidden; below Full the delete and void buttons are hidden. Tabbed screens follow the tab on show. |
+| Controls | At View every button or link that adds, saves, edits, deletes, issues or sends is hidden and the text boxes of an editor become read-only (search and filter boxes stay usable). At Create the edit, rename, reopen and close buttons go too. Below Full the delete and void buttons go. Tabbed screens follow the tab on show. This is done for every screen at once by `PermGuard`, by reading the words on the buttons, so a new screen is covered without extra work. A button that must stay (a download, say) carries `data-keep`. |
 | The browser | Writes the level does not allow are stopped before they leave and a plain message appears. |
 | The database | **Payroll tables and bank details** follow the matrix at the row level (read, add, change, delete by level). Everything else in the database still uses its older rules (Operations can write most tables). So for modules other than payroll, a person who bypasses the app and talks to the database directly is limited by the older rules, not by this page. Moving the other modules to the matrix is a separate, larger change. |
 

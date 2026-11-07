@@ -124,3 +124,7 @@ details.card[open]::details-content { block-size: auto; }
 }
 
 .logo-dark { display: none; }   /* the white logo shows only in dark mode (dark.css) */
+
+/* PermGuard (components/PermGuard.tsx): controls the person may not use are hidden; the boxes of a read-only editor look read-only */
+[data-ro-hide] { display: none !important; }
+[data-ro-lock] { background: var(--disabled-bg); color: var(--ink); cursor: default; }

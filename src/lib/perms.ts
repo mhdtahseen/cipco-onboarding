@@ -25,10 +25,10 @@ let shellLevel: Level = "full"; let override: Level | null = null;
 function apply() {
   const l = override ?? shellLevel, r = levelRank(l);
   setWriteLevel(r >= 4 ? "full" : r === 3 ? "edit" : r === 2 ? "create" : "view");
-  const el = document.documentElement; el.toggleAttribute("data-readonly", r < 2); el.toggleAttribute("data-nodelete", r < 4);   // globals.css hides the save and delete controls
+  const el = document.documentElement; el.toggleAttribute("data-readonly", r < 2); el.toggleAttribute("data-noedit", r < 3); el.toggleAttribute("data-nodelete", r < 4);   // globals.css hides the save and delete controls
 }
 export const setShellLevel = (l: Level) => { shellLevel = l; apply(); };
-export const clearPerms = () => { shellLevel = "full"; override = null; setWriteLevel("full"); document.documentElement.removeAttribute("data-readonly"); document.documentElement.removeAttribute("data-nodelete"); };
+export const clearPerms = () => { shellLevel = "full"; override = null; setWriteLevel("full"); document.documentElement.removeAttribute("data-readonly"); document.documentElement.removeAttribute("data-nodelete"); document.documentElement.removeAttribute("data-noedit"); };
 
 /** The signed-in person's rights. level(module, tab?) and can(module, action, tab?) answer for any module; ready is false until the matrix has been read (the built-in defaults answer meanwhile). */
 export function usePerms() {
