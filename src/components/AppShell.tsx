@@ -103,6 +103,8 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
   useEffect(() => { try { setCollapsed(localStorage.getItem("cipco_nav_collapsed") === "1"); if (localStorage.getItem("cipco_nav_min") === "1") setHint("min"); } catch { /* storage unavailable */ } }, []);
   useEffect(() => { if (role) try { localStorage.setItem("cipco_nav_min", items.length <= 1 ? "1" : "0"); } catch { /* ignore */ } }, [role, items.length]);
   useEffect(() => { setDrawer(false); }, [path]);
+  // each screen names its browser tab ("Payroll · CIPCO Operations") so tabs, history and bookmarks are tell-apart-able
+  useEffect(() => { const l = itemFor(path)?.label; document.title = l ? `${l} · CIPCO Operations` : "CIPCO Operations"; }, [path]);
   const viewOnly = role === "viewer";   // the read-only role: edit controls are hidden everywhere (globals.css) and anything that slips through is refused (supabase/client.ts)
   const pageModule = itemFor(path)?.module; const pageLevel = !role ? "full" : pageModule ? perms.open(pageModule) : viewOnly ? "view" : "full";
   useEffect(() => { setShellLevel(viewOnly ? "view" : pageLevel); return () => clearPerms(); }, [pageLevel, viewOnly]);   // the save and delete controls, and what the browser lets through, follow the person's level in the module on show

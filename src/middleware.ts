@@ -80,4 +80,4 @@ export async function middleware(req: NextRequest) {
   if (!canAccessWith(role, path, req.method, await matrixFor(sb as any, role))) return isApi ? NextResponse.json({ error: "Not allowed" }, { status: 403 }) : NextResponse.redirect(new URL(home, req.url));
   return res;
 }
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|branding/|icons/|sw.js|manifest.webmanifest).*)"] };
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|branding/|icons/|sw.js|manifest.webmanifest|robots.txt|favicon.ico|apple-touch-icon.png).*)"] };
