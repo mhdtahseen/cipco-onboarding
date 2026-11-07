@@ -112,6 +112,12 @@ async function readReport(page, job, result, label) {
     await page.waitForTimeout(400);
     if (!(await page.locator(id(box)).inputValue()).trim()) throw new Error(`Could not set the Report's ${box === 'txtFrom' ? 'From' : 'To'} date.`);
   }
+  // Dry run only, to prove the list can be read: start the range a few days back (REPORT_BACK_DAYS). The box takes typed text in the same pattern the calendar wrote (day-month-year).
+  const back = MODE === 'dry' ? Number(process.env.REPORT_BACK_DAYS || 0) : 0;
+  if (back > 0) {
+    const to = await page.locator(id('txtTo')).inputValue(); const m = to.match(/^(\d{2})(\D)(\d{2})\2(\d{4})$/);
+    if (m) { const d = new Date(Date.UTC(+m[4], +m[3] - 1, +m[1] - back)); const p2 = (n) => String(n).padStart(2, '0'); await page.locator(id('txtFrom')).fill(`${p2(d.getUTCDate())}${m[2]}${p2(d.getUTCMonth() + 1)}${m[2]}${d.getUTCFullYear()}`); await page.locator(id('txtFrom')).press('Tab').catch(() => {}); await settle(page); }
+  }
   result.reportRange = { from: await page.locator(id('txtFrom')).inputValue(), to: await page.locator(id('txtTo')).inputValue() };
   await page.getByRole('button', { name: 'Retrieve' }).click();
   await settle(page);

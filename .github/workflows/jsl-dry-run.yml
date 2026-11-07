@@ -9,6 +9,10 @@ on:
         type: choice
         options: [hand, vehicle]
         default: hand
+      back_days:
+        description: Read the Report this many days back (to prove real rows can be read; 0 = today only)
+        type: string
+        default: "0"
       skip_wo:
         description: Skip the WO / contractor check (use while SAP is down)
         type: boolean
@@ -37,6 +41,7 @@ jobs:
           DRY_RUN: "true"
           SAMPLE: ${{ inputs.sample }}
           SKIP_WO: ${{ inputs.skip_wo }}
+          REPORT_BACK_DAYS: ${{ inputs.back_days }}
         run: node run.mjs "samples/$SAMPLE.json"
       - name: Keep the screenshots for 3 days
         if: always()
