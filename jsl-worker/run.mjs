@@ -108,7 +108,7 @@ async function readReport(page, job, result, label) {
   // a requisition number starts with the date, so a new one always falls in today's list.
   for (const box of ['txtFrom', 'txtTo']) {
     await page.locator(id(box)).click();
-    await page.getByText(/Today:\s/).first().click({ timeout: 6000 });
+    await page.getByText(/Today:\s/).filter({ visible: true }).first().click({ timeout: 6000 });   // there is one calendar per box: use the one that is open
     await page.waitForTimeout(400);
     if (!(await page.locator(id(box)).inputValue()).trim()) throw new Error(`Could not set the Report's ${box === 'txtFrom' ? 'From' : 'To'} date.`);
   }
