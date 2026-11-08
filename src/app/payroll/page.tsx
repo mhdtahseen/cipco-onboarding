@@ -9,12 +9,13 @@ import { usePayroll } from "@/lib/payrollData";
 import type { Project } from "@/lib/types";
 import RunTab from "@/components/payroll/RunTab";
 import PayTab from "@/components/payroll/PayTab";
+import SlipsTab from "@/components/payroll/SlipsTab";
 import StatutoryTab from "@/components/payroll/StatutoryTab";
 import AdvancesTab from "@/components/payroll/AdvancesTab";
 import { PageLoader } from "@/components/Loader";
 
-type Tab = "run" | "pay" | "statutory" | "advances";
-const TABS: readonly (readonly [Tab, string])[] = [["run", "Payroll run"], ["pay", "Pay"], ["statutory", "Statutory"], ["advances", "Advances"]];
+type Tab = "run" | "pay" | "slips" | "statutory" | "advances";
+const TABS: readonly (readonly [Tab, string])[] = [["run", "Payroll run"], ["pay", "Pay"], ["slips", "Salary slips"], ["statutory", "Statutory"], ["advances", "Advances"]];
 
 // Admin: monthly payroll for a project. Calendar-month pay, calculated on the last day of the month, credited 1st to 4th of the next month.
 // Joined on or before the 20th: paid for the month. Joined after the 20th: paid in the next run (the full month plus the days from joining).
@@ -38,6 +39,7 @@ export default function Payroll() {
       {!P.loading && P.d && <div key={tab} className="fade-in space-y-4">
         {tab === "run" && <RunTab P={P} pid={pid} ym={ym} today={today} projectName={proj?.name ?? ""} />}
         {tab === "pay" && <PayTab P={P} ym={ym} today={today} />}
+        {tab === "slips" && <SlipsTab P={P} ym={ym} projectName={proj?.name ?? ""} />}
         {tab === "statutory" && <StatutoryTab P={P} pid={pid} ym={ym} today={today} />}
         {tab === "advances" && <AdvancesTab P={P} pid={pid} today={today} />}
       </div>}

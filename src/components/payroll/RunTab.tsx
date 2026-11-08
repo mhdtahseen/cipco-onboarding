@@ -6,8 +6,6 @@ import { useRole } from "@/lib/roles";
 import { computeLine, monthEnd, monthName, monthStart, type LineResult, type Adjustment } from "@/lib/payroll";
 import type { usePayroll, Line } from "@/lib/payrollData";
 import SalarySlip from "./SalarySlip";
-import SlipSender from "./SlipSender";
-import SlipEmailer from "./SlipEmailer";
 
 type P = ReturnType<typeof usePayroll>;
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
@@ -86,7 +84,6 @@ export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: 
           {!approved && <button className="btn" disabled={busy || !!blockers.length || !fresh.length} onClick={calculate}>{run ? "Recalculate draft" : "Calculate draft"}</button>}
           {admin && !approved && <button className="btn btn-primary" disabled={busy || !run || stale || !!blockers.length || !saved.size} onClick={approve}>Approve payroll</button>}</div></div>
       {err && <p className="warn">{err}</p>}{msg && <p className="text-sm text-green-700">{msg}</p>}
-      {admin && run && <SlipEmailer runId={run.id} monthLabel={monthName(ym)} approved={approved} />}
       {!approved && <section className={`rounded-2xl border p-3 space-y-1.5 text-sm ${blockers.length ? "border-rose-200 bg-rose-50 text-rose-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`} data-readiness>
         <div className="font-medium">{blockers.length ? `Not ready: ${blockers.length} thing${blockers.length > 1 ? "s" : ""} to fix` : "Ready to calculate"}</div>
         {blockers.slice(0, 12).map((b, i) => <div key={i}>• {b}{/not marked/.test(b) && <> · <Link className="underline" href={`/attendance?p=${pid}&d=${monthEnd(ym)}`}>open attendance</Link></>}</div>)}{blockers.length > 12 && <div>…and {blockers.length - 12} more</div>}
@@ -101,7 +98,6 @@ export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: 
           <label key={x.e.id} className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-sm ${on ? "border-blue-300 bg-blue-50/60" : "border-slate-200"} ${approved ? "opacity-70" : "cursor-pointer"}`}>
             <input type="checkbox" checked={on} disabled={approved} onChange={(ev) => setOffLop([x.e.id], ev.target.checked)} /><span className="flex-1 min-w-0 truncate">{x.e.full_name}</span><span className="text-xs text-slate-500 whitespace-nowrap">{on ? `${offs} off day${offs === 1 ? "" : "s"} → LOP` : `${offs} off day${offs === 1 ? "" : "s"}`}</span></label>); })}</div>
         {!approved && <div className="mt-2 flex flex-wrap gap-2"><button className="btn btn-sm" onClick={() => setOffLop(salariedRows.map((x) => x.e.id), true)}>Select all salaried</button><button className="btn btn-sm" disabled={!offSel.size} onClick={() => setOffLop([...offSel], false)}>Clear all</button></div>}</details>}
-      {admin && approved && run && d.lines.length > 0 && <SlipSender runId={run.id} month={monthName(ym)} project={projectName} people={d.lines.map((l) => ({ lineId: l.id, name: String(l.snapshot?.name ?? "Employee"), phone: d.emps.find((e) => e.id === l.employee_id)?.phone ?? null })).sort((a, b) => a.name.localeCompare(b.name))} />}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">{card("People", String(shown.length))}{card("Gross", `₹${inr(sum("gross"))}`)}{card("Deductions", `₹${inr(sum("deductions"))}`)}{card("Net to pay", `₹${inr(sum("net"))}`)}{card("Cost to company", `₹${inr(sum("gross") + sum("er_total"))}`, `incl. employer PF / ESI ₹${inr(sum("er_total"))}`)}</div>
       <div className="card !p-0 overflow-x-auto"><table className="w-full text-sm min-w-[52rem]" data-lines><thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="text-left p-2.5">Employee</th><th className="text-left">Type</th><th className="text-right">P / ½ / A / Off</th><th className="text-right">LOP</th><th className="text-right">Gross</th><th className="text-right">Deductions</th><th className="text-right">Net</th><th className="text-left pl-3">Pay by</th><th></th></tr></thead>
         <tbody className="divide-y divide-slate-100">{shown.map((x) => { const c = (x.line.snapshot?.counts ?? {}) as Record<string, number>; const isOpen = open === x.id; return (<>

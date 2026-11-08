@@ -35,7 +35,7 @@ export type Module = { key: string; label: string; section: string; tabs?: Tab[]
 export const SECTIONS = ["People", "Operations", "Sales", "Templates", "Admin"] as const;
 export const MODULES: Module[] = [
   { key: "employees", label: "Employees", section: "People" },
-  { key: "payroll", label: "Payroll", section: "People", tabs: [{ key: "run", label: "Run" }, { key: "pay", label: "Pay" }, { key: "statutory", label: "PF / ESI" }, { key: "advances", label: "Advances" }], note: "Approving, reopening and paying out a payroll run stay Admin-only whatever the level." },
+  { key: "payroll", label: "Payroll", section: "People", tabs: [{ key: "run", label: "Run" }, { key: "pay", label: "Pay" }, { key: "slips", label: "Salary slips" }, { key: "statutory", label: "PF / ESI" }, { key: "advances", label: "Advances" }], note: "Approving, reopening and paying out a payroll run stay Admin-only whatever the level." },
   { key: "attendance", label: "Attendance", section: "People" },
   { key: "projects", label: "Projects", section: "Operations", note: "Project expenses are under Expenses." },
   { key: "sites", label: "Sites today", section: "Operations" },

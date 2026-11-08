@@ -25,13 +25,13 @@ async function people(sb: Awaited<ReturnType<typeof serverClient>>, run: string)
   const mail = new Map(((emps || []) as any[]).map((e) => [e.id, (e.email || "").trim()]));
   return ((lines || []) as any[]).map((line) => ({ line, email: mail.get(line.employee_id) || "" })).sort((a, b) => String(a.line.snapshot?.name ?? "").localeCompare(String(b.line.snapshot?.name ?? "")));
 }
-const sent = async (sb: any, run: string) => { const { data, error } = await sb.from("payroll_slip_emails").select("line_id,status,error,sent_at,to_email").eq("run_id", run).order("sent_at", { ascending: false }); return error ? [] : (data || []); };   // the log table may not exist yet: then nothing is remembered between visits
+const sent = async (sb: any, run: string) => { const { data, error } = await sb.from("payroll_slip_emails").select("line_id,channel,status,error,sent_at,to_email").eq("run_id", run).order("sent_at", { ascending: false }); return error ? null : (data || []); };   // null = the log table does not exist yet: then nothing is remembered between visits
 
 export async function GET(req: NextRequest) {
   const run = req.nextUrl.searchParams.get("run") || ""; const g = await guard(run); if (g.err) return g.err;
   const list = await people(g.sb!, run); const log = await sent(g.sb, run);
-  const latest = new Map<string, any>(); log.forEach((x: any) => { if (!latest.has(x.line_id)) latest.set(x.line_id, x); });
-  return NextResponse.json({ configured: mailConfigured(), from: process.env.MAIL_USER || null, people: list.map(({ line, email }) => ({ lineId: line.id, name: String(line.snapshot?.name ?? ""), email, ok: validEmail(email), last: latest.get(line.id) ?? null })) });
+  const latest = (line: string, channel: string) => { const x = (log || []).find((y: any) => y.line_id === line && y.channel === channel); return x && x.status !== "cleared" ? x : null; };   // newest first; a 'cleared' row undoes a mark
+  return NextResponse.json({ configured: mailConfigured(), from: process.env.MAIL_USER || null, logged: log !== null, people: list.map(({ line, email }) => ({ lineId: line.id, name: String(line.snapshot?.name ?? ""), email, ok: validEmail(email), last: latest(line.id, "email"), wa: latest(line.id, "whatsapp") })) });
 }
 
 // A test send for a demo: one slip from the run (approved or still a draft) goes to ONE company address of your choice, marked [TEST]. Nothing is recorded and no employee is emailed.
@@ -50,6 +50,11 @@ async function testSend(sb: Awaited<ReturnType<typeof serverClient>>, r: any, ru
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({})); const run = String(body.run || "");
+  if (body.mark) {   // a WhatsApp send (or Mark sent / Unmark) pressed by an admin
+    const g1 = await guard(run); if (g1.err) return g1.err; const lineId = String(body.mark.lineId || ""); if (!/^[0-9a-f-]{36}$/.test(lineId)) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+    const { error } = await g1.sb!.from("payroll_slip_emails").insert({ run_id: run, line_id: lineId, channel: "whatsapp", status: body.mark.on === false ? "cleared" : "sent" });
+    return NextResponse.json({ ok: !error, logged: !error });
+  }
   if (body.test) { const g0 = await guard(run, false); if (g0.err) return g0.err; if (!mailConfigured()) return NextResponse.json({ error: "Email is not set up yet. Add MAIL_USER and MAIL_PASSWORD in the app settings." }, { status: 503 }); return testSend(g0.sb!, g0.r, run, String(body.to || "")); } const only: string[] | null = Array.isArray(body.lineIds) ? body.lineIds.map(String) : null;
   const g = await guard(run); if (g.err) return g.err; const { sb, r } = g as { sb: Awaited<ReturnType<typeof serverClient>>; r: any };
   if (!mailConfigured()) return NextResponse.json({ error: "Email is not set up yet. Add MAIL_USER and MAIL_PASSWORD in the app settings." }, { status: 503 });
@@ -66,6 +71,6 @@ export async function POST(req: NextRequest) {
     } catch (e) { results.push({ lineId: line.id, name, email, status: "failed", error: String((e as Error).message || e).slice(0, 200) }); }
     await new Promise((res) => setTimeout(res, 1200));   // a steady pace: mailboxes cap how fast and how many they send
   }
-  try { if (results.length) await sb.from("payroll_slip_emails").insert(results.map((x) => ({ run_id: run, line_id: x.lineId, to_email: x.email || null, status: x.status, error: x.error ?? null }))); } catch { /* the log table is optional until its migration is applied */ }
+  try { if (results.length) await sb.from("payroll_slip_emails").insert(results.map((x) => ({ run_id: run, channel: "email", line_id: x.lineId, to_email: x.email || null, status: x.status, error: x.error ?? null }))); } catch { /* the log table is optional until its migration is applied */ }
   return NextResponse.json({ results });
 }
