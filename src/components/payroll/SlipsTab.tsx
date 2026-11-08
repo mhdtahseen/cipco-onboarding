@@ -24,7 +24,7 @@ export default function SlipsTab({ P, ym, projectName }: { P: P; ym: string; pro
   const { admin } = useRole(); const d = P.d!; const run = d.run; const approved = run?.status === "approved"; const month = monthName(ym);
   const [data, setData] = useState<{ configured: boolean; from: string | null; logged: boolean; people: Row[] } | null>(null); const [err, setErr] = useState(""); const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState<string>(""); const [filter, setFilter] = useState<Filter>("all"); const [lang, setLang] = useState<Lang>("en");
-  const [links, setLinks] = useState<Record<string, string> | null>(null); const [days, setDays] = useState(7); const [copied, setCopied] = useState("");
+  const [links, setLinks] = useState<Record<string, string> | null>(null); const [days, setDays] = useState(7); const [copied, setCopied] = useState(""); const [canShare, setCanShare] = useState(false);
   const [local, setLocal] = useState<Record<string, string>>({}); const [done, setDone] = useState<Record<string, { status: "sent" | "failed" | "no_email"; error?: string }>>({});
   const [to, setTo] = useState(""); const [tBusy, setTBusy] = useState(false); const [tMsg, setTMsg] = useState(""); const [tErr, setTErr] = useState("");
 
@@ -34,6 +34,7 @@ export default function SlipsTab({ P, ym, projectName }: { P: P; ym: string; pro
     const l = await fetch(`/api/payslips/links?run=${run.id}`); const lj = await l.json().catch(() => ({})); if (l.ok) { setLinks(lj.links); setDays(lj.days || 7); }
   }, [run, approved]);
   useEffect(() => { setDone({}); setMsg(""); load(); }, [load]);
+  useEffect(() => { try { setCanShare(!!navigator.canShare?.({ files: [new File(["x"], "a.pdf", { type: "application/pdf" })] })); } catch { setCanShare(false); } }, []);   // phones and tablets can hand a file straight to WhatsApp
   useEffect(() => { try { const l = localStorage.getItem(LANG_KEY); if (l === "en" || l === "hi" || l === "both") setLang(l); const k = localStorage.getItem("cipco_slip_test_to"); if (k) setTo(k); else loadMe().then((me) => { if (me?.email) setTo((x) => x || me.email); }).catch(() => { /* optional */ }); } catch { /* storage unavailable */ } }, []);
   useEffect(() => { if (!run) return; try { setLocal(JSON.parse(localStorage.getItem(WA_KEY(run.id)) || "{}")); } catch { setLocal({}); } }, [run]);
 
@@ -58,6 +59,17 @@ export default function SlipsTab({ P, ym, projectName }: { P: P; ym: string; pro
   const text = (r: Row) => messageFor(lang, r.name, month, projectName, links?.[r.lineId] ?? "", days);
   const wa = (r: Row & { phone: string }) => (links?.[r.lineId] && r.phone.length === 10 ? `https://wa.me/91${r.phone}?text=${encodeURIComponent(text(r))}` : "");
   async function copy(r: Row) { try { await navigator.clipboard.writeText(text(r)); setCopied(r.lineId); setTimeout(() => setCopied(""), 2000); } catch { setErr("Couldn't copy: select the link by hand instead."); } }
+  // The slip as a real PDF file, named for the person, so it can be saved or attached in WhatsApp (a WhatsApp link cannot attach a file by itself).
+  async function pdfFile(r: Row) {
+    const res = await fetch(`/api/payslips/${r.lineId}`); if (!res.ok) throw new Error("The salary slip could not be made.");
+    return new File([await res.blob()], `Salary slip ${r.name.replace(/[^\w ]/g, "").trim()} ${ym}.pdf`, { type: "application/pdf" });
+  }
+  async function download(r: Row) {
+    setBusy(`dl${r.lineId}`); setErr(""); try { const f = await pdfFile(r), u = URL.createObjectURL(f), a = document.createElement("a"); a.href = u; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); } catch (e) { setErr((e as Error).message); } setBusy("");
+  }
+  async function share(r: Row) {
+    setBusy(`dl${r.lineId}`); setErr(""); try { const f = await pdfFile(r); await navigator.share({ files: [f], title: f.name, text: `Salary slip for ${month}` }); markWa(r.lineId, true); } catch (e) { if ((e as Error).name !== "AbortError") setErr((e as Error).message || "Sharing failed."); } setBusy("");
+  }
   async function sendTest() {
     if (!run) return; setTBusy(true); setTErr(""); setTMsg(""); try { localStorage.setItem("cipco_slip_test_to", to.trim()); } catch { /* ignore */ }
     const r = await fetch("/api/payslips/email", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ run: run.id, test: true, to: to.trim() }) }); const j = await r.json().catch(() => ({}));
@@ -86,7 +98,7 @@ export default function SlipsTab({ P, ym, projectName }: { P: P; ym: string; pro
     <div className="space-y-3">
       <section className="card !p-3 space-y-2.5">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <div><h2 className="font-semibold text-sm">Salary slips · {month}</h2><p className="text-xs text-slate-500">{data.configured ? `Email goes from ${data.from}; a copy is kept in that mailbox.` : "Email is not set up yet."} WhatsApp opens one chat at a time for you to press send.{!data.logged && " Status is remembered on this device only."}</p></div>
+          <div><h2 className="font-semibold text-sm">Salary slips · {month}</h2><p className="text-xs text-slate-500">{data.configured ? `Email goes from ${data.from}; a copy is kept in that mailbox.` : "Email is not set up yet."} WhatsApp opens one chat at a time for you to press send. To send the PDF itself, use Share PDF on a phone, or Download and attach it in WhatsApp.{!data.logged && " Status is remembered on this device only."}</p></div>
           <div className="flex flex-wrap gap-2">
             {failedEmail.length > 0 && <button className="btn" disabled={!!busy || !data.configured} onClick={() => sendEmail(failedEmail.map((r) => r.lineId), `${failedEmail.length} failed slip${failedEmail.length === 1 ? "" : "s"}`, "failed")}>Re-send failed ({failedEmail.length})</button>}
             <button className="btn btn-primary" disabled={!!busy || !data.configured || !pendingEmail.length} onClick={() => sendEmail(null, `${pendingEmail.length === rows.filter((r) => r.ok).length ? "all" : "the remaining"} ${pendingEmail.length} salary slip${pendingEmail.length === 1 ? "" : "s"}`, "all")}>{busy === "all" ? "Sending…" : pendingEmail.length ? `Email all (${pendingEmail.length})` : "All emailed"}</button>
@@ -106,7 +118,9 @@ export default function SlipsTab({ P, ym, projectName }: { P: P; ym: string; pro
             <div className="flex flex-wrap items-center gap-1.5 md:justify-end">
               <button className="btn btn-sm" disabled={!!busy || !data.configured || !r.ok} title={r.ok ? "" : "No email address on the employee record"} onClick={() => sendEmail([r.lineId], `${r.name}'s salary slip`, r.lineId)}>{busy === r.lineId ? "Sending…" : r.emailStatus === "sent" ? "Email again" : "Email"}</button>
               {link ? <a className="btn btn-sm" href={link} target="_blank" rel="noreferrer" onClick={() => markWa(r.lineId, true)}>{r.waAt ? "WhatsApp again" : "WhatsApp"}</a> : <button className="btn btn-sm" disabled title={r.phone.length === 10 ? "Preparing the link…" : "No valid phone number"}>WhatsApp</button>}
-              <a className="btn btn-sm" href={`/api/payslips/${r.lineId}`} target="_blank" rel="noreferrer">PDF</a>
+              {canShare && <button className="btn btn-sm" disabled={!!busy} title="Opens the share sheet: choose WhatsApp and the person's chat; the PDF is attached" onClick={() => share(r)}>{busy === `dl${r.lineId}` ? "Preparing…" : "Share PDF"}</button>}
+              <button className="btn btn-sm" disabled={!!busy} title="Saves the PDF with the person's name, ready to attach in WhatsApp" onClick={() => download(r)}>{!canShare && busy === `dl${r.lineId}` ? "Preparing…" : "Download"}</button>
+              <a className="btn btn-sm" href={`/api/payslips/${r.lineId}`} target="_blank" rel="noreferrer">View</a>
             </div>
             <div className="md:col-span-3 flex flex-wrap gap-x-3 text-[11px] text-slate-400">
               <button className="underline disabled:no-underline" disabled={!links} onClick={() => copy(r)}>{copied === r.lineId ? "Copied ✓" : "Copy WhatsApp message"}</button>
