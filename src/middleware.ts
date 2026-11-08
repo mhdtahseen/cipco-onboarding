@@ -72,12 +72,17 @@ export async function middleware(req: NextRequest) {
   else if (hit && Date.now() - hit.at < ROLE_TTL_MS) role = hit.role;
   else {
     const { data: rr, error } = await sb.from("user_roles").select("role").eq("user_id", uid).maybeSingle();
+    // Only a missing roles table (migration never run) falls back to Admin. Any other failure (outage, wiring) must not hand out Admin: show the no-access page.
+    const tableMissing = !!error && (error.code === "42P01" || error.code === "PGRST205");
+    if (error && !tableMissing) return isApi ? NextResponse.json({ error: "We can't check your access right now. Please try again in a moment." }, { status: 503 }) : path === "/no-access" ? res : NextResponse.redirect(new URL(`/no-access?why=unavailable&from=${encodeURIComponent(path)}`, req.url));
     role = error ? "admin" : rr?.role ?? "none";
     if (!error) { if (roleCache.size > 500) roleCache.clear(); roleCache.set(uid, { role, at: Date.now() }); }   // never remember a failed lookup
   }
   const home = homeFor(role);
+  // Planned downtime: set APP_MAINTENANCE=1 in the hosting settings; everyone except Admin sees the no-access page until it is removed.
+  if (process.env.APP_MAINTENANCE === "1" && role !== "admin") return isApi ? NextResponse.json({ error: "The app is down for maintenance. Please try again later." }, { status: 503 }) : path === "/no-access" ? res : NextResponse.redirect(new URL("/no-access?why=maintenance", req.url));
   if (isLogin) return NextResponse.redirect(new URL(home, req.url));
-  if (!canAccessWith(role, path, req.method, await matrixFor(sb as any, role))) return isApi ? NextResponse.json({ error: "Not allowed" }, { status: 403 }) : NextResponse.redirect(new URL(home, req.url));
+  if (!canAccessWith(role, path, req.method, await matrixFor(sb as any, role))) return isApi ? NextResponse.json({ error: "Not allowed" }, { status: 403 }) : NextResponse.redirect(new URL(role === "none" ? "/no-access?why=norole" : `/no-access?why=denied&from=${encodeURIComponent(path)}`, req.url));
   return res;
 }
 export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|branding/|icons/|sw.js|manifest.webmanifest|robots.txt|favicon.ico|apple-touch-icon.png).*)"] };
