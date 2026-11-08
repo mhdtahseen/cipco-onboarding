@@ -7,6 +7,7 @@ import { computeLine, monthEnd, monthName, monthStart, type LineResult, type Adj
 import type { usePayroll, Line } from "@/lib/payrollData";
 import SalarySlip from "./SalarySlip";
 import SlipSender from "./SlipSender";
+import SlipEmailer from "./SlipEmailer";
 
 type P = ReturnType<typeof usePayroll>;
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
@@ -85,6 +86,7 @@ export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: 
           {!approved && <button className="btn" disabled={busy || !!blockers.length || !fresh.length} onClick={calculate}>{run ? "Recalculate draft" : "Calculate draft"}</button>}
           {admin && !approved && <button className="btn btn-primary" disabled={busy || !run || stale || !!blockers.length || !saved.size} onClick={approve}>Approve payroll</button>}</div></div>
       {err && <p className="warn">{err}</p>}{msg && <p className="text-sm text-green-700">{msg}</p>}
+      {admin && run && <SlipEmailer runId={run.id} monthLabel={monthName(ym)} approved={approved} />}
       {!approved && <section className={`rounded-2xl border p-3 space-y-1.5 text-sm ${blockers.length ? "border-rose-200 bg-rose-50 text-rose-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`} data-readiness>
         <div className="font-medium">{blockers.length ? `Not ready: ${blockers.length} thing${blockers.length > 1 ? "s" : ""} to fix` : "Ready to calculate"}</div>
         {blockers.slice(0, 12).map((b, i) => <div key={i}>• {b}{/not marked/.test(b) && <> · <Link className="underline" href={`/attendance?p=${pid}&d=${monthEnd(ym)}`}>open attendance</Link></>}</div>)}{blockers.length > 12 && <div>…and {blockers.length - 12} more</div>}
