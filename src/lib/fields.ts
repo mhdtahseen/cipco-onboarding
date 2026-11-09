@@ -38,6 +38,10 @@ export const PAYROLL_GROUP: { title: string; fields: FieldDef[] } = { title: "Pa
   { key: "upi_id", label: "UPI ID (if paid by UPI)" },
   { key: "esic_no", label: "ESIC insurance (IP) number (optional)", hint: "The 10-digit Insurance No. on the ESIC e-Pehchan card. Leave blank if they are not covered." },
 ] };
+/** Police verification (Gujarat PCC form): the one detail it needs that the rest of the record does not hold. On the internal employee form once 2026-11-pcc-form.sql has added the column. */
+export const PCC_GROUP: { title: string; fields: FieldDef[] } = { title: "Police verification (PCC form)", fields: [
+  { key: "native_police_station", label: "Police station of permanent address (optional)", wide: true },
+] };
 export const EMPTY: Record<string, any> = { father_spouse_type: "Father", base_location: "Pune, Maharashtra", employment_type: "Employee", probation_months: 6, week_off: "Sunday", status: "onboarding" };
 
 export function validate(e: Record<string, any>): Record<string, string> {

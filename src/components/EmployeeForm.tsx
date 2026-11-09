@@ -5,7 +5,7 @@ import Link from "next/link";
 import { stageLabel } from "@/lib/pipeline";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import { EMPTY, FIELD_GROUPS, PAYROLL_GROUP, validate } from "@/lib/fields";
+import { EMPTY, FIELD_GROUPS, PAYROLL_GROUP, PCC_GROUP, validate } from "@/lib/fields";
 import SalaryEditor from "./SalaryEditor";
 import PromptDialog, { type PromptSpec } from "./PromptDialog";
 import { Icon } from "./NavIcons";
@@ -32,10 +32,10 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
   const warn = validate(v); const isNew = !initial;
   // "Unsaved" = any field differs from the saved record (or from the blank form when adding a candidate)
   const ref0 = (initial ?? EMPTY) as Record<string, any>;
-  const dirty = [...FIELD_GROUPS, PAYROLL_GROUP].flatMap((g) => g.fields).some((f) => String(v[f.key] ?? "") !== String(ref0[f.key] ?? "")) || (!isNew && JSON.stringify(v.salary ?? {}) !== JSON.stringify(ref0.salary ?? {})) || String(v.project_id ?? "") !== String(ref0.project_id ?? "");
+  const dirty = [...FIELD_GROUPS, PAYROLL_GROUP, PCC_GROUP].flatMap((g) => g.fields).some((f) => String(v[f.key] ?? "") !== String(ref0[f.key] ?? "")) || (!isNew && JSON.stringify(v.salary ?? {}) !== JSON.stringify(ref0.salary ?? {})) || String(v.project_id ?? "") !== String(ref0.project_id ?? "");
   useEffect(() => { if (!dirty) return; const warnLeave = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; }; window.addEventListener("beforeunload", warnLeave); return () => window.removeEventListener("beforeunload", warnLeave); }, [dirty]);
   const payGroup = { ...PAYROLL_GROUP, fields: PAYROLL_GROUP.fields.filter((f) => f.key !== "esic_no" || (!!initial && "esic_no" in (initial as object))) };   // the ESIC number appears once 2026-10-esic-number.sql has added the column
-  const groups = isNew ? [{ title: "Candidate", fields: FIELD_GROUPS.flatMap((g) => g.fields).filter((f) => ["full_name", "phone", "email", "designation", "department"].includes(f.key)) }] : [...FIELD_GROUPS, ...(initial && "pay_mode" in (initial as object) ? [payGroup] : [])];   // the payroll group appears once the payroll migration has added its columns
+  const groups = isNew ? [{ title: "Candidate", fields: FIELD_GROUPS.flatMap((g) => g.fields).filter((f) => ["full_name", "phone", "email", "designation", "department"].includes(f.key)) }] : [...FIELD_GROUPS, ...(initial && "pay_mode" in (initial as object) ? [payGroup] : []), ...(initial && "native_police_station" in (initial as object) ? [PCC_GROUP] : [])];   // the payroll and PCC groups appear once their migrations have added the columns
   const need: Record<string, string> = { Employment: "needed for offer", "Personal & family": "needed for joining forms", Address: "needed for joining forms", "Statutory & bank": "needed for joining forms", "Nominee & emergency contact": "needed for joining forms" };
   const set = (k: string, val: any) => setV((p) => ({ ...p, [k]: val }));
   async function addDept() {
@@ -68,7 +68,7 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
     if (!v.full_name) { setMsg("Full name is required"); return; }
     setBusy(true); setMsg("");
     const clean: Record<string, any> = {};
-    [...FIELD_GROUPS, ...(!isNew && "pay_mode" in (initial as object) ? [payGroup] : [])].flatMap((g) => g.fields).forEach((f) => { const x = v[f.key]; clean[f.key] = x === "" || x === undefined ? null : f.type === "number" && x !== null ? Number(x) : x; });
+    [...FIELD_GROUPS, ...(!isNew && "pay_mode" in (initial as object) ? [payGroup] : []), ...(!isNew && "native_police_station" in (initial as object) ? [PCC_GROUP] : [])].flatMap((g) => g.fields).forEach((f) => { const x = v[f.key]; clean[f.key] = x === "" || x === undefined ? null : f.type === "number" && x !== null ? Number(x) : x; });
     if ("pay_mode" in clean && !clean.pay_mode) clean.pay_mode = "bank";
     if (clean.aadhaar) clean.aadhaar = String(clean.aadhaar).replace(/\s/g, "");
     if (clean.pan) clean.pan = String(clean.pan).toUpperCase(); if (clean.ifsc) clean.ifsc = String(clean.ifsc).toUpperCase();

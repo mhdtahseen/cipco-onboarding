@@ -12,6 +12,7 @@ export type Employee = {
   employment_type: string | null; join_date: string | null; probation_months: number | null; monthly_ctc: number | null; salary: Partial<SalaryCfg> | null;
   week_off: string | null; left_on?: string | null; pay_mode?: string | null; upi_id?: string | null; esic_no?: string | null; status: string | null; notes: string | null;
   call_notes: string | null; interview_notes: string | null;
+  native_police_station?: string | null;   // PCC form (2026-11-pcc-form.sql)
   stage: string; outcome: "active" | "rejected"; closed_reason: string | null; closed_note: string | null; closed_stage: string | null; closed_at: string | null;
 };
 
@@ -46,7 +47,8 @@ export const DOC_TYPES: { key: string; label: string }[] = [
 
 export type AnnexureSnapshot = { rows: AnnexureRow[]; notes: string[]; name: string; designation: string; department: string };
 
-export type Project = { id: string; name: string; location: string; description: string; status: "active" | "closed"; closed_on: string | null; created_at: string; client_id?: string | null; state_code?: string | null };
+export type Project = { id: string; name: string; location: string; description: string; status: "active" | "closed"; closed_on: string | null; created_at: string; client_id?: string | null; state_code?: string | null;
+  police_verification?: boolean; unit_name?: string | null; unit_location?: string | null; unit_border_distance?: string | null; unit_sensitive?: string | null; contract_until?: string | null; site_incharge_phone?: string | null };   // PCC form (2026-11-pcc-form.sql)
 export type Department = { id: string; name: string; active: boolean };
 export type ExpenseCategory = { id: string; name: string; active: boolean; sort_order: number };
 export type ProjectExpense = { id: string; project_id: string; category_id: string; expense_date: string; amount: number; description: string; employee_id: string | null; bill_path: string | null; created_at: string; source?: string | null };

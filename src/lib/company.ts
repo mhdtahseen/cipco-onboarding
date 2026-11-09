@@ -14,7 +14,9 @@ export const COMPANY = {
   signatoryDept: "Human Resources Department",
   signatoryDesignation: "Authorised Signatory",
   city: "Pune",
-  supportEmail: "info@cipcogroup.com",   // where people are sent to reach an admin (the No access page)
+  supportEmail: "info@cipcogroup.com",
+  contractorMobile: "9028747249",   // contractor's mobile on the police verification (PCC) form
+  contractorLicense: "UDYAM-MH-26-0770375",   // contractor registration on the PCC form: the Udyam number in its official format   // where people are sent to reach an admin (the No access page)
   gstin: "27AAOPI1552K2ZG",
   udyam: "UDYAM-MH-26-0770375",
 };

@@ -20,7 +20,7 @@ export function usePayroll(pid: string, ym: string) {
     if (!pid) return; const sb = supabase(); setErr("");
     const from = monthStart(addMonth(ym, -1)), to = monthEnd(ym);
     const [emp, runQ, advQ, adjQ, statQ, recQ] = await Promise.all([
-      sb.from("employees").select("*").eq("project_id", pid).neq("outcome", "rejected"),
+      sb.from("employees").select("*").eq("project_id", pid).neq("outcome", "rejected").eq("stage", "onboarded"),   // only people who have been onboarded are paid
       sb.from("payroll_runs").select("*").eq("project_id", pid).eq("pay_month", monthStart(ym)).maybeSingle(),
       sb.from("employee_advances").select("*").eq("project_id", pid).order("given_on", { ascending: false }),
       sb.from("payroll_adjustments").select("*").eq("project_id", pid).eq("pay_month", monthStart(ym)).is("voided_at", null),
@@ -33,7 +33,7 @@ export function usePayroll(pid: string, ym: string) {
     const rows: { employee_id: string; work_date: string; status: DayStatus }[] = [];
     for (let f = 0; ; f += 1000) { const { data, error } = await sb.from("attendance").select("employee_id, work_date, status").eq("project_id", pid).gte("work_date", from).lte("work_date", to).order("work_date").range(f, f + 999); if (error) { setErr(error.message); break; } rows.push(...((data || []) as typeof rows)); if (!data || data.length < 1000) break; }
     const have = new Set(emps.map((e) => e.id)); const extra = [...new Set(rows.map((r) => r.employee_id))].filter((i) => !have.has(i));   // people who worked here but have since moved project
-    if (extra.length) { const { data } = await sb.from("employees").select("*").in("id", extra); emps = [...emps, ...((data || []) as PayEmp[])]; }
+    if (extra.length) { const { data } = await sb.from("employees").select("*").in("id", extra).eq("stage", "onboarded"); emps = [...emps, ...((data || []) as PayEmp[])]; }
     const att: Record<string, Record<string, DayStatus>> = {}; rows.forEach((r) => { if (r.status) (att[r.employee_id] ??= {})[r.work_date] = r.status; });
     const ids = emps.map((e) => e.id); const revs: Record<string, Revision[]> = {};
     if (ids.length) { const { data } = await sb.from("salary_history").select("employee_id, effective_from, salary").in("employee_id", ids); ((data || []) as { employee_id: string; effective_from: string; salary: any }[]).forEach((r) => (revs[r.employee_id] ??= []).push({ effective_from: r.effective_from, salary: r.salary })); }

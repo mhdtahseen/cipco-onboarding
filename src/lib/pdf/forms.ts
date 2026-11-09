@@ -1,7 +1,7 @@
 import { PDFDocument } from "pdf-lib";
 import { COMPANY } from "../company";
 import { dmyParts, fmtDateDMY, fmtDateLong, todayISO } from "../format";
-import type { Employee } from "../types";
+import type { Employee, Project } from "../types";
 import { Fonts, blank, circle, drawPhotoBox, drawStamp, embedFonts, newDoc, put, readAsset, tick, wrapPlain } from "./common";
 
 const groups = (s?: string | null, n = 4) => (s || "").replace(/\s+/g, "").replace(new RegExp(`(.{${n}})(?=.)`, "g"), "$1 ").trim();
@@ -92,9 +92,47 @@ export async function fillGratuity(e: Employee, withSeal: boolean): Promise<Uint
 }
 
 // ------------------------------------------------------------------ Joining kit = joining form + Form 11 + Form F
-export async function buildKit(e: Employee, withSeal: boolean, photo?: Uint8Array | null): Promise<Uint8Array> {
+// ------------------------------------------------------------------ Gujarat police verification: Labor Identification and Verification Form (2 pages)
+// The blank form (assets/templates/pcc_form.pdf) is drawn from src/pcc_form.html; pcc_form_fields.json holds each answer box (points, from the top-left).
+type Box = { page: number; x: number; top: number; w: number; h: number };
+const ageOn = (dob: string, on: string) => { const [y, m, d] = dob.split("-").map(Number), [Y, M, D] = on.split("-").map(Number); return Y - y - (M < m || (M === m && D < d) ? 1 : 0); };
+export async function fillPccForm(e: Employee, proj: (Project & { client_name?: string | null }) | null, photo?: Uint8Array | null, withPan = false): Promise<Uint8Array> {
+  const { doc, f } = await load("pcc_form.pdf"); const boxes = JSON.parse(String(await readAsset("templates", "pcc_form_fields.json"))) as Record<string, Box>;
+  const write = (key: string, text: string | null | undefined, size = 9.5) => {   // wraps inside the box, shrinking the text only when it would not fit
+    const b = boxes[key]; if (!b || !text) return; const p = doc.getPage(b.page), maxW = b.w - 8;
+    let lines = wrapPlain(f.reg, text, size, maxW);
+    while (size > 7 && lines.length * (size + 2) > b.h - 3) { size -= 0.5; lines = wrapPlain(f.reg, text, size, maxW); }
+    lines.forEach((l, i) => put(p, f.reg, l, b.x + 4, b.top + size + 2 + i * (size + 2), size, maxW));
+  };
+  const dmy = (iso?: string | null) => (iso ? fmtDateDMY(iso) : "");
+  const withPin = (a?: string | null) => (a && e.pin && !a.includes(e.pin) ? `${a}, ${e.pin}` : a || "");
+  // the unit and the contractor
+  write("unit_name", proj?.unit_name || proj?.client_name || "");
+  write("unit_location", proj?.unit_location || proj?.location || "");
+  write("unit_border_distance", proj?.unit_border_distance); write("unit_sensitive", proj?.unit_sensitive);
+  write("contractor_name_address", COMPANY.addressOneLine); write("contractor_mobile", COMPANY.contractorMobile); write("contractor_license", COMPANY.contractorLicense);
+  write("contract_period", proj?.contract_until ? `Until ${dmy(proj.contract_until)}` : ""); write("site_incharge_mobile", proj?.site_incharge_phone);
+  // the person
+  write("full_name", e.full_name); write("father_name", e.father_spouse_name);
+  write("caste_religion", e.religion);
+  write("dob_age", e.dob ? `${dmy(e.dob)}, ${ageOn(e.dob, todayISO())} years` : "");
+  write("gender", e.gender); write("marital_status", e.marital_status); write("mobile", e.phone); write("alt_mobile", e.alt_phone);
+  write("permanent_address", withPin(e.permanent_address)); write("permanent_police_station", e.native_police_station);
+  write("current_address", e.current_address || withPin(e.permanent_address));
+  write("joining_date", dmy(e.join_date)); write("leaving_date", dmy(proj?.contract_until)); write("work_type", e.designation);
+  // Aadhaar is the ID given by default (its copy goes with the form). PAN only when asked for, because a PAN on the form means its copy must be attached too.
+  // Left blank, as on the forms actually submitted: caste, sarpanch, voter ID, birth certificate and bank details; rows 20, 22 to 28 and 30 are for the police and the thumb prints.
+  write("aadhaar", groups(e.aadhaar)); if (withPan) write("pan", (e.pan || "").toUpperCase());
+  // The photo goes at the right of row 29, only when one has been uploaded.
+  const ph = boxes.photo; if (ph && photo) await drawPhotoBox(doc, doc.getPage(ph.page), { x: ph.x + ph.w - 92, top: ph.top + 4, w: 86, h: Math.min(108, ph.h - 8) }, photo);
+  return doc.save();
+}
+/** The blank form, for filling by hand. */
+export const blankPccForm = () => readAsset("templates", "pcc_form.pdf");
+
+export async function buildKit(e: Employee, withSeal: boolean, photo?: Uint8Array | null, pcc?: Uint8Array | null): Promise<Uint8Array> {
   const out = await PDFDocument.create();
-  for (const bytes of [await fillJoiningForm(e, withSeal, photo), await fillForm11(e, withSeal), await fillGratuity(e, withSeal)]) {
+  for (const bytes of [await fillJoiningForm(e, withSeal, photo), await fillForm11(e, withSeal), await fillGratuity(e, withSeal), ...(pcc ? [pcc] : [])]) {
     const src = await PDFDocument.load(bytes); const pages = await out.copyPages(src, src.getPageIndices()); pages.forEach((pg) => out.addPage(pg));
   }
   return out.save();

@@ -37,7 +37,7 @@ body { background: var(--app-bg); color: var(--ink); font-family: ui-sans-serif,
 body { overflow-x: clip; }   /* clip (not hidden) so the sticky nav keeps working */
 
 /* Public candidate page (/apply): 16px inputs stop iOS Safari zooming on focus; 44px tap targets for thumbs. */
-.apply .inp { font-size: 16px; min-height: 44px; }
+.apply .inp { font-size: 16px; min-height: 44px; scroll-margin-top: 16px; scroll-margin-bottom: 120px; }   /* 16px stops iOS zooming in; the margins keep a focused field clear of the Submit bar */
 .apply textarea.inp { min-height: 0; }
 .apply .btn { min-height: 44px; padding-left: 16px; padding-right: 16px; }
 .apply input[type="date"].inp { display: block; min-width: 0; -webkit-appearance: none; appearance: none; }
