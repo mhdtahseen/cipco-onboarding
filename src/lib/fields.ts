@@ -9,12 +9,14 @@ export const FIELD_GROUPS: { title: string; fields: FieldDef[] }[] = [
     { key: "join_date", label: "Date of joining", type: "date" }, { key: "probation_months", label: "Probation (months)", type: "number" },
     { key: "week_off", label: "Weekly off", type: "select", options: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] },
   ] },
-  { title: "Personal & family", fields: [
-    { key: "father_spouse_name", label: "Father's / spouse's name" }, { key: "father_spouse_type", label: "Relation", type: "select", options: ["Father", "Spouse"] },
+  { title: "Personal", fields: [
     { key: "dob", label: "Date of birth", type: "date" }, { key: "gender", label: "Gender", type: "select", options: ["Male", "Female", "Other"] },
     { key: "marital_status", label: "Marital status", type: "select", options: ["Single", "Married", "Widow", "Widower", "Divorced"] },
     { key: "religion", label: "Religion" }, { key: "blood_group", label: "Blood group" },
     { key: "email", label: "Email" }, { key: "phone", label: "Contact number" }, { key: "alt_phone", label: "Alt number" },
+  ] },
+  { title: "Family", fields: [
+    { key: "father_spouse_name", label: "Father's / spouse's name" }, { key: "father_spouse_type", label: "Relation", type: "select", options: ["Father", "Spouse"] },
   ] },
   { title: "Address", fields: [
     { key: "permanent_address", label: "Permanent address", type: "textarea", wide: true },
