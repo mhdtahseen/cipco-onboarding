@@ -24,19 +24,21 @@ const UPLOADS = [
 const HALF = new Set(["father_spouse_type", "dob", "gender", "marital_status", "religion", "blood_group", "city", "district", "state", "pin", "nominee_relation", "nominee_age_dob"]);
 const AUTO: Record<string, string> = { email: "email", phone: "tel", alt_phone: "tel", full_name: "name", permanent_address: "street-address", city: "address-level2", state: "address-level1", pin: "postal-code" };
 const MAXLEN: Record<string, number> = { phone: 10, alt_phone: 10, nominee_phone: 10, emergency_phone: 10, pin: 6, aadhaar: 14, pan: 10, ifsc: 11, uan: 14 };
+/** A value already on file, hidden except its last 4 characters: "•••• •••• 1234" for Aadhaar, "•••• 1234" for the rest. Only the last 4 ever reach this page. */
+const maskOf = (key: string, last4: string) => (key === "aadhaar" ? `•••• •••• ${last4}` : `•••• ${last4}`);
 const nice = (p?: string) => (p ? p.split("/").pop()!.replace(/^\d+-/, "") : "");
 
 export default function ApplyPage() {
   const { token } = useParams<{ token: string }>();
   const [inv, setInv] = useState<any>(null); const [state, setState] = useState<"loading" | "bad" | "form" | "done" | "applied">("loading");
-  const [v, setV] = useState<Record<string, string>>({}); const [files, setFiles] = useState<Record<string, string>>({}); const [busy, setBusy] = useState(""); const [err, setErr] = useState(""); const [ok, setOk] = useState(false); const [onFile, setOnFile] = useState<string[]>([]);
+  const [v, setV] = useState<Record<string, string>>({}); const [files, setFiles] = useState<Record<string, string>>({}); const [busy, setBusy] = useState(""); const [err, setErr] = useState(""); const [ok, setOk] = useState(false); const [onFile, setOnFile] = useState<string[]>([]); const [masked, setMasked] = useState<Record<string, string>>({}); const [changing, setChanging] = useState<Set<string>>(new Set());
   const confirmRef = useRef<HTMLInputElement>(null); const [nudge, setNudge] = useState(false);
   useEffect(() => { (async () => {
     const { data } = await supabase().rpc("invite_get", { p_token: token });
     if (!data) { setState("bad"); return; }
     setInv(data); setFiles(data.files || {});
     setV({ father_spouse_type: "Father", full_name: data.name || "", phone: data.phone || "", email: data.email || "", ...(data.prefill || {}), ...(data.submission || {}) });
-    setOnFile(data.on_file || []);
+    setOnFile(data.on_file || []); setMasked(data.on_file_masked || {});
     setState(data.status === "applied" ? "applied" : "form");
   })(); }, [token]);
   const warn = validate(v); const set = (k: string, x: string) => setV((p) => ({ ...p, [k]: x }));
@@ -88,7 +90,9 @@ export default function ApplyPage() {
           {g.fields.map((f) => (
             <div key={f.key} className={`min-w-0 ${f.wide ? "col-span-2" : HALF.has(f.key) ? "col-span-1" : "col-span-2 sm:col-span-1"}`}>
               <label className="lbl" htmlFor={f.key}>{f.label}</label>
-              {f.type === "select" ? <select id={f.key} className="inp" value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}><option value=""></option>{f.options!.map((o) => <option key={o}>{o}</option>)}</select>
+              {onFile.includes(f.key) && masked[f.key] !== undefined && !changing.has(f.key) && !String(v[f.key] ?? "").trim()
+                ? <div className="flex items-center gap-2"><div id={f.key} className="inp flex items-center justify-between !bg-slate-50 text-slate-600 tracking-wide" aria-label={`${f.label}, on file, ${masked[f.key] ? `ending ${masked[f.key]}` : "hidden"}`}><span>{masked[f.key] ? maskOf(f.key, masked[f.key]) : "••••••••"}</span><span className="text-xs text-green-700 ml-2 shrink-0">✓ On file</span></div><button type="button" className="btn shrink-0" onClick={() => setChanging((x) => new Set(x).add(f.key))}>Change</button></div>
+                : f.type === "select" ? <select id={f.key} className="inp" value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}><option value=""></option>{f.options!.map((o) => <option key={o}>{o}</option>)}</select>
                 : f.type === "textarea" ? <textarea id={f.key} className="inp" rows={2} autoComplete={AUTO[f.key] ?? "off"} value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />
                 : <input id={f.key} className="inp" type={f.type === "date" ? "date" : f.key === "email" ? "email" : "text"} inputMode={f.key === "email" ? "email" : ["phone", "alt_phone", "nominee_phone", "emergency_phone"].includes(f.key) ? "tel" : ["pin", "aadhaar", "account_no", "uan"].includes(f.key) ? "numeric" : undefined} autoComplete={AUTO[f.key] ?? "off"} maxLength={MAXLEN[f.key]} enterKeyHint="next" autoCapitalize={["pan", "ifsc"].includes(f.key) ? "characters" : undefined} placeholder={onFile.includes(f.key) ? "On file — type only to change" : undefined} value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />}
               {warn[f.key] && <p className="warn">{warn[f.key]}</p>}
