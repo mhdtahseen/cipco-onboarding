@@ -1,6 +1,6 @@
 "use client";
 import Logo from "@/components/Logo";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
@@ -30,6 +30,7 @@ export default function ApplyPage() {
   const { token } = useParams<{ token: string }>();
   const [inv, setInv] = useState<any>(null); const [state, setState] = useState<"loading" | "bad" | "form" | "done" | "applied">("loading");
   const [v, setV] = useState<Record<string, string>>({}); const [files, setFiles] = useState<Record<string, string>>({}); const [busy, setBusy] = useState(""); const [err, setErr] = useState(""); const [ok, setOk] = useState(false); const [onFile, setOnFile] = useState<string[]>([]);
+  const confirmRef = useRef<HTMLInputElement>(null); const [nudge, setNudge] = useState(false);
   useEffect(() => { (async () => {
     const { data } = await supabase().rpc("invite_get", { p_token: token });
     if (!data) { setState("bad"); return; }
@@ -53,7 +54,15 @@ export default function ApplyPage() {
   async function submit() {
     setErr("");
     if (!v.full_name?.trim()) { setErr("Please enter your full name."); return; }
-    if (!ok) { setErr("Please tick the confirmation at the bottom."); return; }
+    if (!ok) {   // take them to the tick box, which is far below on a phone, and flash it so it is obvious what is missing
+      setErr("Please tick the confirmation at the bottom.");
+      // after the error has appeared in the bar (it makes the bar taller), so the scroll lands clear of it; the label's bottom margin keeps it above the Submit bar
+      setTimeout(() => {
+        confirmRef.current?.closest("label")?.scrollIntoView({ behavior: "smooth", block: "end" });
+        confirmRef.current?.focus({ preventScroll: true });
+      }, 60);
+      setNudge(true); setTimeout(() => setNudge(false), 2200); return;
+    }
     setBusy("submit");
     const { data } = await supabase().rpc("invite_submit", { p_token: token, p_data: v });
     setBusy("");
@@ -96,7 +105,7 @@ export default function ApplyPage() {
             <input type="file" className="hidden" accept="image/*,.pdf" disabled={!!busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(u.key, f); }} /></label>
         </div>))}</div>
     </div>
-    <label className="flex items-start gap-3 text-sm text-slate-600"><input type="checkbox" className="mt-0.5" checked={ok} onChange={(e) => setOk(e.target.checked)} />I confirm these details and documents are mine and correct, and I agree to CIPCO using them for my employment, PF and statutory records.</label>
+    <label style={{ scrollMarginBottom: 180 }} className={`flex items-start gap-3 text-sm text-slate-600 rounded-xl p-2 -mx-2 -mt-2 transition-colors ${nudge ? "bg-amber-50 ring-2 ring-amber-400" : ""}`}><input ref={confirmRef} type="checkbox" className="mt-0.5" checked={ok} onChange={(e) => { setOk(e.target.checked); if (e.target.checked) setErr((x) => (x.startsWith("Please tick") ? "" : x)); }} />I confirm these details and documents are mine and correct, and I agree to CIPCO using them for my employment, PF and statutory records.</label>
     {/* the bar stays on screen while scrolling: progress, any error from the last tap, and Submit (kept clear of the iPhone home bar) */}
     <div className="sticky bottom-0 z-10 -mx-4 px-4 sm:-mx-6 sm:px-6 border-t border-slate-200 bg-[#f6f7fb] pt-2.5 pb-[max(12px,env(safe-area-inset-bottom))] space-y-2">
       {err && <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</p>}
