@@ -3,7 +3,7 @@
 // Pure data + helpers (no React), so the server-side route guard can import it too.
 import { apiModuleOf, levelRank, levelIn, openLevel, type Matrix } from "./permissions";
 export type NavRole = "admin" | "staff" | "site_engineer" | "supervisor" | "attendance" | "viewer";   // "attendance" = the old name for Supervisor, kept so the app still works before the migration renames it
-export type IconName = "users" | "clipboard" | "folder" | "file" | "book" | "mail" | "list" | "sliders" | "shield" | "building" | "truck" | "utensils" | "bed" | "wallet" | "pin" | "cylinder" | "box" | "calendar" | "receipt" | "briefcase" | "hard-hat" | "wrench" | "key";
+export type IconName = "users" | "user-check" | "crane" | "calculator" | "book" | "mail" | "quote" | "gear" | "user-cog" | "building" | "truck" | "utensils" | "bed" | "wallet" | "pin" | "wheelbarrow" | "box" | "rupee-down" | "receipt" | "clipboard-list" | "hard-hat" | "wrench" | "key";
 export type NavItem = {
   href: string;            // where the link goes
   label: string;
@@ -26,25 +26,25 @@ const CONSUMABLES_BAR: NavRole[] = SITE_ROLES_GET_CONSUMABLES ? ["site_engineer"
 export const NAV: NavItem[] = [
   { href: "/", label: "Employees", icon: "users", section: "People", module: "employees", roles: ["admin", "staff", "viewer"], paths: ["/", "/employees"], bar: true },
   { href: "/payroll", label: "Payroll", icon: "wallet", section: "People", module: "payroll", roles: ["admin", "viewer"], paths: ["/payroll"] },
-  { href: "/attendance", label: "Attendance", icon: "clipboard", section: "People", module: "attendance", roles: ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"], paths: ["/attendance"], bar: true },
-  { href: "/projects", label: "Projects", icon: "folder", section: "Operations", module: "projects", roles: ["admin", "staff", "viewer"], paths: ["/projects"], bar: true },
+  { href: "/attendance", label: "Attendance", icon: "user-check", section: "People", module: "attendance", roles: ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"], paths: ["/attendance"], bar: true },
+  { href: "/projects", label: "Projects", icon: "crane", section: "Operations", module: "projects", roles: ["admin", "staff", "viewer"], paths: ["/projects"], bar: true },
   { href: "/sites", label: "Sites today", icon: "hard-hat", section: "Operations", module: "sites", roles: ["admin", "viewer"], paths: ["/sites"], bar: ["viewer"] },
   { href: "/transport", label: "Transport", icon: "truck", section: "Operations", module: "transport", roles: ["admin", "viewer"], paths: ["/transport"] },
   { href: "/meals", label: "Meals", icon: "utensils", section: "Operations", module: "meals", roles: ["admin", "viewer"], paths: ["/meals"] },
   { href: "/accommodation", label: "Accommodation", icon: "bed", section: "Operations", module: "accommodation", roles: ["admin", "viewer"], paths: ["/accommodation"] },
-  { href: "/site-supplies", label: "Site supplies", icon: "cylinder", section: "Operations", module: "site_supplies", roles: CONSUMABLES_ROLES, paths: ["/site-supplies", "/gas", "/equipment", "/api/gas"], bar: CONSUMABLES_BAR },
+  { href: "/site-supplies", label: "Site supplies", icon: "wheelbarrow", section: "Operations", module: "site_supplies", roles: CONSUMABLES_ROLES, paths: ["/site-supplies", "/gas", "/equipment", "/api/gas"], bar: CONSUMABLES_BAR },
   { href: "/inventory", label: "Inventory", icon: "box", section: "Operations", module: "inventory", roles: ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"], paths: ["/inventory", "/api/inventory"], bar: ["site_engineer", "supervisor", "attendance"] },
-  { href: "/expenses", label: "Expenses", icon: "calendar", section: "Operations", module: "expenses", roles: ["admin", "staff", "viewer"], paths: ["/expenses", "/payments-due"] },
-  { href: "/quotations", label: "Quotations", icon: "file", section: "Sales", module: "quotations", roles: ["admin", "staff", "viewer"], paths: ["/quotations"], bar: true },
+  { href: "/expenses", label: "Expenses", icon: "rupee-down", section: "Operations", module: "expenses", roles: ["admin", "staff", "viewer"], paths: ["/expenses", "/payments-due"] },
+  { href: "/quotations", label: "Quotations", icon: "calculator", section: "Sales", module: "quotations", roles: ["admin", "staff", "viewer"], paths: ["/quotations"], bar: true },
   { href: "/invoices", label: "Invoices", icon: "receipt", section: "Sales", module: "invoices", roles: ["admin", "viewer"], paths: ["/invoices"] },
-  { href: "/work-orders", label: "Work orders", icon: "briefcase", section: "Sales", module: "work_orders", roles: ["admin", "viewer"], paths: ["/work-orders"] },
+  { href: "/work-orders", label: "Work orders", icon: "clipboard-list", section: "Sales", module: "work_orders", roles: ["admin", "viewer"], paths: ["/work-orders"] },
   { href: "/clients", label: "Clients", icon: "building", section: "Sales", module: "clients", roles: ["admin", "staff", "viewer"], paths: ["/clients"] },
   { href: "/clauses", label: "Clause library", icon: "book", section: "Templates", module: "clauses", roles: ["admin", "staff", "viewer"], paths: ["/clauses"] },
   { href: "/mail-templates", label: "Mail templates", icon: "mail", section: "Templates", module: "mail_templates", roles: ["admin", "staff", "viewer"], paths: ["/mail-templates"] },
-  { href: "/quote-library", label: "Quotation wording", icon: "list", section: "Templates", module: "quote_library", roles: ["admin", "staff", "viewer"], paths: ["/quote-library"] },
-  { href: "/settings", label: "Settings", icon: "sliders", section: "Admin", module: "settings", roles: ["admin", "staff", "viewer"], paths: ["/settings"] },
+  { href: "/quote-library", label: "Quotation wording", icon: "quote", section: "Templates", module: "quote_library", roles: ["admin", "staff", "viewer"], paths: ["/quote-library"] },
+  { href: "/settings", label: "Settings", icon: "gear", section: "Admin", module: "settings", roles: ["admin", "staff", "viewer"], paths: ["/settings"] },
   { href: "/locations", label: "Locations", icon: "pin", section: "Admin", module: "locations", roles: ["admin", "viewer"], paths: ["/locations"] },
-  { href: "/users", label: "Users", icon: "shield", section: "Admin", roles: ["admin"], paths: ["/users"] },
+  { href: "/users", label: "Users", icon: "user-cog", section: "Admin", roles: ["admin"], paths: ["/users"] },
   { href: "/permissions", label: "Permissions", icon: "key", section: "Admin", roles: ["admin"], paths: ["/permissions"] },
   // Coming: People → Payroll · Sales → Invoices, Clients · Operations → Stock, Suppliers  (see to-do.md)
 ];
