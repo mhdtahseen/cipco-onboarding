@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useRole } from "@/lib/roles";
 import { keepProject, rememberedProject } from "@/lib/lastProject";
@@ -14,18 +15,34 @@ const pill = "text-[11px] rounded-full px-2 py-0.5";
 
 // Inventory: purchase bills, entered item by item. Each bill posts its total to the project's expenses when it is recorded, and becomes one MRR on the JSL portal once an Admin authorizes it.
 // The Received tab adds up what has come in. It does not yet take off what was issued or used (see "Inventory tracker" in to-do.md).
-export default function Inventory() {
+// A link elsewhere in the app (e.g. a gas delivery on Site supplies) can jump straight to one bill with ?project=<id>&bill=<id>.
+export default function Inventory() { return <Suspense fallback={<PageLoader />}><InventoryScreen /></Suspense>; }
+
+function InventoryScreen() {
   const { role, viewer, admin } = useRole(); const canEnter = !!role && role !== "none" && !viewer;
+  const router = useRouter(); const pathname = usePathname(); const sp = useSearchParams();
   const [projects, setProjects] = useState<Project[]>([]); const [pid, setPid] = useState(""); const [loaded, setLoaded] = useState(false);
   const [bills, setBills] = useState<InvBill[]>([]); const [items, setItems] = useState<InvItem[]>([]); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   // approval: true once 2026-11-inventory-approval.sql has been run. Until then the page works as it did before it: no submit or review buttons, nothing sent that the database would not understand.
-  const [tab, setTab] = useState<"bills" | "received">("bills"); const [openId, setOpenId] = useState<string | "new" | null>(null); const [newKind, setNewKind] = useState<"bill" | "no_bill">("bill"); const [chip, setChip] = useState<"all" | "submitted" | "returned" | "draft" | "recorded">("all"); const [q, setQ] = useState(""); const [showVoid, setShowVoid] = useState(false); const [approval, setApproval] = useState(false); const [gasHeld, setGasHeld] = useState<{ name: string; qty: number }[]>([]); const [importing, setImporting] = useState(false);
+  const [tab, setTab] = useState<"bills" | "received">("bills"); const [openId, setOpenId] = useState<string | "new" | null>(null); const [newKind, setNewKind] = useState<"bill" | "no_bill">("bill"); const [chip, setChip] = useState<"all" | "submitted" | "returned" | "draft" | "recorded">("all"); const [q, setQ] = useState(""); const [showVoid, setShowVoid] = useState(false); const [approval, setApproval] = useState(false); const [gasHeld, setGasHeld] = useState<{ name: string; qty: number }[]>([]); const [importing, setImporting] = useState(false); const [deepLinked, setDeepLinked] = useState(false);
 
   useEffect(() => { (async () => {
     const { data, error } = await supabase().from("projects").select("id, name, status").order("status").order("name");
     if (error) setErr(error.message);
-    const list = (data ?? []) as Project[]; setProjects(list); setPid(rememberedProject(list) || list[0]?.id || ""); setLoaded(true);
-  })(); }, []);
+    const list = (data ?? []) as Project[]; setProjects(list);
+    const wantProject = sp.get("project");
+    setPid((wantProject && list.some((p) => p.id === wantProject) ? wantProject : rememberedProject(list) || list[0]?.id) || "");
+    setLoaded(true);
+  })(); }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // a deep link's bill opens once its project's bills have loaded, then the link is spent so closing it does not reopen it
+  useEffect(() => {
+    if (deepLinked) return; const wantBill = sp.get("bill");
+    if (!wantBill) { setDeepLinked(true); return; }
+    if (!bills.length) return;
+    if (bills.some((b) => b.id === wantBill)) setOpenId(wantBill);
+    setDeepLinked(true); router.replace(pathname);
+  }, [bills, sp, deepLinked, router, pathname]);
 
   const load = useCallback(async () => {
     if (!pid) return; setBusy(true); setErr("");

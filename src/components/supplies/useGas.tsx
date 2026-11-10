@@ -9,6 +9,7 @@ import type { Computed } from "@/components/SiteBills";
 import GasCostCard from "@/components/GasCostCard";
 import { countTrips, gasCost, type GMove, type GOrder } from "@/lib/gas";
 import GasDeposits from "@/components/GasDeposits";
+import { JSL_LABEL, type JslStatus } from "@/lib/inventory";
 
 export type SupplyProject = { id: string; name: string; location?: string | null; status?: string; closed_on?: string | null };
 type Vendor = { id: string; name: string; contact: string; phone: string; gstin: string; address?: string; notice_hours: number; free_delivery_min: number; active: boolean; kind?: string };
@@ -19,6 +20,8 @@ type Move = { id: string; project_id: string; vendor_id: string; product_id: str
 type Rate = { id: string; product_id: string; rate: number; gst_pct: number; valid_from: string };
 type Terms = { vendor_id: string; loss_charge_per_cylinder: number; damage_charge_per_cylinder: number; charges_gst_pct: number; transport_per_trip: number; due_day_first_half: number; due_day_second_half: number; terms_note: string };
 type Pricing = { line_id: string; rate: number; gst_pct: number };
+// one of these exists per delivered truck visit, made automatically (2026-11-inventory-gas.sql); matched back to its visit by vendor, date and challan, since that is how the trigger names it
+type GasBill = { id: string; vendor_name: string; bill_no: string; bill_date: string; jsl_wanted: boolean; jsl_status: JslStatus; voided_at: string | null };
 
 const STATUS: Record<string, [string, string]> = { requested: ["Waiting for approval", "bg-amber-50 text-amber-800"], approved: ["Approved", "bg-blue-50 text-blue-800"], sent: ["Sent to vendor", "bg-blue-50 text-blue-800"], partly_delivered: ["Partly delivered", "bg-violet-50 text-violet-800"], delivered: ["Delivered", "bg-green-50 text-green-800"], closed: ["Closed", "bg-slate-100 text-slate-600"], rejected: ["Rejected", "bg-rose-50 text-rose-800"], cancelled: ["Cancelled", "bg-slate-100 text-slate-500"] };
 const KIND: Record<string, string> = { delivery: "Delivered (new, full)", return: "Picked up (empties)", lost: "Lost", damaged: "Damaged (valve / cap)" };
@@ -39,7 +42,7 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
   const canOrder = role === "site_engineer" || mayAct;
   const [vendors, setVendors] = useState<Vendor[]>([]); const [products, setProducts] = useState<Product[]>([]); const [links, setLinks] = useState<{ project_id: string; vendor_id: string }[]>([]);
   const [orders, setOrders] = useState<Order[]>([]); const [moves, setMoves] = useState<Move[]>([]); const [names, setNames] = useState<Record<string, string>>({});
-  const [rates, setRates] = useState<Rate[]>([]); const [terms, setTerms] = useState<Terms[]>([]); const [pricing, setPricing] = useState<Pricing[]>([]);
+  const [rates, setRates] = useState<Rate[]>([]); const [terms, setTerms] = useState<Terms[]>([]); const [pricing, setPricing] = useState<Pricing[]>([]); const [gasBills, setGasBills] = useState<GasBill[]>([]);
   const [loading, setLoading] = useState(true); const [err, setErr] = useState(""); const [msg, setMsg] = useState(""); const [busy, setBusy] = useState(false);
   const note = (m: string) => { setMsg(m); setTimeout(() => setMsg(""), 5000); };
 
@@ -62,6 +65,8 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
     if (o.error || m.error) { setErr((o.error || m.error)!.message); return; }
     const od = (o.data || []) as Order[]; setOrders(od); setMoves((m.data || []) as Move[]);
     if (money && od.length) { const ids = od.flatMap((x) => x.gas_order_lines.map((l) => l.id)); const { data } = await sb.from("gas_order_pricing").select("*").in("line_id", ids); setPricing(((data || []) as Pricing[]).map((q) => ({ ...q, rate: Number(q.rate), gst_pct: Number(q.gst_pct) }))); } else setPricing([]);
+    // the JSL portal is an Operations / Admin matter, so only they see which deliveries can go to it
+    if (money) { const gb = await sb.from("inventory_bills").select("id, vendor_name, bill_no, bill_date, jsl_wanted, jsl_status, voided_at").eq("project_id", pid).eq("kind", "gas"); setGasBills(gb.error ? [] : (gb.data || []) as GasBill[]); } else setGasBills([]);
   }
   useEffect(() => { loadProject(); }, [pid, money]);
 
@@ -74,6 +79,8 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
   const held = useMemo(() => { const out = new Map<string, { qty: number }>(); live.forEach((m) => { const e = out.get(m.product_id) ?? { qty: 0 }; e.qty += m.kind === "delivery" ? m.qty : -m.qty; out.set(m.product_id, e); }); return out; }, [moves]);
   const totals = (pidd: string) => { let d = 0, r = 0, l = 0, g = 0; live.filter((m) => m.product_id === pidd).forEach((m) => { if (m.kind === "delivery") d += m.qty; else if (m.kind === "return") r += m.qty; else if (m.kind === "lost") l += m.qty; else g += m.qty; }); return { d, r, l, g }; };
   const projectProducts = useMemo(() => products.filter((p) => myVendors.some((v) => v.id === p.vendor_id) || moves.some((m) => m.product_id === p.id)), [products, myVendors, moves]);
+  // the bill a delivery became (2026-11-inventory-gas.sql names it the same way: vendor, delivery date, challan); only a delivery makes one
+  const gasBillOf = (m: Move) => (m.kind !== "delivery" ? undefined : gasBills.find((b) => !b.voided_at && b.vendor_name === vName(m.vendor_id) && b.bill_date === m.moved_on && b.bill_no === m.challan_no.trim()));
   const priceOf = (l: Line) => pricing.find((p) => p.line_id === l.id);
   const orderTotal = (o: Order) => o.gas_order_lines.reduce((s, l) => { const p = priceOf(l); return p ? s + l.qty * p.rate * (1 + p.gst_pct / 100) : s; }, 0);
   const received = (o: Order, productId: string) => live.filter((m) => m.order_id === o.id && m.kind === "delivery" && m.product_id === productId).reduce((s, m) => s + m.qty, 0);
@@ -217,11 +224,12 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
             <div className="sm:col-span-4"><label className="lbl">Cylinder serial numbers (optional)</label><textarea className="inp" rows={2} value={mf.serials} onChange={(e) => setMf({ ...mf, serials: e.target.value })} placeholder="Separate with commas, spaces or new lines" /></div></div>}
           <div><label className="lbl">Note (optional)</label><input className="inp" value={mf.note} onChange={(e) => setMf({ ...mf, note: e.target.value })} /></div>
           <div className="flex gap-2 form-actions"><button className="btn btn-primary" disabled={busy} onClick={mf.kind === "trip" ? saveTrip : saveMove}>{busy ? "Saving…" : mf.kind === "trip" ? "Save trip" : "Save"}</button><button className="btn" onClick={() => setShowMove(false)}>Close</button></div></div>;
-  const logItems = moves.map((m) => ({ key: m.id, date: m.moved_on, stamp: m.created_at, kind: "gas" as const, node: <div className={`py-2.5 text-sm ${m.voided_at ? "opacity-60" : ""}`}>
+  const logItems = moves.map((m) => { const gb = gasBillOf(m); return { key: m.id, date: m.moved_on, stamp: m.created_at, kind: "gas" as const, node: <div className={`py-2.5 text-sm ${m.voided_at ? "opacity-60" : ""}`}>
           <div className="flex flex-wrap items-center gap-2"><b className={m.voided_at ? "line-through" : ""}>{KIND[m.kind]}: {m.qty} × {prodLabel(m.product_id)}</b>{m.voided_at && <span className="text-[11px] rounded-full bg-slate-100 text-slate-600 px-2 py-0.5">void</span>}<span className="text-xs text-slate-400 sm:ml-auto">{dmy(m.moved_on)} · entered by {who(m.entered_by)}</span></div>
           <div className="text-xs text-slate-500">{vName(m.vendor_id)}{m.challan_no ? ` · challan ${m.challan_no}` : ""}{m.order_id ? ` · ${orders.find((o) => o.id === m.order_id)?.order_no ?? "order"}` : ""}{m.note ? ` · ${m.note}` : ""}</div>
           {m.gas_movement_serials.length > 0 && <div className="text-xs text-slate-500">Serials: {m.gas_movement_serials.map((s) => s.serial).join(", ")}</div>}
-          <div className="flex flex-wrap gap-2 mt-1.5">{m.photo_path && <a className="tlink" href={`/api/gas/file?path=${encodeURIComponent(m.photo_path)}`} target="_blank" rel="noreferrer">Challan photo</a>}{!m.voided_at && <button className="tlink tlink-danger" onClick={() => voidMove(m)}>Void</button>}</div></div> }));
+          <div className="flex flex-wrap items-center gap-2 mt-1.5">{m.photo_path && <a className="tlink" href={`/api/gas/file?path=${encodeURIComponent(m.photo_path)}`} target="_blank" rel="noreferrer">Challan photo</a>}{!m.voided_at && <button className="tlink tlink-danger" onClick={() => voidMove(m)}>Void</button>}
+          {!m.voided_at && gb && (gb.jsl_wanted ? <a className={`tlink text-[11px] rounded-full px-2 py-0.5 ${JSL_LABEL[gb.jsl_status].cls}`} href={`/inventory?project=${pid}&bill=${gb.id}`}>{JSL_LABEL[gb.jsl_status].text} →</a> : <a className="tlink" href={`/inventory?project=${pid}&bill=${gb.id}`}>Send to the JSL portal →</a>)}</div></div> }; });
   const setupNode = !money ? null : <div className="space-y-4">
         <div className="card !p-3 space-y-3"><div className="font-medium">Vendors for {proj?.name ?? "this project"}</div>
           <div className="flex flex-wrap gap-x-4 gap-y-1">{vendors.map((v) => <label key={v.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={links.some((l) => l.project_id === pid && l.vendor_id === v.id)} disabled={!pid} onChange={(e) => toggleLink(v.id, e.target.checked)} />{v.name}{!v.active && <span className="text-xs text-slate-400">(inactive)</span>}</label>)}{!vendors.length && <span className="text-sm text-slate-400">Add a vendor below first.</span>}</div>
