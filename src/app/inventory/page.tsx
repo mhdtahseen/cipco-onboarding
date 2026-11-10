@@ -70,10 +70,22 @@ function InventoryScreen() {
   }, [pid]);
   useEffect(() => { void load(); }, [load]);
 
-  const countOf = useMemo(() => { const m = new Map<string, number>(); for (const i of items) m.set(i.bill_id, (m.get(i.bill_id) ?? 0) + 1); return m; }, [items]);
+  const itemsOf = useMemo(() => { const m = new Map<string, InvItem[]>(); for (const i of items) { const a = m.get(i.bill_id); if (a) a.push(i); else m.set(i.bill_id, [i]); } return m; }, [items]);
+  const countOf = (id: string) => itemsOf.get(id)?.length ?? 0;
   const live = bills.filter((b) => !b.voided_at); const voided = bills.length - live.length;
   const inStage = (b: InvBill, k: typeof chip) => k === "all" || (k === "submitted" ? b.status === "submitted" : k === "returned" ? b.status === "returned" : k === "draft" ? b.status === "draft" : b.status === "recorded");
-  const shown = (showVoid ? bills : live).filter((b) => (showVoid || inStage(b, chip)) && (!q.trim() || `${b.vendor_name} ${b.bill_no} ${b.note}`.toLowerCase().includes(q.trim().toLowerCase())));
+  const needle = q.trim().toLowerCase();
+  const shown = (showVoid ? bills : live).filter((b) => (showVoid || inStage(b, chip)) && (!needle || `${b.vendor_name} ${b.bill_no} ${b.note} ${(itemsOf.get(b.id) ?? []).map((i) => i.name).join(" ")}`.toLowerCase().includes(needle)));
+  // A few items so same-vendor bills can be told apart: items matching the search first, then the biggest amounts (what a bill is "for"); entries without prices keep their order.
+  const gistOf = (b: InvBill) => {
+    const list = itemsOf.get(b.id) ?? [];
+    if (!list.length) return <div className="text-xs text-slate-400 italic">No items yet</div>;
+    const hit = (i: InvItem) => (needle && i.name.toLowerCase().includes(needle) ? 1 : 0);
+    const top = [...list].sort((x, y) => hit(y) - hit(x) || (b.kind === "bill" ? Number(y.amount) - Number(x.amount) : 0)).slice(0, 3); const more = list.length - top.length;
+    return <div className="flex min-w-0 text-xs text-slate-500" title={list.map((i) => i.name).join("\n")}>
+      <span className="truncate">{top.map((i, k) => <span key={i.id}>{k > 0 && <span className="text-slate-300"> · </span>}<span className={hit(i) ? "text-slate-900 font-medium" : "text-slate-700"}>{i.name}</span> <span className="tabular-nums whitespace-nowrap">{Number(i.qty).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {i.unit}</span></span>)}</span>
+      {more > 0 && <span className="shrink-0 whitespace-nowrap text-slate-400 ml-1">+{more} more</span>}</div>;
+  };
   const recorded = useMemo(() => new Set(live.filter((b) => b.status === "recorded" && b.kind !== "gas").map((b) => b.id)), [live]);   // gas deliveries are counted from the cylinders held, below
   const stock = useMemo(() => stockFrom(items, recorded).filter((s) => !q.trim() || s.name.toLowerCase().includes(q.trim().toLowerCase())), [items, recorded, q]);
   const openBill = openId && openId !== "new" ? bills.find((b) => b.id === openId) ?? null : null;
@@ -102,7 +114,7 @@ function InventoryScreen() {
       {importing && admin && pid && <CsvImport projectId={pid} onClose={() => setImporting(false)} onChanged={load} onCreated={(id) => { setImporting(false); setOpenId(id); }} />}
       <div className="space-y-4 md:space-y-0 md:flex md:items-end md:gap-4">
       <div role="tablist" className="flex border-b border-slate-200 md:flex-1">{([["bills", `Bills (${live.length})`], ["received", "Received"]] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={seg(tab === k)} onClick={() => setTab(k)}>{l}</button>)}</div>
-      {(bills.length > 0) && <input className="inp md:!w-72" type="search" aria-label="Search" placeholder={tab === "bills" ? "Search vendor or bill number" : "Search items"} value={q} onChange={(e) => setQ(e.target.value)} />}
+      {(bills.length > 0) && <input className="inp md:!w-72" type="search" aria-label="Search" placeholder={tab === "bills" ? "Search vendor, bill number or item" : "Search items"} value={q} onChange={(e) => setQ(e.target.value)} />}
       </div>
       {err && <p className="warn" role="alert">{err}</p>}
       {!loaded ? <PageLoader /> : busy ? <InlineLoader /> : null}
@@ -120,12 +132,13 @@ function InventoryScreen() {
           <button key={b.id} className={`card !p-3 w-full text-left block hover:border-blue-300 ${b.voided_at ? "opacity-60" : ""}`} onClick={() => setOpenId(b.id)}>
             <div className="md:hidden">
               <div className="flex flex-wrap items-baseline gap-x-2"><b className={b.voided_at ? "line-through" : ""}>{titleOf(b)}</b><span className="text-sm text-slate-500">{subOf(b)}</span><b className="tabular-nums ml-auto">{amountOf(b)}</b></div>
-              <div className="mt-1 flex flex-wrap items-center gap-1.5"><span className="text-xs text-slate-500 mr-1">{dmy(b.bill_date)} · {countOf.get(b.id) ?? 0} item{countOf.get(b.id) === 1 ? "" : "s"}</span>{pillsOf(b)}</div>
+              <div className="mt-0.5">{gistOf(b)}</div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5"><span className="text-xs text-slate-500 mr-1">{dmy(b.bill_date)} · {countOf(b.id)} item{countOf(b.id) === 1 ? "" : "s"}</span>{pillsOf(b)}</div>
             </div>
             <div className={`hidden ${cols}`}>
-              <div className="min-w-0 truncate"><b className={b.voided_at ? "line-through" : ""}>{titleOf(b)}</b> <span className="text-sm text-slate-500">{subOf(b)}</span></div>
+              <div className="min-w-0"><div className="truncate"><b className={b.voided_at ? "line-through" : ""}>{titleOf(b)}</b> <span className="text-sm text-slate-500">{subOf(b)}</span></div><div className="mt-0.5">{gistOf(b)}</div></div>
               <span className="text-sm text-slate-600">{dmy(b.bill_date)}</span>
-              <span className="text-sm text-slate-600 text-right tabular-nums">{countOf.get(b.id) ?? 0}</span>
+              <span className="text-sm text-slate-600 text-right tabular-nums">{countOf(b.id)}</span>
               <div className="flex flex-wrap items-center gap-1.5">{pillsOf(b)}</div>
               <b className="tabular-nums text-right">{amountOf(b)}</b>
             </div>
