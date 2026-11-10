@@ -56,6 +56,18 @@ export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: 
   // salaried people whose off days count as LOP this month (chosen here; daily-wage workers are paid per day worked, so they are not listed)
   const offSel = new Set(d.adjs.filter((a) => a.kind === "off_lop" && !a.voided_at).map((a) => a.employee_id));
   const salariedRows = inRun.filter((x) => x.r.line && x.r.line.kind === "salaried");
+  // people leaving this month are paid up to their last day unless "Don't pay" is ticked here (e.g. someone who absconded); the tick is saved like the off-day one
+  const leaving = inRun.filter((x) => x.e.left_on && x.e.left_on <= monthEnd(ym)); const noPaySel = new Set(d.adjs.filter((a) => a.kind === "no_pay" && !a.voided_at).map((a) => a.employee_id));
+  const [leaveErr, setLeaveErr] = useState("");
+  async function setNoPay(id: string, name: string, on: boolean) {
+    setErr(""); setLeaveErr(""); const sb = supabase();
+    if (on) { const why = prompt(`Don't pay ${name} for ${monthName(ym)}? Nothing will be paid or counted as salary. Reason:`, "Absconded"); if (why === null) return;
+      const { error } = await sb.from("payroll_adjustments").insert({ project_id: pid, employee_id: id, pay_month: monthStart(ym), kind: "no_pay", label: "Salary not paid", reason: why.trim(), amount: 0 });
+      if (error) { setLeaveErr(/no_pay|check constraint|violates/i.test(error.message) ? "Couldn't save the tick: the database has not had the payroll migration yet. Run 2026-11-payroll-no-pay.sql in Supabase, then try again." : error.message); return; } }
+    else { const ids = d.adjs.filter((a) => a.kind === "no_pay" && !a.voided_at && a.employee_id === id).map((a) => a.id); if (!ids.length) return;
+      const { error } = await sb.from("payroll_adjustments").update({ voided_at: new Date().toISOString() }).in("id", ids); if (error) { setLeaveErr(error.message); return; } }
+    note(on ? `${name} will not be paid. Recalculate to apply it.` : `${name} will be paid. Recalculate to apply it.`); P.load();
+  }
   const [offErr, setOffErr] = useState("");   // shown inside the panel, where the tick was made (the page-level message is easy to miss from here)
   async function setOffLop(ids: string[], on: boolean) {
     setErr(""); setOffErr(""); const sb = supabase();
@@ -91,6 +103,12 @@ export default function RunTab({ P, pid, ym, today, projectName }: { P: P; pid: 
         {stale && !blockers.length && <div className="text-amber-900">Something changed since the draft was saved (attendance, salary or an adjustment). Recalculate before approving.</div>}</section>}
       {noDate.length > 0 && <p className="text-xs text-amber-800">No joining date, so not in the payroll: {noDate.map((x) => x.e.full_name).join(", ")}.</p>}
       {next.length > 0 && <p className="text-xs text-slate-500" data-next>Joined after the 20th, so paid in the next run: {next.map((x) => `${x.e.full_name} (${new Date(x.e.join_date! + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })})`).join(", ")}.</p>}
+      {leaving.length > 0 && (!approved || noPaySel.size > 0) && <details className="card !p-3" open={noPaySel.size > 0 || !!leaveErr} data-leaving><summary className="cursor-pointer text-sm font-medium">Leaving this month · {leaving.length}{noPaySel.size > 0 ? ` · ${noPaySel.size} not paid` : ""}</summary>
+        <p className="text-xs text-slate-500 mt-1">These people are paid up to their last day. Tick "Don't pay" for anyone who should get nothing this month (for example someone who absconded): they are left out of the payroll and their salary is not counted as an expense.</p>
+        {leaveErr && <p className="warn mt-2" role="alert">{leaveErr}</p>}
+        <div className="mt-2 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">{leaving.map((x) => { const on = noPaySel.has(x.e.id); const why = d.adjs.find((a) => a.kind === "no_pay" && !a.voided_at && a.employee_id === x.e.id)?.reason; return (
+          <label key={x.e.id} className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-sm ${on ? "border-rose-300 bg-rose-50/60" : "border-slate-200"} ${approved ? "opacity-70" : "cursor-pointer"}`}>
+            <input type="checkbox" checked={on} disabled={approved} onChange={(ev) => setNoPay(x.e.id, x.e.full_name, ev.target.checked)} /><span className="flex-1 min-w-0"><span className="block truncate">{x.e.full_name}</span><span className="block text-xs text-slate-500">left {new Date(x.e.left_on! + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}{on ? ` · not paid${why ? `: ${why}` : ""}` : ""}</span></span><span className={`text-xs whitespace-nowrap ${on ? "text-rose-700 font-medium" : "text-slate-500"}`}>Don't pay</span></label>); })}</div></details>}
       {salariedRows.length > 0 && (!approved || offSel.size > 0) && <details className="card !p-3" open={offSel.size > 0}><summary className="cursor-pointer text-sm font-medium">Off days as LOP{offSel.size > 0 ? ` · ${offSel.size} of ${salariedRows.length} salaried selected` : ""}</summary>
         <p className="text-xs text-slate-500 mt-1">Tick the salaried people whose off days (a marked Off and the weekly off) are unpaid this month and count as LOP. Everyone else is paid for off days as usual. Daily-wage workers are not affected.</p>
         {offErr && <p className="warn mt-2" role="alert">{offErr}</p>}

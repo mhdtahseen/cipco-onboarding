@@ -9,7 +9,7 @@ const PF_EE = 0.12, PF_ER = 0.12, ADMIN_EDLI = 0.01, ESI_EE = 0.0075, ESI_ER = 0
 export type DayStatus = "present" | "half" | "absent" | "off" | null;
 export type PayEmp = { id: string; full_name: string; emp_no: string | null; phone?: string | null; designation: string | null; department: string | null; gender: string | null; join_date: string | null; left_on: string | null; week_off: string | null; salary: Partial<SalaryCfg> | null; pan: string | null; uan: string | null; bank_name: string | null; account_no: string | null; ifsc: string | null; upi_id: string | null; pay_mode: string | null };
 export type Revision = { effective_from: string; salary: Partial<SalaryCfg> };
-export type Adjustment = { id: string; kind: "earning" | "deduction" | "lop_waiver" | "off_lop"; label: string; amount: number; days: number | null; reason: string };
+export type Adjustment = { id: string; kind: "earning" | "deduction" | "lop_waiver" | "off_lop" | "no_pay"; label: string; amount: number; days: number | null; reason: string };
 export type OwedAdvance = { id: string; instalment: number; owed: number; note?: string };
 export type Item = { kind: "earning" | "deduction"; label: string; amount: number; advance_id?: string; note?: string };
 
@@ -84,6 +84,7 @@ function wagePart(e: PayEmp, revs: Revision[], ym: string, from: string, to: str
 
 export type LineResult = {
   treatment: Treatment; blockers: string[]; warnings: string[]; flags: string[];
+  withheld?: boolean;   // someone leaving this month whom the payroll chose not to pay (e.g. absconded): no line, nothing paid
   line?: { kind: "salaried" | "daily"; days_in_month: number; paid_days: number; lop_days: number; gross: number; deductions: number; net: number; pf_emp: number; pf_er: number; pf_admin: number; esi_emp: number; esi_er: number; pt: number; er_total: number; pay_mode: string; items: Item[]; snapshot: Record<string, any> };
 };
 
@@ -92,7 +93,8 @@ export function computeLine(e: PayEmp, ym: string, att: Record<string, DayStatus
   const tr = treatment(e, ym); const out: LineResult = { treatment: tr, blockers: [], warnings: [], flags: [] };
   if (tr === "no_joining_date") { out.blockers.push(`${e.full_name}: no joining date`); return out; }
   if (tr !== "in_run") return out;
-  const from = e.join_date! > monthStart(ym) ? e.join_date! : monthStart(ym); const to = e.left_on && e.left_on < monthEnd(ym) ? e.left_on : monthEnd(ym);
+  if (e.left_on && e.left_on <= monthEnd(ym) && adjs.some((a) => a.kind === "no_pay")) { out.withheld = true; return out; }   // chosen on the run, only for someone leaving this month
+  const from =e.join_date! > monthStart(ym) ? e.join_date! : monthStart(ym); const to = e.left_on && e.left_on < monthEnd(ym) ? e.left_on : monthEnd(ym);
   const counts = countWindow(from, to, att, e.week_off);
   const offLop = adjs.some((a) => a.kind === "off_lop");   // chosen for this person on the run: salaried off days count as LOP this month
   const cur = wagePart(e, revs, ym, from, to, counts, "Wages", offLop);
@@ -113,7 +115,7 @@ export function computeLine(e: PayEmp, ym: string, att: Record<string, DayStatus
   const monthGross = part.gross; let pt = cfg.pt_monthly != null && ("" + cfg.pt_monthly) !== "" ? Number(cfg.pt_monthly) : ptSlab(monthGross, e.gender); if (monthGross <= 0 || kind === "daily") pt = 0; if (pt === 200 && ym.endsWith("-02") && !(cfg.pt_monthly != null && ("" + cfg.pt_monthly) !== "")) pt = 300;
   let additions = 0, otherDed = 0, waived = 0;
   for (const a of adjs) {
-    if (a.kind === "off_lop") continue;   // a marker, not money: it changes how the days are counted
+    if (a.kind === "off_lop" || a.kind === "no_pay") continue;   // markers, not money (no_pay only counts for someone leaving this month, above)
     if (a.kind === "earning") { items.push({ kind: "earning", label: a.label, amount: a.amount, note: a.reason }); additions += a.amount; }
     else if (a.kind === "lop_waiver") { const amt = R(perDay * (a.days || 0)); items.push({ kind: "earning", label: `${a.label || "LOP waived"} (${a.days} day${(a.days || 0) === 1 ? "" : "s"})`, amount: amt, note: a.reason }); additions += amt; waived += Number(a.days) || 0; }
     else { items.push({ kind: "deduction", label: a.label, amount: a.amount, note: a.reason }); otherDed += a.amount; }
