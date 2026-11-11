@@ -4,7 +4,7 @@ import { chargeOf, monthOf, monthsBilled, type Adjustment, type Landlord, type R
 import { creditWindow, monthName, statDue, statutoryTotals } from "./payroll";
 import type { Bank, NotIncluded, Payee, ProjectDues } from "./pdf/paymentsDue";
 import { bankFor } from "./payee";
-import { gasCost, type GMove, type GOrder, type GPricing, type GProduct, type GRate, type GTerms } from "./gas";
+import { groupRuns, runCharge, type GOrder, type GPricing, type GProduct, type GRate, type GRunMove, type GTerms } from "./gas";
 import { chargeFor, type EqLog, type EqRate } from "./equipment";
 import type { DueItem } from "./paymentsDueLabels";
 
@@ -120,20 +120,34 @@ export async function loadPaymentsDue(sb: SupabaseClient): Promise<PaymentsDue> 
     soft<any>(() => sb.from("gas_products").select("id, vendor_id, name, deposit_per_cylinder")),
     soft<any>(() => sb.from("equipment_logs").select("project_id, vendor_id, item_id, work_date, start_at, end_at, voided_at, verified_at").gte("work_date", monthStart).is("voided_at", null)), soft<any>(() => sb.from("equipment_items").select("id, vendor_id")), soft<any>(() => sb.from("equipment_rates").select("*")),
   ]);
-  const gtermsN: GTerms[] = gterms.map((t: any) => ({ vendor_id: t.vendor_id, loss_charge_per_cylinder: num(t.loss_charge_per_cylinder), damage_charge_per_cylinder: num(t.damage_charge_per_cylinder), charges_gst_pct: num(t.charges_gst_pct), transport_per_trip: num(t.transport_per_trip) }));
+  const gtermsN: GTerms[] = gterms.map((t: any) => ({ vendor_id: t.vendor_id, loss_charge_per_cylinder: num(t.loss_charge_per_cylinder), damage_charge_per_cylinder: num(t.damage_charge_per_cylinder), charges_gst_pct: num(t.charges_gst_pct), transport_per_trip: num(t.transport_per_trip), transport_gst_pct: num(t.transport_gst_pct) }));
+  // gas is owed run by run (2026-11-gas-runs.sql): each run at its vendor invoice once attached, until then at what it should cost
+  const [gAll, gDocs] = await Promise.all([soft<any>(() => sb.from("gas_movements").select("*").is("voided_at", null)), soft<any>(() => sb.from("gas_runs").select("run_ref, invoice_no, invoice_date, invoice_amount"))]);
+  const gPrice = { orders: gorders as GOrder[], pricing: gpricing.map((x: any) => ({ ...x, rate: num(x.rate), gst_pct: num(x.gst_pct) })) as GPricing[], rates: grates.map((x: any) => ({ ...x, rate: num(x.rate), gst_pct: num(x.gst_pct) })) as GRate[], products: gprods.map((p: any) => ({ ...p, deposit_per_cylinder: num(p.deposit_per_cylinder) })) as GProduct[], terms: gtermsN };
+  const gRuns = groupRuns(gAll as GRunMove[]); const gDoc = new Map<string, any>(gDocs.map((d: any) => [d.run_ref, d]));
   const eqRates: EqRate[] = erates.map((r: any) => ({ item_id: r.item_id, unit: r.unit, rate: num(r.rate), min_hours: num(r.min_hours), round_minutes: num(r.round_minutes), overtime_after_hours: r.overtime_after_hours === null ? null : num(r.overtime_after_hours), overtime_rate: r.overtime_rate === null ? null : num(r.overtime_rate), gst_pct: num(r.gst_pct), valid_from: r.valid_from }));
   const runningFor = (vid: string, pid: string, kind: string, periods: { from: string; to: string }[]): number => {
     const ranges = uncovered(monthStart, today, periods.filter((p) => p.to >= monthStart && p.from <= today)); let total = 0;
     ranges.forEach(([from, to]) => {
-      if (kind === "gas") total += gasCost({ moves: gmoves.filter((m: any) => m.project_id === pid && m.vendor_id === vid) as GMove[], orders: gorders as GOrder[], pricing: gpricing.map((x: any) => ({ ...x, rate: num(x.rate), gst_pct: num(x.gst_pct) })) as GPricing[], rates: grates.map((x: any) => ({ ...x, rate: num(x.rate), gst_pct: num(x.gst_pct) })) as GRate[], products: gprods.map((p: any) => ({ ...p, deposit_per_cylinder: num(p.deposit_per_cylinder) })) as GProduct[], terms: gtermsN, vendorId: vid, from, to }).total;
-      else { const t = chargeFor(elogs.filter((l: any) => l.project_id === pid && l.vendor_id === vid) as EqLog[], eqRates, new Set(eitems.filter((i: any) => i.vendor_id === vid).map((i: any) => i.id)), from, to); total += t.amount + t.gst; }
+      { const t = chargeFor(elogs.filter((l: any) => l.project_id === pid && l.vendor_id === vid) as EqLog[], eqRates, new Set(eitems.filter((i: any) => i.vendor_id === vid).map((i: any) => i.id)), from, to); total += t.amount + t.gst; }
     });
     return total;
   };
   const gdue = (vid: string, billDate: string) => { const t = gterms.find((x: any) => x.vendor_id === vid); if (!t) return billDate; const [y, m, d] = billDate.split("-").map(Number); const first = d <= 15; const mm = first ? m : m + 1; const yy = mm > 12 ? y + 1 : y; const day = first ? t.due_day_first_half : t.due_day_second_half; return `${yy}-${String(mm > 12 ? 1 : mm).padStart(2, "0")}-${String(day).padStart(2, "0")}`; };
   const sv = new Map<string, any[]>(); sbills.forEach((b) => { const k = `${b.vendor_id}|${b.project_id}|${b.kind}`; (sv.get(k) ?? sv.set(k, []).get(k)!).push(b); });
   const spaid = new Map<string, number>(); spayments.forEach((p) => { const k = `${p.vendor_id}|${p.project_id}|${p.kind}`; spaid.set(k, (spaid.get(k) ?? 0) + num(p.amount)); });
-  new Set([...sv.keys(), ...spaid.keys(), ...gmoves.map((m: any) => `${m.vendor_id}|${m.project_id}|gas`), ...elogs.map((l: any) => `${l.vendor_id}|${l.project_id}|equipment`)]).forEach((k) => { const [vid, pid, kind] = k.split("|"); const v = gvendors.find((x) => x.id === vid); const mine = sv.get(k) ?? []; const ap = mine.filter((b) => b.status === "approved");
+  // gas: one item per run, oldest first; payments go to the oldest invoiced run first
+  new Set([...gRuns.map((r) => `${r.vendor_id}|${(r.live[0] as any).project_id}|gas`), ...[...spaid.keys()].filter((k) => k.endsWith("|gas"))]).forEach((k) => {
+    const [vid, pid] = k.split("|"); const v = gvendors.find((x) => x.id === vid);
+    const rs = gRuns.filter((r) => r.vendor_id === vid && (r.live[0] as any).project_id === pid).reverse();
+    const items: DueItem[] = rs.map((r) => { const d = gDoc.get(r.ref); const exp = runCharge(r, gPrice).total; const inv = d?.invoice_amount != null ? num(d.invoice_amount) : null;
+      return { month: r.date.slice(0, 7), label: `Run ${r.date}${r.challan ? ` · challan ${r.challan}` : ""}${inv != null ? ` · invoice ${d.invoice_no || ""}` : " · expected, invoice not attached"}`, total: inv ?? exp, paid: 0, dueOn: gdue(vid, d?.invoice_date ?? r.date), state: inv != null ? "billed" as const : "running" as const }; });
+    const billed = items.filter((i) => i.state === "billed"), paidAll = spaid.get(k) ?? 0; allocate(billed, paidAll);
+    const firstOpen = billed.find((i) => i.total - i.paid > 0.004), expected = items.filter((i) => i.state === "running");
+    add(pid, { key: `gas:${vid}:${pid}`, category: "gas", name: v?.name ?? "Vendor", forWhat: `${rs.length} run${rs.length === 1 ? "" : "s"}${expected.length ? `, ${expected.length} without an invoice yet` : ""}`, total: billed.reduce((s, i) => s + i.total, 0), paid: paidAll, oldestDue: firstOpen?.dueOn ?? null, bank: bankOf("gas_vendor", vid), lines: billed.map((i) => ({ label: i.label, total: i.total, paid: i.paid })), items: [...billed, ...expected] });
+  });
+  // hired equipment: approved site bills; payments go to the oldest bill first; what is logged and not billed yet is shown apart
+  new Set([...[...sv.keys()].filter((k) => k.endsWith("|equipment")), ...[...spaid.keys()].filter((k) => k.endsWith("|equipment")), ...elogs.map((l: any) => `${l.vendor_id}|${l.project_id}|equipment`)]).forEach((k) => { const [vid, pid, kind] = k.split("|"); const v = gvendors.find((x) => x.id === vid); const mine = sv.get(k) ?? []; const ap = mine.filter((b) => b.status === "approved");
     mine.filter((b) => b.status !== "approved").forEach((b) => notIncluded.push({ label: `${pname.get(pid) ?? "—"} · ${v?.name ?? "Vendor"} · Bill ${b.bill_no || "(no number)"}, ${span(b.period_from, b.period_to)} (received, not approved yet)`, amount: num(b.bill_amount) }));
     const items: DueItem[] = ap.map((b) => ({ month: String(b.period_from).slice(0, 7), label: `Bill ${b.bill_no || "–"} · ${span(b.period_from, b.period_to)}`, total: num(b.approved_amount ?? b.bill_amount), paid: 0, dueOn: kind === "gas" ? gdue(vid, b.bill_date) : b.bill_date, state: "billed" as const }));
     const paidAll = spaid.get(k) ?? 0; allocate(items, paidAll);

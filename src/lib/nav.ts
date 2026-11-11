@@ -17,9 +17,9 @@ export type NavItem = {
 
 export const NAV_SECTIONS = ["People", "Operations", "Sales", "Templates", "Admin"] as const;
 
-// Site supplies (gas cylinders and hired equipment) is built for Supervisors and Site Engineers too (phone layout, bottom bar, their own limited views) but is switched off for them for now.
-// To open it up, set this to true: the menu, the phone bottom bar, the page guard and the gas routes all follow it. Operations and Admin always have it.
-const SITE_ROLES_GET_CONSUMABLES = false;
+// Site supplies (gas cylinders and hired equipment) is open to Supervisors and Site Engineers too, with no money shown: gas stock, recording runs and changes, the runs and
+// their challans, and equipment start / stop. Set this to false to take it away from them again: the menu, the bottom bar, the page guard and the gas routes all follow it.
+const SITE_ROLES_GET_CONSUMABLES = true;
 const CONSUMABLES_ROLES: NavRole[] = SITE_ROLES_GET_CONSUMABLES ? ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"] : ["admin", "staff", "viewer"];
 const CONSUMABLES_BAR: NavRole[] = SITE_ROLES_GET_CONSUMABLES ? ["site_engineer", "supervisor", "attendance"] : [];
 

@@ -16,7 +16,7 @@ export type GOrder = { id: string; gas_order_lines: { id: string; product_id: st
 export type GPricing = { line_id: string; rate: number; gst_pct: number };
 export type GRate = { product_id: string; rate: number; gst_pct: number; valid_from: string };
 export type GProduct = { id: string; vendor_id: string; name: string; capacity?: string; deposit_per_cylinder?: number };
-export type GTerms = { vendor_id: string; loss_charge_per_cylinder: number; damage_charge_per_cylinder: number; charges_gst_pct: number; transport_per_trip: number };
+export type GTerms = { vendor_id: string; loss_charge_per_cylinder: number; damage_charge_per_cylinder: number; charges_gst_pct: number; transport_per_trip: number; transport_gst_pct?: number };   // transport_gst_pct: GST on the freight (2026-11-gas-runs.sql), 0 when missing
 
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
@@ -58,8 +58,52 @@ export function gasCost(i: { moves: GMove[]; orders: GOrder[]; pricing: GPricing
     if (t.loss_charge_per_cylinder > 0) i.products.filter((p) => p.vendor_id === vid).forEach((p) => { const n = mine.filter((m) => m.kind === "lost" && m.product_id === p.id).reduce((s, m) => s + m.qty, 0); if (!n) return; const dep = Number(p.deposit_per_cylinder ?? 0), c = Math.max(0, n * (t.loss_charge_per_cylinder * gstF - dep)); lines.push(`${n} ${label(p.id)} lost × ₹${inr(t.loss_charge_per_cylinder)} + ${t.charges_gst_pct}% GST${dep ? `, less the ₹${inr(dep)} deposit the vendor keeps` : ""} → ₹${inr(c)}`); out.lost += n; out.lostAmount += c; });
     if (dmg && t.damage_charge_per_cylinder > 0) { const c = dmg * t.damage_charge_per_cylinder * gstF; lines.push(`${dmg} with valve / cap damaged × ₹${inr(t.damage_charge_per_cylinder)} + ${t.charges_gst_pct}% GST → ₹${inr(c)}`); out.damaged += dmg; out.damagedAmount += c; }
     const own = countTrips(mine, "own"); if (own) lines.push(`${own} delivery trip${own === 1 ? "" : "s"} brought by our own transport: no trip charge from the vendor (paid as an errand under Transport)`);
-    if (trips && t.transport_per_trip > 0) { const c = trips * t.transport_per_trip; lines.push(`${trips} delivery trip${trips === 1 ? "" : "s"} × ₹${inr(t.transport_per_trip)} transport, no GST → ₹${inr(c)}`); out.trips += trips; out.transportAmount += c; }
+    if (trips && t.transport_per_trip > 0) { const g = Number(t.transport_gst_pct ?? 0), c = trips * t.transport_per_trip * (1 + g / 100); lines.push(`${trips} delivery trip${trips === 1 ? "" : "s"} × ₹${inr(t.transport_per_trip)} freight${g ? ` + ${g}% GST` : ", no GST"} → ₹${inr(c)}`); out.trips += trips; out.transportAmount += c; }
   });
   out.total = out.cylinderAmount + out.lostAmount + out.damagedAmount + out.transportAmount;
+  return out;
+}
+
+// ── runs ──
+// A run is one visit of a truck: one vendor, one delivery challan, the full cylinders it brought and the empties it took back. All its entries share a trip_ref
+// (older entries got one from 2026-11-gas-runs.sql; without it they are grouped by vendor, date, challan number and photo, as the database did).
+export type GRunMove = GMove & { id: string; project_id: string; trip_ref?: string | null; photo_path?: string | null; vehicle_id?: string | null; created_at: string };
+export type GRun<T extends GRunMove = GRunMove> = { ref: string; vendor_id: string; date: string; challan: string; carrier: string; vehicle_id: string | null; photos: string[]; moves: T[]; live: T[]; created_at: string };
+export const runRef = (m: GRunMove) => m.trip_ref || `${m.project_id}|${m.vendor_id}|${m.moved_on}|${(m.challan_no || "").trim().toLowerCase()}|${m.photo_path || ""}`;
+
+/** The runs in these entries, newest first. Only deliveries and pick-ups make runs; a run whose every entry is void is left out. */
+export function groupRuns<T extends GRunMove>(moves: T[]): GRun<T>[] {
+  const m = new Map<string, T[]>();
+  moves.filter((x) => x.kind === "delivery" || x.kind === "return").forEach((x) => { const k = runRef(x); m.set(k, [...(m.get(k) ?? []), x]); });
+  return [...m.entries()].map(([ref, list]) => {
+    const live = list.filter((x) => !x.voided_at); const first = (live[0] ?? list[0]);
+    return { ref, vendor_id: first.vendor_id, date: first.moved_on, challan: (first.challan_no || "").trim(), carrier: first.carrier || "vendor", vehicle_id: first.vehicle_id ?? null,
+      photos: [...new Set(list.map((x) => x.photo_path).filter((p): p is string => !!p))], moves: list, live, created_at: list.reduce((a, x) => (x.created_at < a ? x.created_at : a), list[0].created_at) };
+  }).filter((r) => r.live.length > 0).sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at));
+}
+
+export type ChargeLine = { label: string; qty: number | null; rate: number | null; taxable: number; gstPct: number; gst: number };
+export type RunCharge = { lines: ChargeLine[]; taxable: number; gst: number; total: number; unpriced: number; gas: number; freight: number };
+type PriceCtx = { orders: GOrder[]; pricing: GPricing[]; rates: GRate[]; products: GProduct[]; terms: GTerms[]; label?: (productId: string) => string };
+const r2 = (n: number) => Math.round(n * 100) / 100;
+/** The price of one delivered cylinder: the rate locked on its order, if it had one, else the rate in force on the day. */
+function priceOf(m: GMove, c: PriceCtx): { rate: number; gst_pct: number } | undefined {
+  const o = m.order_id ? c.orders.find((x) => x.id === m.order_id) : undefined; const ol = o?.gas_order_lines.find((l) => l.product_id === m.product_id);
+  const locked = ol ? c.pricing.find((p) => p.line_id === ol.id) : undefined; if (locked) return { rate: Number(locked.rate), gst_pct: Number(locked.gst_pct) };
+  const r = c.rates.filter((x) => x.product_id === m.product_id && x.valid_from <= m.moved_on).sort((a, b) => b.valid_from.localeCompare(a.valid_from))[0];
+  return r ? { rate: Number(r.rate), gst_pct: Number(r.gst_pct) } : undefined;
+}
+/** What a run should cost, line by line like the vendor's invoice: each gas delivered × its rate, then the freight if the vendor brought it, each with its GST. */
+export function runCharge(run: GRun, c: PriceCtx): RunCharge {
+  const label = c.label ?? ((id: string) => c.products.find((p) => p.id === id)?.name ?? "?");
+  const out: RunCharge = { lines: [], taxable: 0, gst: 0, total: 0, unpriced: 0, gas: 0, freight: 0 };
+  const byProduct = new Map<string, { qty: number; rate: number; gst: number }>();
+  run.live.filter((m) => m.kind === "delivery").forEach((m) => { const p = priceOf(m, c); if (!p) { out.unpriced += m.qty; return; } const k = `${m.product_id}|${p.rate}|${p.gst_pct}`; const e = byProduct.get(k) ?? { qty: 0, rate: p.rate, gst: p.gst_pct }; e.qty += m.qty; byProduct.set(k, e); });
+  byProduct.forEach((e, k) => { const taxable = r2(e.qty * e.rate); out.lines.push({ label: label(k.split("|")[0]), qty: e.qty, rate: e.rate, taxable, gstPct: e.gst, gst: r2((taxable * e.gst) / 100) }); out.gas += taxable; });
+  const t = c.terms.find((x) => x.vendor_id === run.vendor_id);
+  if (run.carrier === "vendor" && t && t.transport_per_trip > 0 && run.live.some((m) => m.kind === "delivery")) {
+    const g = Number(t.transport_gst_pct ?? 0); out.lines.push({ label: "Freight (the vendor's truck)", qty: null, rate: null, taxable: t.transport_per_trip, gstPct: g, gst: r2((t.transport_per_trip * g) / 100) }); out.freight = t.transport_per_trip;
+  }
+  out.taxable = r2(out.lines.reduce((s, l) => s + l.taxable, 0)); out.gst = r2(out.lines.reduce((s, l) => s + l.gst, 0)); out.total = Math.round(out.taxable + out.gst);   // invoices round to the rupee
   return out;
 }

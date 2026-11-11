@@ -70,7 +70,7 @@ const staff: Row = {
   quotations: "edit", clients: "edit", clauses: "full", mail_templates: "full", quote_library: "full", settings: "full",
   "meals.overview": "view", "meals.daily": "view", "meals.people": "view", "meals.bills": "view",
 };
-const siteRole: Row = { attendance: "edit", inventory: "edit" };
+const siteRole: Row = { attendance: "edit", inventory: "edit", site_supplies: "edit" };
 const viewer: Row = Object.fromEntries(MODULES.map((m) => [m.key, "view" as Level]));
 export const DEFAULTS: Record<RoleKey, Row> = { staff, site_engineer: siteRole, supervisor: siteRole, viewer };
 
