@@ -16,7 +16,12 @@ type Vendor = { id: string; name: string; contact: string; phone: string; gstin:
 type Product = { id: string; vendor_id: string; name: string; capacity: string; active: boolean; sort_order: number; deposit_per_cylinder: number };
 type Line = { id: string; product_id: string; qty: number };
 type Order = { id: string; order_no: string; project_id: string; vendor_id: string; status: string; needed_by: string | null; note: string; requested_by: string | null; requested_role: string | null; decided_by: string | null; decided_at: string | null; reject_reason: string; created_at: string; gas_order_lines: Line[] };
-type Move = { id: string; project_id: string; vendor_id: string; product_id: string; order_id: string | null; kind: "delivery" | "return" | "lost" | "damaged"; qty: number; moved_on: string; challan_no: string; photo_path: string | null; note: string; entered_by: string | null; entered_role: string | null; created_at: string; voided_at: string | null; gas_movement_serials: { serial: string }[] };
+type Move = { id: string; project_id: string; vendor_id: string; product_id: string; order_id: string | null; kind: "delivery" | "return" | "lost" | "damaged"; qty: number; moved_on: string; challan_no: string; photo_path: string | null; note: string; entered_by: string | null; entered_role: string | null; created_at: string; voided_at: string | null; gas_movement_serials: { serial: string }[]; carrier?: Carrier | null; vehicle_id?: string | null; trip_ref?: string | null };
+type Carrier = "vendor" | "own" | "none";
+type TVehicle = { id: string; name: string; operator: string; active: boolean };
+type TripErrand = { id: string; gas_trip_ref: string; amount: number | null; voided_at: string | null };
+type GasEdit = { id: string; movement_id: string; changes: Record<string, [unknown, unknown]>; reason: string; edited_by: string | null; edited_at: string };
+type EditForm = { m: Move; moved_on: string; challan_no: string; carrier: Carrier; vehicle_id: string; product_id: string; qty: string; order_id: string; note: string; reason: string; photo: File | null };
 type Rate = { id: string; product_id: string; rate: number; gst_pct: number; valid_from: string };
 type Terms = { vendor_id: string; loss_charge_per_cylinder: number; damage_charge_per_cylinder: number; charges_gst_pct: number; transport_per_trip: number; due_day_first_half: number; due_day_second_half: number; terms_note: string };
 type Pricing = { line_id: string; rate: number; gst_pct: number };
@@ -25,6 +30,7 @@ type GasBill = { id: string; vendor_name: string; bill_no: string; bill_date: st
 
 const STATUS: Record<string, [string, string]> = { requested: ["Waiting for approval", "bg-amber-50 text-amber-800"], approved: ["Approved", "bg-blue-50 text-blue-800"], sent: ["Sent to vendor", "bg-blue-50 text-blue-800"], partly_delivered: ["Partly delivered", "bg-violet-50 text-violet-800"], delivered: ["Delivered", "bg-green-50 text-green-800"], closed: ["Closed", "bg-slate-100 text-slate-600"], rejected: ["Rejected", "bg-rose-50 text-rose-800"], cancelled: ["Cancelled", "bg-slate-100 text-slate-500"] };
 const KIND: Record<string, string> = { delivery: "Delivered (new, full)", return: "Picked up (empties)", lost: "Lost", damaged: "Damaged (valve / cap)" };
+const CARRIER: Record<Carrier, string> = { vendor: "The gas vendor's vehicle", own: "Our transport vehicle", none: "Collected / no charge" };
 const FORM_KIND: Record<string, string> = { trip: "Delivery trip: new cylinders in, empties out", lost: "Lost", damaged: "Damaged (valve / cap)" };
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const dmy = (iso: string) => new Date(iso.length === 10 ? iso + "T00:00:00" : iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: iso.length === 10 ? undefined : "Asia/Kolkata" });
@@ -43,6 +49,8 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
   const [vendors, setVendors] = useState<Vendor[]>([]); const [products, setProducts] = useState<Product[]>([]); const [links, setLinks] = useState<{ project_id: string; vendor_id: string }[]>([]);
   const [orders, setOrders] = useState<Order[]>([]); const [moves, setMoves] = useState<Move[]>([]); const [names, setNames] = useState<Record<string, string>>({});
   const [rates, setRates] = useState<Rate[]>([]); const [terms, setTerms] = useState<Terms[]>([]); const [pricing, setPricing] = useState<Pricing[]>([]); const [gasBills, setGasBills] = useState<GasBill[]>([]);
+  const [edits, setEdits] = useState<GasEdit[]>([]); const [ef, setEf] = useState<EditForm | null>(null); const isAdmin = role === "admin";
+  const [tVehicles, setTVehicles] = useState<TVehicle[]>([]); const [tripErrands, setTripErrands] = useState<TripErrand[]>([]); const [errAmt, setErrAmt] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true); const [err, setErr] = useState(""); const [msg, setMsg] = useState(""); const [busy, setBusy] = useState(false);
   const note = (m: string) => { setMsg(m); setTimeout(() => setMsg(""), 5000); };
 
@@ -66,6 +74,10 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
     const od = (o.data || []) as Order[]; setOrders(od); setMoves((m.data || []) as Move[]);
     if (money && od.length) { const ids = od.flatMap((x) => x.gas_order_lines.map((l) => l.id)); const { data } = await sb.from("gas_order_pricing").select("*").in("line_id", ids); setPricing(((data || []) as Pricing[]).map((q) => ({ ...q, rate: Number(q.rate), gst_pct: Number(q.gst_pct) }))); } else setPricing([]);
     // the JSL portal is an Operations / Admin matter, so only they see which deliveries can go to it
+    // the project's transport vehicles (a trip can be brought by one of them), and, for Operations / Admin, the errands those trips made
+    const ge = await sb.from("gas_movement_edits").select("*").order("edited_at"); setEdits(ge.error ? [] : (ge.data || []) as GasEdit[]);   // empty until 2026-11-gas-edit.sql is run
+    const tv = await sb.from("transport_vehicles").select("id, name, operator, active").eq("project_id", pid).order("name"); setTVehicles(tv.error ? [] : (tv.data || []) as TVehicle[]);
+    if (money) { const te = await sb.from("transport_errands").select("id, gas_trip_ref, amount, voided_at").eq("project_id", pid).not("gas_trip_ref", "is", null); setTripErrands(te.error ? [] : ((te.data || []) as TripErrand[]).map((x) => ({ ...x, amount: x.amount == null ? null : Number(x.amount) }))); } else setTripErrands([]);
     if (money) { const gb = await sb.from("inventory_bills").select("id, vendor_name, bill_no, bill_date, jsl_wanted, jsl_status, voided_at").eq("project_id", pid).eq("kind", "gas"); setGasBills(gb.error ? [] : (gb.data || []) as GasBill[]); } else setGasBills([]);
   }
   useEffect(() => { loadProject(); }, [pid, money]);
@@ -119,7 +131,7 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
   function cancel(o: Order) { if (confirm(`Cancel order ${o.order_no}?`)) setStatus(o, "cancelled"); }
 
   // ---------- deliveries and returns ----------
-  const [mf, setMf] = useState({ kind: "trip", product_id: "", qty: "", moved_on: today, order_id: "", challan_no: "", serials: "", note: "" }); const [tr, setTr] = useState<Record<string, { inQ: string; outQ: string; sIn: string; sOut: string }>>({}); const [photo, setPhoto] = useState<File | null>(null); const [showMove, setShowMove] = useState(false);
+  const [mf, setMf] = useState({ kind: "trip", product_id: "", qty: "", moved_on: today, order_id: "", challan_no: "", serials: "", note: "", carrier: "vendor" as Carrier, vehicle_id: "" }); const [tr, setTr] = useState<Record<string, { inQ: string; outQ: string; sIn: string; sOut: string }>>({}); const [photo, setPhoto] = useState<File | null>(null); const [showMove, setShowMove] = useState(false);
   const moveProducts = projectProducts.filter((p) => p.active || held.has(p.id));
   const openOrders = orders.filter((o) => ["approved", "sent", "partly_delivered"].includes(o.status));
   const serialList = (t: string) => [...new Set(t.split(/[\s,;]+/).map((x) => x.trim().toUpperCase()).filter(Boolean))];
@@ -128,7 +140,7 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
     const fd = new FormData(); fd.set("file", file); fd.set("projectId", pid); const r = await fetch("/api/gas/upload", { method: "POST", body: fd }); if (!r.ok) return { error: await r.text() }; return { path: (await r.json()).path };
   };
   const addMove = async (row: Record<string, unknown>, serials: string[]) => {
-    const sb = supabase(); const { data, error } = await sb.from("gas_movements").insert(row).select("id").single(); if (error) return error.message;
+    const sb = supabase(); const { data, error } = await sb.from("gas_movements").insert(row).select("id").single(); if (error) return /carrier|trip_ref|vehicle_id/.test(error.message) ? "choosing who brought the cylinders needs 2026-11-gas-own-transport.sql to be run first" : error.message;
     if (serials.length) { const s2 = await sb.from("gas_movement_serials").insert(serials.map((serial) => ({ movement_id: data!.id, serial }))); if (s2.error) return "the serial numbers were not saved: " + s2.error.message; } return "";
   };
   // a lost or damaged cylinder: one entry
@@ -145,14 +157,18 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
     if (!rows.length) { setErr("Enter how many new cylinders came in and/or how many empties went back, for at least one product."); return; }
     for (const r of rows) { if (r.sIn.length > r.i) { setErr(`${prodLabel(r.p.id)}: ${r.sIn.length} serial numbers for ${r.i} new cylinders.`); return; } if (r.sOut.length > r.o) { setErr(`${prodLabel(r.p.id)}: ${r.sOut.length} serial numbers for ${r.o} empties.`); return; }
       const have = (held.get(r.p.id)?.qty ?? 0) + r.i; if (r.o > have) { setErr(`${prodLabel(r.p.id)}: only ${have} cylinders are here (including this delivery), so ${r.o} cannot be taken back.`); return; } }
+    if (mf.carrier === "own" && !mf.vehicle_id) { setErr("Choose which of our vehicles brought the cylinders."); return; }
     setBusy(true); setErr(""); const up = await uploadPhoto(); if ("error" in up) { setErr(up.error); setBusy(false); return; }
-    const base = { project_id: pid, moved_on: mf.moved_on, challan_no: mf.challan_no.trim(), photo_path: up.path, note: mf.note.trim() };
+    // who brought it: the vendor's own vehicle is the default and needs nothing extra (so it also works before 2026-11-gas-own-transport.sql is run)
+    const carried = mf.carrier === "vendor" ? {} : { carrier: mf.carrier, vehicle_id: mf.carrier === "own" ? mf.vehicle_id : null, trip_ref: crypto.randomUUID() };
+    const base = { project_id: pid, moved_on: mf.moved_on, challan_no: mf.challan_no.trim(), photo_path: up.path, note: mf.note.trim(), ...carried };
     for (const r of rows.filter((x) => x.i > 0)) { const e = await addMove({ ...base, vendor_id: r.p.vendor_id, product_id: r.p.id, order_id: mf.order_id || null, kind: "delivery", qty: r.i }, r.sIn); if (e) { setErr(`${prodLabel(r.p.id)} delivery: ${e}. Nothing after it was saved.`); setBusy(false); loadProject(); return; } }
     for (const r of rows.filter((x) => x.o > 0)) { const e = await addMove({ ...base, vendor_id: r.p.vendor_id, product_id: r.p.id, order_id: null, kind: "return", qty: r.o }, r.sOut); if (e) { setErr(`${prodLabel(r.p.id)} pick-up: ${e}. The deliveries above were saved.`); setBusy(false); loadProject(); return; } }
-    setBusy(false); setPhoto(null); setTr({}); setMf({ ...mf, challan_no: "", note: "", order_id: "" }); note(`Trip recorded ✓ (${rows.filter((x) => x.i > 0).map((x) => `${x.i} ${prodLabel(x.p.id)} in`).concat(rows.filter((x) => x.o > 0).map((x) => `${x.o} ${prodLabel(x.p.id)} out`)).join(", ")})`); loadProject();
+    setBusy(false); setPhoto(null); setTr({}); setMf({ ...mf, challan_no: "", note: "", order_id: "", carrier: "vendor", vehicle_id: "" }); note(`Trip recorded ✓${mf.carrier === "own" ? " · an errand was added on the vehicle; Operations / Admin enter its amount" : ""} (${rows.filter((x) => x.i > 0).map((x) => `${x.i} ${prodLabel(x.p.id)} in`).concat(rows.filter((x) => x.o > 0).map((x) => `${x.o} ${prodLabel(x.p.id)} out`)).join(", ")})`); loadProject();
   }
   async function voidMove(m: Move) {
-    if (!confirm(`Void this ${KIND[m.kind].toLowerCase()} entry of ${m.qty}? It stays in the list, marked void, and the count is corrected.`)) return;
+    const lastOfTrip = m.carrier === "own" && m.trip_ref && moves.filter((x) => x.trip_ref === m.trip_ref && !x.voided_at).length === 1;
+    if (!confirm(`Void this ${KIND[m.kind].toLowerCase()} entry of ${m.qty}? It stays in the list, marked void, and the count is corrected.${lastOfTrip ? " It is the last entry of this trip, so the trip's errand on our vehicle is voided too." : ""}`)) return;
     const { error } = await supabase().from("gas_movements").update({ voided_at: new Date().toISOString() }).eq("id", m.id); if (error) { setErr(error.message); return; } note("Voided ✓"); loadProject();
   }
 
@@ -210,9 +226,12 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
             <div><label className="lbl">Date</label><input type="date" className="inp" max={today} value={mf.moved_on} onChange={(e) => setMf({ ...mf, moved_on: e.target.value })} /></div>
             <div><label className="lbl">Vendor's challan no.</label><input className="inp" value={mf.challan_no} onChange={(e) => setMf({ ...mf, challan_no: e.target.value })} /></div>
             {mf.kind === "trip" && <div className="sm:col-span-2"><label className="lbl">For order (optional)</label><select className="inp" value={mf.order_id} onChange={(e) => setMf({ ...mf, order_id: e.target.value })}><option value="">Not linked to an order</option>{openOrders.map((o) => <option key={o.id} value={o.id}>{o.order_no}</option>)}</select></div>}
+            {mf.kind === "trip" && <div className="sm:col-span-2"><label className="lbl">Brought by</label><select className="inp" value={mf.carrier} onChange={(e) => setMf({ ...mf, carrier: e.target.value as Carrier })}>{(Object.keys(CARRIER) as Carrier[]).filter((c) => c !== "own" || tVehicles.some((v) => v.active)).map((c) => <option key={c} value={c}>{CARRIER[c]}</option>)}</select></div>}
+            {mf.kind === "trip" && mf.carrier === "own" && <div className="sm:col-span-2"><label className="lbl">Which vehicle</label><select className="inp" value={mf.vehicle_id} onChange={(e) => setMf({ ...mf, vehicle_id: e.target.value })}><option value="">Choose…</option>{tVehicles.filter((v) => v.active).map((v) => <option key={v.id} value={v.id}>{v.name}{v.operator ? ` · ${v.operator}` : ""}</option>)}</select></div>}
+            {mf.kind === "trip" && mf.carrier !== "vendor" && <p className="sm:col-span-4 text-xs text-slate-500">{mf.carrier === "own" ? "The gas vendor's trip charge is not counted. An errand is added on this vehicle under Transport; Operations or the Admin enter its amount." : "No trip charge from anyone."}</p>}
             <div className={mf.kind === "trip" ? "sm:col-span-2" : "sm:col-span-4"}><label className="lbl">Challan photo (optional)</label><input type="file" accept="image/*,application/pdf" className="text-xs" onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} /></div></div>
           {mf.kind === "trip" ? <div className="space-y-2">
-            <p className="text-xs text-slate-500">One trip: the new cylinders coming in and the empties going back on the same visit. Enter both here. The vendor's trip charge is counted once per challan, however many products are on it, and the pick-up is part of the trip.</p>
+            <p className="text-xs text-slate-500">One trip: the new cylinders coming in and the empties going back on the same visit. Enter both here. When the vendor brings it, their trip charge is counted once per challan, however many products are on it, and the pick-up is part of the trip.</p>
             <div className="hidden sm:grid grid-cols-[1fr_8rem_8rem] gap-2 text-xs font-semibold text-slate-600"><span>Product</span><span>New (full) in</span><span>Empties out</span></div>
             {moveProducts.map((p) => { const t = tr[p.id] ?? { inQ: "", outQ: "", sIn: "", sOut: "" }; const up = (k: "inQ" | "outQ" | "sIn" | "sOut", v: string) => setTr({ ...tr, [p.id]: { ...t, [k]: v } }); return (
               <div key={p.id} className="rounded-lg border border-slate-200 p-2 space-y-2"><div className="grid gap-2 sm:grid-cols-[1fr_8rem_8rem] items-center"><div className="text-sm font-medium">{prodLabel(p.id)}<div className="text-xs font-normal text-slate-400">{vName(p.vendor_id)} · {held.get(p.id)?.qty ?? 0} here now</div></div>
@@ -224,12 +243,67 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
             <div className="sm:col-span-4"><label className="lbl">Cylinder serial numbers (optional)</label><textarea className="inp" rows={2} value={mf.serials} onChange={(e) => setMf({ ...mf, serials: e.target.value })} placeholder="Separate with commas, spaces or new lines" /></div></div>}
           <div><label className="lbl">Note (optional)</label><input className="inp" value={mf.note} onChange={(e) => setMf({ ...mf, note: e.target.value })} /></div>
           <div className="flex gap-2 form-actions"><button className="btn btn-primary" disabled={busy} onClick={mf.kind === "trip" ? saveTrip : saveMove}>{busy ? "Saving…" : mf.kind === "trip" ? "Save trip" : "Save"}</button><button className="btn" onClick={() => setShowMove(false)}>Close</button></div></div>;
+  // a trip brought by our own vehicle: its errand's amount is entered once, on the first entry of the trip
+  const tripFirst = useMemo(() => { const f = new Map<string, Move>(); [...moves].filter((m) => m.trip_ref && !m.voided_at).sort((a, b) => a.created_at.localeCompare(b.created_at)).forEach((m) => { if (!f.has(m.trip_ref!)) f.set(m.trip_ref!, m); }); return f; }, [moves]);
+  const tVName = (id: string | null | undefined) => tVehicles.find((v) => v.id === id)?.name ?? "our vehicle";
+  async function setErrandAmount(x: TripErrand) {
+    const amount = parseFloat(errAmt[x.id] || ""); if (!(amount > 0)) { setErr("Enter the amount the transport vendor charges for this trip."); return; }
+    const { error } = await supabase().from("transport_errands").update({ amount }).eq("id", x.id); if (error) { setErr(error.message); return; }
+    setErrAmt((s) => ({ ...s, [x.id]: "" })); note(`Errand amount saved: ₹${inr(amount)}, added to ${tVName(moves.find((m) => m.trip_ref === x.gas_trip_ref)?.vehicle_id)}'s dues under Transport ✓`); loadProject();
+  }
+  const carrierNode = (m: Move) => {
+    if (!m.carrier || m.carrier === "vendor" || (m.kind !== "delivery" && m.kind !== "return")) return null;
+    if (m.carrier === "none") return <div className="text-xs text-slate-500">Collected: no trip charge</div>;
+    const x = m.trip_ref ? tripErrands.find((e) => e.gas_trip_ref === m.trip_ref && !e.voided_at) : undefined; const first = m.trip_ref && tripFirst.get(m.trip_ref)?.id === m.id;
+    return <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2">Brought by {tVName(m.vehicle_id)} (our transport)
+      {money && first && x && (x.amount != null ? <span>· errand ₹{inr(x.amount)}</span> : mayAct ? <span className="inline-flex items-center gap-1">· <span className="text-amber-700">errand needs amount</span><input className="inp !w-24 !py-0.5 text-xs" inputMode="decimal" placeholder="₹" aria-label="Errand amount" value={errAmt[x.id] ?? ""} onChange={(e) => setErrAmt((s) => ({ ...s, [x.id]: e.target.value.replace(/[^\d.]/g, "") }))} /><button className="tlink" onClick={() => setErrandAmount(x)}>Save</button></span> : <span className="text-amber-700">· errand needs amount</span>)}</div>;
+  };
+  // ---------- Admin: correct a logged entry in place (2026-11-gas-edit.sql) ----------
+  const startEdit = (m: Move) => { setErr(""); setEf({ m, moved_on: m.moved_on, challan_no: m.challan_no, carrier: (m.carrier as Carrier) || "vendor", vehicle_id: m.vehicle_id ?? "", product_id: m.product_id, qty: String(m.qty), order_id: m.order_id ?? "", note: m.note, reason: "", photo: null }); };
+  async function saveEdit() {
+    if (!ef) return; const m = ef.m; const qty = parseInt(ef.qty, 10); const isTrip = m.kind === "delivery" || m.kind === "return";
+    if (!(qty > 0)) { setErr("Enter how many cylinders."); return; } if (isTrip && ef.carrier === "own" && !ef.vehicle_id) { setErr("Choose which of our vehicles brought it."); return; }
+    setBusy(true); setErr(""); const sb = supabase(); const fail = (msg: string) => { setBusy(false); setErr(/gas_trip_edit|gas_movement_edit|schema cache|could not find/i.test(msg) ? "Correcting entries needs 2026-11-gas-edit.sql to be run first." : msg); };
+    let photo = m.photo_path; if (ef.photo) { const fd = new FormData(); fd.set("file", await prepareUpload(ef.photo)); fd.set("projectId", pid); const r = await fetch("/api/gas/upload", { method: "POST", body: fd }); if (!r.ok) { fail(await r.text()); return; } photo = (await r.json()).path; }
+    const tripChanged = ef.moved_on !== m.moved_on || ef.challan_no.trim() !== m.challan_no.trim() || photo !== m.photo_path || (isTrip && (ef.carrier !== ((m.carrier as Carrier) || "vendor") || (ef.carrier === "own" && ef.vehicle_id !== (m.vehicle_id ?? ""))));
+    const rowChanged = ef.product_id !== m.product_id || qty !== m.qty || (ef.order_id || null) !== (m.order_id || null) || ef.note.trim() !== m.note.trim();
+    if (!tripChanged && !rowChanged) { setBusy(false); setEf(null); return; }
+    if (tripChanged) { const { error } = await sb.rpc("gas_trip_edit", { p_movement: m.id, p_moved_on: ef.moved_on, p_challan: ef.challan_no.trim(), p_photo: photo, p_carrier: isTrip ? ef.carrier : "vendor", p_vehicle: isTrip && ef.carrier === "own" ? ef.vehicle_id : null, p_reason: ef.reason.trim() }); if (error) { fail(error.message); return; } }
+    if (rowChanged) { const { error } = await sb.rpc("gas_movement_edit", { p_movement: m.id, p_product: ef.product_id, p_qty: qty, p_order: m.kind === "delivery" ? ef.order_id || null : null, p_note: ef.note.trim(), p_reason: ef.reason.trim() }); if (error) { fail(tripChanged ? `The date / challan / who brought it were saved, but not the rest: ${error.message}` : error.message); loadProject(); return; } }
+    setBusy(false); setEf(null); note(tripChanged && moves.filter((x) => !x.voided_at && x.id !== m.id && ((m.trip_ref && x.trip_ref === m.trip_ref) || (!m.trip_ref && x.moved_on === m.moved_on && x.challan_no.trim() === m.challan_no.trim() && x.photo_path === m.photo_path && (x.kind === "delivery" || x.kind === "return")))).length ? "Corrected ✓ The date, challan and who brought it were changed for every entry of this visit." : "Corrected ✓"); loadProject();
+  }
+  const FIELD: Record<string, string> = { moved_on: "date", challan_no: "challan", photo_path: "photo", carrier: "brought by", vehicle_id: "vehicle", product_id: "product", qty: "quantity", order_id: "order", note: "note" };
+  const showVal = (k: string, v: unknown): string => v === null || v === undefined || v === "" ? "—" : k === "moved_on" ? dmy(String(v)) : k === "product_id" ? prodLabel(String(v)) : k === "vehicle_id" ? tVName(String(v)) : k === "order_id" ? orders.find((o) => o.id === v)?.order_no ?? "an order" : k === "carrier" ? CARRIER[v as Carrier] ?? String(v) : k === "photo_path" ? "a photo" : String(v);
+  const historyNode = (m: Move) => { const h = edits.filter((e) => e.movement_id === m.id); if (!h.length) return null; return <details className="text-xs text-slate-500"><summary className="cursor-pointer text-amber-700">Edited {h.length === 1 ? "once" : `${h.length} times`} · last by {who(h[h.length - 1].edited_by)} on {dmy(h[h.length - 1].edited_at)}</summary>
+    <ul className="mt-1 space-y-0.5">{h.map((e) => <li key={e.id}>{dmy(e.edited_at)} · {who(e.edited_by)}: {Object.entries(e.changes).map(([k, [a, b]]) => `${FIELD[k] ?? k} ${showVal(k, a)} → ${showVal(k, b)}`).join("; ")}{e.reason ? ` (${e.reason})` : ""}</li>)}</ul></details>; };
+  const editNode = (m: Move) => { if (!ef || ef.m.id !== m.id) return null; const isTrip = m.kind === "delivery" || m.kind === "return"; const set = (p: Partial<EditForm>) => setEf({ ...ef, ...p }); return (
+    <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50/40 p-2 space-y-2" data-gas-edit>
+      <div className="text-xs font-semibold text-slate-600">The whole visit{isTrip ? " (every entry with this date and challan)" : ""}</div>
+      <div className="grid gap-2 sm:grid-cols-4">
+        <div><label className="lbl">Date</label><input type="date" className="inp" max={today} value={ef.moved_on} onChange={(e) => set({ moved_on: e.target.value })} /></div>
+        <div><label className="lbl">Challan no.</label><input className="inp" value={ef.challan_no} onChange={(e) => set({ challan_no: e.target.value })} /></div>
+        {isTrip && <div><label className="lbl">Brought by</label><select className="inp" value={ef.carrier} onChange={(e) => set({ carrier: e.target.value as Carrier })}>{(Object.keys(CARRIER) as Carrier[]).map((c) => <option key={c} value={c}>{CARRIER[c]}</option>)}</select></div>}
+        {isTrip && ef.carrier === "own" && <div><label className="lbl">Which vehicle</label><select className="inp" value={ef.vehicle_id} onChange={(e) => set({ vehicle_id: e.target.value })}><option value="">Choose…</option>{tVehicles.map((v) => <option key={v.id} value={v.id}>{v.name}{v.active ? "" : " (inactive)"}</option>)}</select></div>}
+        <div className="sm:col-span-4"><label className="lbl">Replace challan photo (optional)</label><input type="file" accept="image/*,application/pdf" className="text-xs" onChange={(e) => set({ photo: e.target.files?.[0] ?? null })} /></div>
+      </div>
+      <div className="text-xs font-semibold text-slate-600">This entry</div>
+      <div className="grid gap-2 sm:grid-cols-4">
+        <div className="sm:col-span-2"><label className="lbl">Product</label><select className="inp" value={ef.product_id} onChange={(e) => set({ product_id: e.target.value })}>{products.filter((p) => p.vendor_id === m.vendor_id).map((p) => <option key={p.id} value={p.id}>{prodLabel(p.id)}</option>)}</select></div>
+        <div><label className="lbl">Cylinders</label><input className="inp" inputMode="numeric" value={ef.qty} onChange={(e) => set({ qty: e.target.value.replace(/\D/g, "") })} /></div>
+        {m.kind === "delivery" && <div><label className="lbl">For order</label><select className="inp" value={ef.order_id} onChange={(e) => set({ order_id: e.target.value })}><option value="">Not linked</option>{orders.filter((o) => o.vendor_id === m.vendor_id && !["requested", "rejected", "cancelled"].includes(o.status)).map((o) => <option key={o.id} value={o.id}>{o.order_no}</option>)}</select></div>}
+        <div className="sm:col-span-4"><label className="lbl">Note</label><input className="inp" value={ef.note} onChange={(e) => set({ note: e.target.value })} /></div>
+        <div className="sm:col-span-4"><label className="lbl">Reason for the correction</label><input className="inp" value={ef.reason} onChange={(e) => set({ reason: e.target.value })} placeholder="e.g. challan number typed wrong" /></div>
+      </div>
+      <div className="flex gap-2"><button className="btn btn-sm btn-primary" disabled={busy} onClick={saveEdit}>{busy ? "Saving…" : "Save correction"}</button><button className="btn btn-sm" onClick={() => setEf(null)}>Cancel</button></div>
+      <p className="text-[11px] text-slate-400">Counts, the order, the Inventory entry and the transport errand follow the correction. It is kept in this entry's history.</p>
+    </div>); };
   const logItems = moves.map((m) => { const gb = gasBillOf(m); return { key: m.id, date: m.moved_on, stamp: m.created_at, kind: "gas" as const, node: <div className={`py-2.5 text-sm ${m.voided_at ? "opacity-60" : ""}`}>
           <div className="flex flex-wrap items-center gap-2"><b className={m.voided_at ? "line-through" : ""}>{KIND[m.kind]}: {m.qty} × {prodLabel(m.product_id)}</b>{m.voided_at && <span className="text-[11px] rounded-full bg-slate-100 text-slate-600 px-2 py-0.5">void</span>}<span className="text-xs text-slate-400 sm:ml-auto">{dmy(m.moved_on)} · entered by {who(m.entered_by)}</span></div>
           <div className="text-xs text-slate-500">{vName(m.vendor_id)}{m.challan_no ? ` · challan ${m.challan_no}` : ""}{m.order_id ? ` · ${orders.find((o) => o.id === m.order_id)?.order_no ?? "order"}` : ""}{m.note ? ` · ${m.note}` : ""}</div>
+          {carrierNode(m)}
           {m.gas_movement_serials.length > 0 && <div className="text-xs text-slate-500">Serials: {m.gas_movement_serials.map((s) => s.serial).join(", ")}</div>}
-          <div className="flex flex-wrap items-center gap-2 mt-1.5">{m.photo_path && <a className="tlink" href={`/api/gas/file?path=${encodeURIComponent(m.photo_path)}`} target="_blank" rel="noreferrer">Challan photo</a>}{!m.voided_at && <button className="tlink tlink-danger" onClick={() => voidMove(m)}>Void</button>}
-          {!m.voided_at && gb && (gb.jsl_wanted ? <a className={`tlink text-[11px] rounded-full px-2 py-0.5 ${JSL_LABEL[gb.jsl_status].cls}`} href={`/inventory?project=${pid}&bill=${gb.id}`}>{JSL_LABEL[gb.jsl_status].text} →</a> : <a className="tlink" href={`/inventory?project=${pid}&bill=${gb.id}`}>Send to the JSL portal →</a>)}</div></div> }; });
+          <div className="flex flex-wrap items-center gap-2 mt-1.5">{m.photo_path && <a className="tlink" href={`/api/gas/file?path=${encodeURIComponent(m.photo_path)}`} target="_blank" rel="noreferrer">Challan photo</a>}{!m.voided_at && isAdmin && !(ef && ef.m.id === m.id) && <button className="tlink" onClick={() => startEdit(m)}>Edit</button>}{!m.voided_at && <button className="tlink tlink-danger" onClick={() => voidMove(m)}>Void</button>}
+          {!m.voided_at && gb && (gb.jsl_wanted ? <a className={`tlink text-[11px] rounded-full px-2 py-0.5 ${JSL_LABEL[gb.jsl_status].cls}`} href={`/inventory?project=${pid}&bill=${gb.id}`}>{JSL_LABEL[gb.jsl_status].text} →</a> : <a className="tlink" href={`/inventory?project=${pid}&bill=${gb.id}`}>Send to the JSL portal →</a>)}</div>{historyNode(m)}{editNode(m)}</div> }; });
   const setupNode = !money ? null : <div className="space-y-4">
         <div className="card !p-3 space-y-3"><div className="font-medium">Vendors for {proj?.name ?? "this project"}</div>
           <div className="flex flex-wrap gap-x-4 gap-y-1">{vendors.map((v) => <label key={v.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={links.some((l) => l.project_id === pid && l.vendor_id === v.id)} disabled={!pid} onChange={(e) => toggleLink(v.id, e.target.checked)} />{v.name}{!v.active && <span className="text-xs text-slate-400">(inactive)</span>}</label>)}{!vendors.length && <span className="text-sm text-slate-400">Add a vendor below first.</span>}</div>

@@ -115,7 +115,7 @@ export async function loadPaymentsDue(sb: SupabaseClient): Promise<PaymentsDue> 
   ]);
   // what this month has delivered or logged and no bill covers yet ("running")
   const [gmoves, gorders, gpricing, grates, gprods, elogs, eitems, erates] = await Promise.all([
-    soft<any>(() => sb.from("gas_movements").select("project_id, vendor_id, product_id, order_id, kind, qty, moved_on, challan_no, voided_at").gte("moved_on", monthStart).is("voided_at", null)),
+    soft<any>(() => sb.from("gas_movements").select("*").gte("moved_on", monthStart).is("voided_at", null)),
     soft<any>(() => sb.from("gas_orders").select("id, gas_order_lines(id, product_id, qty)")), soft<any>(() => sb.from("gas_order_pricing").select("line_id, rate, gst_pct")), soft<any>(() => sb.from("gas_rates").select("product_id, rate, gst_pct, valid_from")),
     soft<any>(() => sb.from("gas_products").select("id, vendor_id, name, deposit_per_cylinder")),
     soft<any>(() => sb.from("equipment_logs").select("project_id, vendor_id, item_id, work_date, start_at, end_at, voided_at, verified_at").gte("work_date", monthStart).is("voided_at", null)), soft<any>(() => sb.from("equipment_items").select("id, vendor_id")), soft<any>(() => sb.from("equipment_rates").select("*")),

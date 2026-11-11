@@ -1,6 +1,6 @@
 // What gas deliveries cost. One set of rules used by the Bills tab (what the site records come to for a bill), the order cards and the project's "gas cost to date",
 // so the three can never disagree. Pure functions: the callers fetch the data.
-export type GMove = { vendor_id: string; product_id: string; order_id: string | null; kind: "delivery" | "return" | "lost" | "damaged"; qty: number; moved_on: string; challan_no: string; voided_at: string | null };
+export type GMove = { vendor_id: string; product_id: string; order_id: string | null; kind: "delivery" | "return" | "lost" | "damaged"; qty: number; moved_on: string; challan_no: string; voided_at: string | null; carrier?: string | null };   // carrier: who brought it (vendor | own | none); missing = vendor (before 2026-11-gas-own-transport.sql)
 export type GOrder = { id: string; gas_order_lines: { id: string; product_id: string; qty: number }[] };
 export type GPricing = { line_id: string; rate: number; gst_pct: number };
 export type GRate = { product_id: string; rate: number; gst_pct: number; valid_from: string };
@@ -12,10 +12,11 @@ const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 
 /** The number of delivery TRIPS in these entries. A trip is the vendor's truck bringing new cylinders AND taking the empties back on the same visit: the delivery is what is charged, and the pick-up
  *  is part of the same trip, so only delivery entries are counted and a pick-up never adds a trip. A truck with oxygen and LPG is recorded as one entry per product, but it is one trip: entries on the
  *  same day with the same challan number are one trip (with no challan number, the same day and the same order). Two trucks on one day need different challan numbers to count as two trips.
- *  A visit that only collects empties (no new cylinders) is not counted as a trip. */
-export function countTrips(moves: Pick<GMove, "vendor_id" | "kind" | "moved_on" | "challan_no" | "order_id" | "voided_at">[]): number {
+ *  A visit that only collects empties (no new cylinders) is not counted as a trip. Only the vendor's own trips are counted (and charged): a delivery brought by one of our
+ *  transport vehicles is paid as that vehicle's errand under Transport, and a collected one costs nothing. */
+export function countTrips(moves: Pick<GMove, "vendor_id" | "kind" | "moved_on" | "challan_no" | "order_id" | "voided_at" | "carrier">[], carrier: "vendor" | "own" | "none" = "vendor"): number {
   const trips = new Set<string>();
-  moves.forEach((m) => { if (m.kind !== "delivery" || m.voided_at) return; const ch = (m.challan_no || "").trim().toLowerCase(); trips.add(`${m.vendor_id}|${m.moved_on}|${ch || m.order_id || ""}`); });
+  moves.forEach((m) => { if (m.kind !== "delivery" || m.voided_at || (m.carrier || "vendor") !== carrier) return; const ch = (m.challan_no || "").trim().toLowerCase(); trips.add(`${m.vendor_id}|${m.moved_on}|${ch || m.order_id || ""}`); });
   return trips.size;
 }
 
@@ -45,6 +46,7 @@ export function gasCost(i: { moves: GMove[]; orders: GOrder[]; pricing: GPricing
     // a lost cylinder: the vendor keeps its deposit and we pay the rest of the lost-cylinder charge
     if (t.loss_charge_per_cylinder > 0) i.products.filter((p) => p.vendor_id === vid).forEach((p) => { const n = mine.filter((m) => m.kind === "lost" && m.product_id === p.id).reduce((s, m) => s + m.qty, 0); if (!n) return; const dep = Number(p.deposit_per_cylinder ?? 0), c = Math.max(0, n * (t.loss_charge_per_cylinder * gstF - dep)); lines.push(`${n} ${label(p.id)} lost × ₹${inr(t.loss_charge_per_cylinder)} + ${t.charges_gst_pct}% GST${dep ? `, less the ₹${inr(dep)} deposit the vendor keeps` : ""} → ₹${inr(c)}`); out.lost += n; out.lostAmount += c; });
     if (dmg && t.damage_charge_per_cylinder > 0) { const c = dmg * t.damage_charge_per_cylinder * gstF; lines.push(`${dmg} with valve / cap damaged × ₹${inr(t.damage_charge_per_cylinder)} + ${t.charges_gst_pct}% GST → ₹${inr(c)}`); out.damaged += dmg; out.damagedAmount += c; }
+    const own = countTrips(mine, "own"); if (own) lines.push(`${own} delivery trip${own === 1 ? "" : "s"} brought by our own transport: no trip charge from the vendor (paid as an errand under Transport)`);
     if (trips && t.transport_per_trip > 0) { const c = trips * t.transport_per_trip; lines.push(`${trips} delivery trip${trips === 1 ? "" : "s"} × ₹${inr(t.transport_per_trip)} transport, no GST → ₹${inr(c)}`); out.trips += trips; out.transportAmount += c; }
   });
   out.total = out.cylinderAmount + out.lostAmount + out.damagedAmount + out.transportAmount;

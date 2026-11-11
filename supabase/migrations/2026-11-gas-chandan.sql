@@ -3,7 +3,7 @@
 -- Their quotation differs from the first one, so the gas tables learn four things:
 --   * a deposit per product (oxygen ₹8,000, LPG ₹3,000), not one deposit per vendor
 --   * a charge for a lost cylinder (₹12,500 + 18% GST) and a separate one for a damaged valve and cap (₹1,500 + 18% GST)
---   * transport charged per delivery trip (₹1,500, GST on top)
+--   * transport charged per delivery trip (₹1,500, no GST: Chandan charges no GST on transport)
 --   * the vendor's address (for the purchase order)
 -- Then the data: Parth Enterprise is removed (deleted if nothing was ever recorded against it, otherwise made inactive), Chandan Gases Co is added with its products, rates,
 -- terms, bank details (from the vendor's cheque) and CSL, and the deposit already paid for 3 oxygen cylinders is recorded.

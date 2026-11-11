@@ -13,7 +13,7 @@ export default function GasCostCard({ projectId }: { projectId: string }) {
   useEffect(() => { let live = true; (async () => {
     const sb = supabase();
     const [mv, od, tm, rt, pr, bl, py, dp] = await Promise.all([
-      sb.from("gas_movements").select("vendor_id, product_id, order_id, kind, qty, moved_on, challan_no, voided_at").eq("project_id", projectId).is("voided_at", null).limit(5000),
+      sb.from("gas_movements").select("*").eq("project_id", projectId).is("voided_at", null).limit(5000),
       sb.from("gas_orders").select("id, gas_order_lines(id, product_id, qty)").eq("project_id", projectId),
       sb.from("gas_terms").select("*"), sb.from("gas_rates").select("product_id, rate, gst_pct, valid_from"), sb.from("gas_products").select("id, vendor_id, name, capacity, deposit_per_cylinder"),
       sb.from("site_bills").select("approved_amount").eq("project_id", projectId).eq("kind", "gas").eq("status", "approved").is("voided_at", null),
