@@ -5,6 +5,7 @@ import { useMedia } from "@/lib/useMedia";
 import { Icon } from "./NavIcons";
 import TransportCard from "./TransportCard";
 import DayBar from "./DayBar";
+import DayGrants from "./DayGrants";
 import { trackEntry } from "@/lib/geo";
 import { MEALS, STATUS_LABEL, addDays, canWriteDay, dayName, effectiveStatus, fmtTime, isFuture, isLocked, isSupervisorRole, isWeeklyOff, istToday, type AttRow, type DayRow, type Meal, type Person, type Run, type Status, type Vehicle, type Vendor } from "@/lib/attendance";
 import { PageLoader } from "@/components/Loader";
@@ -26,7 +27,21 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
   }, [qm]);
   const overrideRef = useRef(false); const [override, setOverride] = useState(false); useEffect(() => { setOverride(false); setStale(false); pendingRef.current = null; }, [projectId, date]);   // an Admin sees a day view-only until they choose Override, so nothing is changed by accident
   const viewOnly = (admin && !override) || role === "viewer"; overrideRef.current = override;   // an Admin sees a day view-only until they Override; a Viewer always does
-  const future = isFuture(date), verifiedLock = isSupervisorRole(role) && !!day?.verified_at, lockedByRules = !canWriteDay(role, date) || verifiedLock, locked = lockedByRules || viewOnly;
+  // An Admin can open one past day for one login for a few hours (attendance_day_grants). The database decides; this only lets the screen follow it.
+  const [grantEnds, setGrantEnds] = useState<string | null>(null);
+  useEffect(() => {
+    setGrantEnds(null); if (!role || role === "admin" || role === "viewer" || !projectId || isFuture(date) || !isLocked(date)) return;
+    let alive = true, timer: ReturnType<typeof setTimeout> | undefined;
+    (async () => {
+      const { data: u } = await supabase().auth.getUser(); if (!u.user || !alive) return;
+      const { data, error } = await supabase().from("attendance_day_grants").select("expires_at").eq("user_id", u.user.id).eq("project_id", projectId).eq("work_date", date).is("revoked_at", null).gt("expires_at", new Date().toISOString()).order("expires_at", { ascending: false }).limit(1);
+      const end = !error && data?.[0]?.expires_at ? (data[0].expires_at as string) : null; if (!alive || !end) return;
+      setGrantEnds(end); timer = setTimeout(() => setGrantEnds(null), Math.max(0, Math.min(new Date(end).getTime() - Date.now(), 2 ** 31 - 1)));   // closes on screen when the time is up
+    })();
+    return () => { alive = false; if (timer) clearTimeout(timer); };
+  }, [role, projectId, date]);
+  const granted = !!grantEnds && role !== "admin";
+  const future = isFuture(date), verifiedLock = isSupervisorRole(role) && !!day?.verified_at, lockedByRules = (!canWriteDay(role, date) && !(granted && !future)) || verifiedLock, locked = lockedByRules || viewOnly;
   const sb = () => supabase();
 
   type Snap = { list: Person[]; m: Record<string, AttRow>; runs: Run[]; day: DayRow | null };
@@ -156,11 +171,13 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
   const lastChange = useMemo(() => { const c: { at: string; by: string | null }[] = []; Object.values(rows).forEach((r) => r.updated_at && c.push({ at: r.updated_at, by: r.updated_by ?? null })); runs.forEach((r) => r.updated_at && c.push({ at: r.updated_at, by: r.updated_by ?? null })); if (day?.verified_at) c.push({ at: day.verified_at, by: day.verified_by }); if (day?.submitted_at) c.push({ at: day.submitted_at, by: day.submitted_by }); return c.sort((a, b) => b.at.localeCompare(a.at))[0]; }, [rows, runs, day]);
   const liveNote = !loading && people.length > 0 && <p className="text-[11px] text-slate-400 flex items-center justify-center sm:justify-start gap-1.5" data-live><span className={`h-1.5 w-1.5 rounded-full ${live ? "bg-emerald-500" : "bg-slate-300"}`} title={live ? "Live: changes appear as they happen" : `Checking for changes every ${Math.round(POLL_MS / 1000)} seconds`} />{lastChange ? `Last change: ${lastChange.by ? names[lastChange.by] ?? "someone" : "someone"} · ${fmtTime(lastChange.at)}` : "No changes yet today"}</p>;
   const staleBar = stale && <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2" data-stale><span className="text-sm text-blue-900 min-w-0 flex-1">Someone else changed this day. Refresh to see it. Your own edits are already saved.</span><button type="button" className="btn btn-primary" onClick={() => { if (pendingRef.current) apply(pendingRef.current); pendingRef.current = null; setStale(false); }}>Refresh</button></div>;
-  const overrideBar = admin && !loading && people.length > 0 && (
+  const overrideBar = admin && !loading && people.length > 0 && (<>
     <div className={`rounded-2xl border px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 ${override ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-200"}`} data-override>
       <span className={`text-sm min-w-0 flex-1 ${override ? "text-amber-900" : "text-slate-600"}`}>{override ? "Override is on. Your changes are stamped as Admin and replace what the Supervisor or Site Engineer entered." : "View only. Tap Override to change anything on this day."}</span>
       <button type="button" onClick={() => setOverride(!override)} aria-pressed={override} className={`btn ${override ? "" : "btn-primary"}`}>{override ? "Done" : "Override"}</button>
-    </div>);
+    </div>
+    {!future && isLocked(date) && <DayGrants projectId={projectId} date={date} />}
+  </>);
   const extras = !loading && people.length > 0 && <div className="space-y-3"><DayBar projectId={projectId} date={date} role={role} day={day} names={names} people={people} rows={rows} vehicles={vehicles} runs={runs} canWrite={!viewOnly && (!future || admin)} reload={() => load(true)} /><TransportCard role={role} projectId={projectId} date={date} vehicles={vehicles} runs={runs} canWrite={!locked} today={date === istToday()} names={names} reload={() => load(true)} /></div>;
   const vName = (id: string) => vendors.find((v) => v.id === id)?.name ?? "?";
   const shownVendors = (cur: string | null) => vendors.filter((v) => v.active || v.id === cur);
@@ -192,6 +209,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
           {viewOnly ? null : future && !admin ? <p className="text-xs text-amber-800 bg-amber-50 rounded-full px-3 py-1">Future days can't be marked</p>
             : verifiedLock ? <p className="text-xs text-blue-800 bg-blue-50 rounded-full px-3 py-1">Verified by the Site Engineer · view only</p>
             : lockedByRules ? <p className="text-xs text-amber-800 bg-amber-50 rounded-full px-3 py-1">Locked at 11:00 PM · view only</p>
+            : granted ? <p className="text-xs text-blue-800 bg-blue-50 rounded-full px-3 py-1">Opened for you by an Admin · until {fmtTime(grantEnds!)}</p>
             : admin && isLocked(date) ? <p className="text-xs text-blue-800 bg-blue-50 rounded-full px-3 py-1">Locked for others · editing as Admin</p>
             : <p className="text-[11px] text-slate-400">Open until 11:00 PM · saves as you tap</p>}
         </div>
@@ -253,7 +271,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
   const VTINT = ["bg-blue-50 border-blue-200 text-blue-800", "bg-orange-50 border-orange-200 text-orange-800", "bg-violet-50 border-violet-200 text-violet-800", "bg-teal-50 border-teal-200 text-teal-800", "bg-pink-50 border-pink-200 text-pink-800"];
   const vTint = (id: string) => VTINT[Math.max(0, vendors.findIndex((v) => v.id === id)) % VTINT.length];
   const DOT: Record<string, string> = { present: "bg-green-500", half: "bg-amber-500", absent: "bg-red-500", off: "bg-slate-400", none: "bg-amber-400" };
-  const hint = future && !admin ? "" : locked ? "" : admin && isLocked(date) ? "" : "Open until 11:00 PM · saves as you click";
+  const hint = future && !admin ? "" : locked ? "" : admin && isLocked(date) ? "" : granted ? "" : "Open until 11:00 PM · saves as you click";
   const desktopView = (
     <div className="space-y-3">
       <div className="xl:sticky xl:top-14 z-10 -mx-4 px-4 py-2 bg-[#f6f7fb]/95 xl:backdrop-blur border-b border-slate-200/70 space-y-1.5">
@@ -286,6 +304,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
       {viewOnly ? null : future && !admin ? <p className="warn !text-sm">Attendance can't be entered for a future date.</p>
         : verifiedLock ? <p className="text-sm bg-blue-50 border border-blue-200 text-blue-900 rounded-lg px-3 py-2">Verified by the Site Engineer — view only until they reopen the day.</p>
         : lockedByRules ? <p className="text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2">🔒 Locked at 11:00 PM. You can view this day, but only an Admin can change it.</p>
+        : granted ? <p className="text-sm bg-blue-50 border border-blue-200 text-blue-900 rounded-lg px-3 py-2">An Admin has opened this day for you until {fmtTime(grantEnds!)}.</p>
         : admin && isLocked(date) ? <p className="text-sm bg-blue-50 border border-blue-200 text-blue-900 rounded-lg px-3 py-2">Locked for others — you're editing as an Admin.</p> : null}
       {err && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</p>}
       {msg && <p className="text-sm text-green-700">{msg}</p>}

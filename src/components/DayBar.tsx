@@ -11,7 +11,7 @@ type Notice = { kind: string; created_at: string; sent_by: string | null };
 // Day sign-off. The Supervisor submits the day, the Site Engineer (or Admin) verifies it.
 //   - A day can only be submitted when attendance and transport are complete, and only verified once the Supervisor has submitted it complete: the database enforces
 //     this (day_readiness / day_submit / day_verify); the buttons just show why they are off. Meals are watched, never required.
-//   - The Site Engineer / Admin can ask the Supervisor to update the tracker ("Notify supervisor"); automatic reminders go out on a schedule too.
+//   - The Site Engineer / Admin can ask the Supervisor to update the tracker ("Notify supervisor"), and an Admin can also nudge the Site Engineer; automatic reminders go out on a schedule too.
 //   - Before the day-rules migration is run, the screen falls back to the old behaviour (a list of what looks missing; nothing blocked).
 export default function DayBar({ projectId, date, role, day, names, people, rows, vehicles, runs, canWrite, reload }: { projectId: string; date: string; role: string | null; day: DayRow | null; names: Record<string, string>; people: Person[]; rows: Record<string, AttRow>; vehicles: Vehicle[]; runs: Run[]; canWrite: boolean; reload: () => void }) {
   const [open, setOpen] = useState(false); const [busy, setBusy] = useState(false); const [err, setErr] = useState(""); const [info, setInfo] = useState("");
@@ -58,9 +58,9 @@ export default function DayBar({ projectId, date, role, day, names, people, rows
     }
     await run("day_verify");
   }
-  async function notify() {
+  async function notify(to: "supervisor" | "site_engineer") {
     setBusy(true); setErr(""); setInfo("");
-    const res = await fetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project_id: projectId, date }) }); const j = await res.json().catch(() => ({}));
+    const res = await fetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project_id: projectId, date, to }) }); const j = await res.json().catch(() => ({}));
     setBusy(false); if (!res.ok) { setErr(j.error || "Could not send the reminder."); return; }
     const reached = (j.recipients || []).filter((x: { devices: number }) => x.devices > 0).map((x: { name: string }) => x.name), silent = (j.recipients || []).filter((x: { devices: number }) => x.devices === 0).map((x: { name: string }) => x.name);
     setInfo(!j.configured ? "The reminder is logged, but notifications are not set up on the server yet." : [reached.length ? `Reminder sent to ${reached.join(", ")}.` : "", silent.length ? `${silent.join(", ")} has not switched on reminders on a phone yet: please call.` : ""].filter(Boolean).join(" "));
@@ -71,6 +71,7 @@ export default function DayBar({ projectId, date, role, day, names, people, rows
   const verifyBlocked = !isAdmin && !!r && (!r.complete || (r.has_supervisor && !submitted));
   const verifyWhy = verifyBlocked ? (!r!.complete ? "Waiting for the Supervisor to complete the day" : "Waiting for the Supervisor to submit the day") : "";
   const canNotify = verifier && !verified && date === istToday() && !isLockedFor(role, date) && (r ? !r.complete || !submitted : true);
+  const canNotifyEngineer = isAdmin && !verified && date === istToday();   // an Admin can nudge the Site Engineer too
   const when = (iso: string) => fmtTime(iso);
   const remindedLine = notices.filter((n) => n.kind !== "ready").slice(-3).map((n) => `${when(n.created_at)} ${n.sent_by ? `by ${who(n.sent_by)}` : "(automatic)"}`).join(" · ");
   const tick = (ok: boolean) => <span className={ok ? "text-emerald-600" : "text-rose-600"} aria-hidden>{ok ? "✓" : "✗"}</span>;
@@ -86,7 +87,8 @@ export default function DayBar({ projectId, date, role, day, names, people, rows
         <div className="ml-auto flex flex-wrap gap-2">
           {canWrite && !verified && !submitted && isSupervisorRole(role) && <button className="btn btn-primary !min-h-9" disabled={busy || submitBlocked} title={submitBlocked ? "Attendance and transport must be complete first" : undefined} onClick={() => run("day_submit")}>Submit day</button>}
           {canWrite && verifier && !verified && <button className="btn btn-primary !min-h-9" disabled={busy || verifyBlocked} title={verifyWhy || undefined} onClick={verify}>Verify day</button>}
-          {canNotify && <button className="btn !min-h-9" disabled={busy} onClick={notify}>Notify supervisor</button>}
+          {canNotify && <button className="btn !min-h-9" disabled={busy} onClick={() => notify("supervisor")}>Notify supervisor</button>}
+          {canNotifyEngineer && <button className="btn !min-h-9" disabled={busy} onClick={() => notify("site_engineer")}>Notify site engineer</button>}
           {role === "admin" && canWrite && <button className="btn btn-danger !min-h-9" disabled={busy} onClick={clearDay}>Clear day</button>}
           {canWrite && verifier && (verified || submitted) && <button className="btn !min-h-9" disabled={busy} onClick={() => run("day_reopen")}>Reopen</button>}
         </div>
