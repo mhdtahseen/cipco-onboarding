@@ -49,3 +49,6 @@ export function trackEntry(role: string | null | undefined, projectId: string, d
 
 /** Brings up the phone's location question (used once, from the sign-in prompt). */
 export const askLocation = (): Promise<void> => new Promise((resolve) => { if (!geoSupported()) return resolve(); navigator.geolocation.getCurrentPosition(() => resolve(), () => resolve(), { timeout: 10000 }); });
+
+/** The current location if the phone already allows it (never asks): for the app activity log (src/lib/usageBeacon.ts). */
+export const quietFix = () => currentFix();

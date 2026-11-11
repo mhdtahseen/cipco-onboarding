@@ -9,7 +9,7 @@ const monthName = (iso: string) => new Date(iso.slice(0, 7) + "-01T00:00:00").to
 
 /** Write and issue an exit letter: pick the kind, the wording is drafted from the employee and the exit, edit anything, preview, issue.
  *  Operations follow the rules (checklist finished, not absconded…); an Admin can override them after confirming. */
-export default function ExitLetters({ emp, exit, items, slips, advance, admin, onIssued }: { emp: Employee; exit: Exit | null; items: ExitItem[]; slips: Slip[]; advance: number; admin: boolean; onIssued: () => void }) {
+export default function ExitLetters({ emp, exit, items, slips, advance, admin, loginOk = true, onIssued }: { emp: Employee; exit: Exit | null; items: ExitItem[]; slips: Slip[]; advance: number; admin: boolean; loginOk?: boolean; onIssued: () => void }) {
   const [kind, setKind] = useState<ExitLetterKind | null>(null);
   const [subject, setSubject] = useState(""); const [text, setText] = useState(""); const [rows, setRows] = useState<SettlementRow[]>([]); const [seal, setSeal] = useState(true);
   const [notice, setNotice] = useState<NoticeArgs>({ notice_no: 1, absent_since: "", report_by: "" });
@@ -36,7 +36,7 @@ export default function ExitLetters({ emp, exit, items, slips, advance, admin, o
   const net = settlementNet(rows);
   function redraftNet() { if (kind !== "settlement") return; const dft = draftLetter("settlement", emp, exit, { rows }); const paras = text.split(/\n\s*\n/); paras[paras.length - 1] = dft.paragraphs[dft.paragraphs.length - 1]; setText(paras.join("\n\n")); }
 
-  const block = kind ? letterBlock(kind, exit, items) : null;
+  const block = kind ? letterBlock(kind, exit, items, loginOk) : null;
   const body = (preview: boolean, override = false) => JSON.stringify({ employee_id: emp.id, kind, exit_id: exit?.id ?? null, subject, paragraphs: text.split(/\n\s*\n/).map((p) => p.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean), rows: kind === "settlement" ? rows : undefined, with_seal: seal, preview, override });
   async function preview() {
     setBusy("preview"); setErr("");
@@ -57,7 +57,7 @@ export default function ExitLetters({ emp, exit, items, slips, advance, admin, o
     <div className="card space-y-3" data-exit-letters>
       <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold mr-auto">Exit letters</h3>{kind && <button type="button" className="text-sm text-slate-500 underline" onClick={() => setKind(null)}>Close</button>}</div>
       <div className="flex flex-wrap gap-2">
-        {KINDS.map((k) => { const why = letterBlock(k, exit, items); return (
+        {KINDS.map((k) => { const why = letterBlock(k, exit, items, loginOk); return (
           <button key={k} type="button" className={`chip ${kind === k ? "chip-on" : ""} ${why && !admin ? "opacity-60" : ""}`} aria-pressed={kind === k} title={why ?? undefined} onClick={() => setKind(k)}>
             {EXIT_LETTER[k].label}{why ? <span aria-label="Not yet" className="text-amber-600">•</span> : null}</button>); })}
       </div>

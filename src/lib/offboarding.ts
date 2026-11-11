@@ -45,17 +45,18 @@ export const EXIT_LETTER: Record<ExitLetterKind, { label: string; code: string; 
 export const isExitLetter = (k: string): k is ExitLetterKind => k in EXIT_LETTER;
 export const LETTER_LABEL: Record<string, string> = { offer: "Offer letter", appointment: "Appointment letter", ...Object.fromEntries(Object.entries(EXIT_LETTER).map(([k, v]) => [k, v.label])) };
 
-/** Every checklist item is done or not applicable. */
-export const isCleared = (items: ExitItem[]) => ITEMS.every((i) => items.some((x) => x.item === i.key));
+/** Every checklist item is done or not applicable, and a login linked to the person is disabled (loginOk: no linked login, or it is disabled). */
+export const isCleared = (items: ExitItem[], loginOk = true) => loginOk && ITEMS.every((i) => items.some((x) => x.item === i.key));
 
 /** May this letter be issued now? Admin and Operations only. Operations follow the rules; an Admin may override them (the screen asks first).
  *  Returns null when allowed, else the reason it is not. */
-export function letterBlock(kind: ExitLetterKind, x: Exit | null, items: ExitItem[]): string | null {
+export function letterBlock(kind: ExitLetterKind, x: Exit | null, items: ExitItem[], loginOk = true): string | null {
   if (kind === "absconding_notice") return null;
   if (!x || x.status === "cancelled") return "Record the exit first.";
   if (kind === "settlement") return null;
   if (x.exit_type === "absconded") return "They absconded: relieving, experience and recommendation letters are not issued.";
   if (!isCleared(items)) return "Finish the exit checklist first (each item done or not applicable).";
+  if (!loginOk) return "Disable their login first (Exit tab).";
   if (kind === "recommendation" && x.exit_type === "terminated") return "A recommendation is not given on termination.";
   if (kind === "recommendation" && x.rehire !== "yes") return "A recommendation is only given when they can be rehired.";
   return null;

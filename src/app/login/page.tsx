@@ -1,10 +1,11 @@
 "use client";
+import { usageEvent } from "@/lib/usageBeacon";
 import Logo from "@/components/Logo";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, setRemember } from "@/lib/supabase/client";
 
-const friendly = (m: string) => /invalid login/i.test(m) ? "That email or password isn't right. Please try again." : /confirm/i.test(m) ? "Please confirm your email address first." : m;
+const friendly = (m: string) => /banned/i.test(m) ? "This login has been disabled. Please contact the office." : /invalid login/i.test(m) ? "That email or password isn't right. Please try again." : /confirm/i.test(m) ? "Please confirm your email address first." : m;
 
 export default function Login() {
   const [email, setEmail] = useState(""); const [pw, setPw] = useState(""); const [show, setShow] = useState(false);
@@ -14,6 +15,7 @@ export default function Login() {
     setRemember(remember);
     const { error } = await supabase().auth.signInWithPassword({ email: email.trim(), password: pw });
     if (error) { setErr(friendly(error.message)); setBusy(false); return; }
+    void usageEvent("sign_in");   // the Admin's activity log
     router.push("/"); router.refresh();
   }
   return (

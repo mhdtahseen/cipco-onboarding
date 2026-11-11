@@ -1,4 +1,5 @@
 "use client";
+import { usageEvent, useUsageBeacon } from "@/lib/usageBeacon";
 import Logo from "./Logo";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -74,7 +75,7 @@ function Account({ email, name, role }: { email: string; name: string; role: str
     return () => { document.removeEventListener("mousedown", down); document.removeEventListener("keydown", key); };
   }, [open]);
   const who = role ? ROLE_LABEL[role] : "";
-  async function signOut() { await dropPush(); await supabase().auth.signOut(); resetMe(); resetPerms(); swrClear(); router.push("/login"); router.refresh(); }
+  async function signOut() { await usageEvent("sign_out"); await dropPush(); await supabase().auth.signOut(); resetMe(); resetPerms(); swrClear(); router.push("/login"); router.refresh(); }
   return (
     <div ref={ref} className="relative">
       <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label="Account menu" onClick={() => setOpen(!open)} className="flex items-center gap-2 rounded-full p-1 md:pr-2 hover:bg-slate-100 touch-manipulation min-h-11">
@@ -95,6 +96,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
   const router = useRouter(); const { role } = useRole(); const [email, setEmail] = useState(peekMe()?.email ?? ""); const [name, setName] = useState(peekMe()?.name ?? ""); const [collapsed, setCollapsed] = useState(false); const [drawer, setDrawer] = useState(false); const [hint, setHint] = useState<"min" | "full">("full");
   const closeRef = useRef<HTMLButtonElement>(null);
   const perms = usePerms(); const items = visibleItemsWith(role, perms.matrix);
+  useUsageBeacon(!!role && role !== "none", path);   // the Admin's activity log: when the app is open and on screen, and which page
   const minimal = role ? items.length <= 1 : hint === "min";   // a single-purpose login gets no sidebar or bottom bar
   const item = itemFor(path); const title = path === "/no-access" ? "No access" : item?.label ?? "CIPCO Operations";
 
@@ -116,7 +118,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
     return () => { document.removeEventListener("keydown", key); mq.removeEventListener("change", wide); document.body.style.overflow = ""; };
   }, [drawer]);
 
-  async function signOut() { await dropPush(); await supabase().auth.signOut(); resetMe(); resetPerms(); swrClear(); router.push("/login"); router.refresh(); }
+  async function signOut() { await usageEvent("sign_out"); await dropPush(); await supabase().auth.signOut(); resetMe(); resetPerms(); swrClear(); router.push("/login"); router.refresh(); }
   const toggleSide = () => { if (window.matchMedia("(min-width: 1280px)").matches) { const v = !collapsed; setCollapsed(v); try { localStorage.setItem("cipco_nav_collapsed", v ? "1" : "0"); } catch { /* ignore */ } } else setDrawer(true); };
   const barItems = items.filter((i) => i.bar === true || (Array.isArray(i.bar) && !!role && i.bar.includes(role as NavRole))).slice(0, 4);
   const crumb = item ? <><span className="text-slate-400 hidden md:inline">{item.section}</span><span className="text-slate-300 hidden md:inline"> › </span><span className="font-semibold text-slate-800">{item.label}</span></> : <span className="font-semibold text-slate-800">{title}</span>;

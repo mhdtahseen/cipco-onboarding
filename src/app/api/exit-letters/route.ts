@@ -32,7 +32,8 @@ export async function POST(req: NextRequest) {
   x = ((xs || [])[0] as Exit) ?? null;
   if (x) { const { data: it } = await sb.from("employee_exit_items").select("*").eq("exit_id", x.id); items = (it || []) as ExitItem[]; }
 
-  const block = letterBlock(kind, x, items);
+  const { data: lg } = await sb.from("user_profiles").select("disabled_at").eq("employee_id", emp.id).maybeSingle();   // a linked login must be disabled (2026-11-login-disable.sql)
+  const block = letterBlock(kind, x, items, !lg || !!(lg as { disabled_at: string | null }).disabled_at);
   if (block && !b.preview) {
     if (!admin) return NextResponse.json({ error: `${block} Only an Admin can override this.` }, { status: 403 });
     if (!b.override) return NextResponse.json({ error: block, needOverride: true }, { status: 409 });

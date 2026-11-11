@@ -78,6 +78,7 @@ export function canAccess(role: string, path: string, method = "GET"): boolean {
   if (role === "admin") return true;
   if (path === "/no-access") return true;
   if (role === "none") return false;
+  if (path === "/api/usage/beat" || path === "/api/usage/event") return true;   // the app's own activity signal, sent by everyone signed in (2026-11-usage-activity.sql)
   const item = itemFor(path);
   // a Viewer reads only: the menu pages above, and data routes (documents, PDFs, exports) when they are asked for with GET. Every route that saves or sends something is POST and is refused.
   if (role === "viewer" && !item) return method === "GET" || method === "HEAD";
@@ -89,6 +90,7 @@ export function canAccess(role: string, path: string, method = "GET"): boolean {
 export function canAccessWith(role: string, path: string, method: string, m: Matrix | null): boolean {
   if (role === "admin" || path === "/no-access") return true;
   if (role === "none") return false;
+  if (path === "/api/usage/beat" || path === "/api/usage/event") return true;   // the app's own activity signal, sent by everyone signed in
   const write = !(method === "GET" || method === "HEAD");
   const item = itemFor(path);
   if (item?.module) return levelRank(openLevel(role, m, item.module)) >= (write ? 2 : 1);

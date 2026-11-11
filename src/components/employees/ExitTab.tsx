@@ -27,7 +27,7 @@ export default function ExitTab({ emp, onChange }: { emp: Employee; onChange: (e
   const [exits, setExits] = useState<Exit[] | null>(null); const [items, setItems] = useState<ExitItem[]>([]); const [letters, setLetters] = useState<LetterRow[]>([]);
   const [slips, setSlips] = useState<Slip[]>([]); const [docs, setDocs] = useState<Doc[]>([]); const [advance, setAdvance] = useState(0); const [missing, setMissing] = useState(false);
   const [form, setForm] = useState<Form | null>(null); const [busy, setBusy] = useState(""); const [err, setErr] = useState(""); const [ok, setOk] = useState("");
-  const [dlg, setDlg] = useState<PromptSpec | null>(null);
+  const [dlg, setDlg] = useState<PromptSpec | null>(null); const [login, setLogin] = useState<{ user_id: string; full_name: string; disabled_at: string | null; disabled_reason: string } | null>(null);
   const ask = (s: Omit<PromptSpec, "resolve">) => new Promise<string | null>((res) => setDlg({ ...s, resolve: (x) => { setDlg(null); res(x); } }));
 
   const current = useMemo(() => (exits || []).find((x) => x.status !== "cancelled" && !x.rehired_at) ?? null, [exits]);
@@ -40,6 +40,7 @@ export default function ExitTab({ emp, onChange }: { emp: Employee; onChange: (e
       sb.from("employee_documents").select("doc_type,file_path,status").eq("employee_id", emp.id).not("file_path", "is", null),
       sb.rpc("employee_advance_balance", { p_employee: emp.id }),
     ]);
+    const lg = await sb.from("user_profiles").select("user_id, full_name, disabled_at, disabled_reason").eq("employee_id", emp.id).maybeSingle(); setLogin(lg.error ? null : (lg.data as typeof login));   // the login linked to this person, if any
     if (x.error) { setMissing(true); setExits([]); } else { setMissing(false); setExits((x.data || []) as Exit[]); }
     setLetters((l.data || []) as LetterRow[]); setSlips(s.error ? [] : ((s.data || []) as Slip[])); setDocs((d.data || []) as Doc[]); setAdvance(a.error ? 0 : Number(a.data) || 0);
     const cur = ((x.data || []) as Exit[]).find((e) => e.status !== "cancelled" && !e.rehired_at);
@@ -62,9 +63,15 @@ export default function ExitTab({ emp, onChange }: { emp: Employee; onChange: (e
     if (!why) return; setBusy("cancel"); setErr(""); const { error } = await supabase().rpc("exit_cancel", { p_exit: current.id, p_reason: why }); setBusy("");
     if (error) { setErr(error.message); return; } done("Exit cancelled ✓"); await load(); await refreshEmp();
   }
+  const loginOk = !login || !!login.disabled_at;
+  async function disableLogin() {
+    if (!login) return; const r = prompt(`Disable ${login.full_name || emp.full_name}'s login now? Their password stops working, they are signed out everywhere and their role is removed.\n\nReason:`, current ? `Left the company (last working day ${fmtShort(current.last_day, true)})` : "Left the company"); if (!r?.trim()) return;
+    setBusy("login"); setErr(""); const res = await fetch("/api/users/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: login.user_id, action: "disable", reason: r.trim() }) }); const j = await res.json().catch(() => ({})); setBusy("");
+    if (!res.ok) { setErr(j.error || "Could not disable the login."); return; } done("Login disabled ✓"); load();
+  }
   async function closeExit() {
     if (!current) return; let note = "";
-    if (!isCleared(items)) {
+    if (!isCleared(items, loginOk)) {
       if (!admin) { setErr("Finish the exit checklist first: mark each item done or not applicable."); return; }
       const why = await ask({ title: "The checklist is not finished", label: "Reason for closing it anyway", hint: "Recorded on the exit.", confirmLabel: "Close anyway", validate: (v) => (v ? null : "Give a reason") });
       if (!why) return; note = why;
@@ -121,9 +128,17 @@ export default function ExitTab({ emp, onChange }: { emp: Employee; onChange: (e
 
       {/* the checklist */}
       {current && !editing && <Checklist emp={emp} exitId={current.id} open={open} items={items} advance={advance} reload={load} setErr={setErr} />}
+      {current && !editing && <div className="card flex flex-wrap items-center gap-3" data-exit-login>
+        <div className="min-w-0 flex-1"><h3 className="font-semibold">App login</h3>
+          <p className="text-sm text-slate-600">{!login ? "No login is linked to this person. If they had one, link it on the Users page so it is disabled after their last working day."
+            : login.disabled_at ? `${login.full_name || "Their login"} is disabled (${fmtShort(login.disabled_at.slice(0, 10), true)})${login.disabled_reason ? `: ${login.disabled_reason}` : ""}.`
+            : `${login.full_name || "Their login"} still works. It is disabled automatically just after their last working day (${fmtShort(current.last_day, true)}).`}</p></div>
+        {login && !login.disabled_at && admin && <button type="button" className="btn btn-danger btn-sm" disabled={busy === "login"} onClick={disableLogin}>{busy === "login" ? "Disabling…" : "Disable login now"}</button>}
+        {login && login.disabled_at && <span className="text-xs bg-rose-50 text-rose-700 rounded-full px-2 py-0.5">Disabled</span>}
+      </div>}
 
       {/* letters */}
-      {!missing && (current || emp.stage === "onboarded") && <ExitLetters emp={emp} exit={current} items={items} slips={slips} advance={advance} admin={admin} onIssued={load} />}
+      {!missing && (current || emp.stage === "onboarded") && <ExitLetters emp={emp} exit={current} items={items} slips={slips} advance={advance} admin={admin} loginOk={loginOk} onIssued={load} />}
 
       {/* everything issued */}
       <div className="card space-y-4" data-issued>
