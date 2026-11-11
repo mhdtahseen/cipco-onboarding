@@ -155,7 +155,7 @@ export default function BillEditor({ projectId, bill, newKind = "bill", approval
 
   const sec1 = (<>
       {/* 1. the bill */}
-      <section className="card !p-3 space-y-3"><div className="flex items-center gap-2"><h2 className="text-sm font-semibold">{noBill ? "1. The entry" : "1. The bill"}</h2><span className="ml-auto flex gap-2">{bill?.bill_path && !editHead && <a className="btn btn-sm" href={`/api/inventory/view?bill=${bill.id}`} target="_blank" rel="noreferrer">{generated ? "View challan" : noBill ? "View photo" : "View bill"}</a>}{editable && bill && (noBill || bill.bill_path) && !editHead && <button className="btn btn-sm" onClick={() => setEditHead(true)}>Edit</button>}</span></div>
+      <section className="card !p-3 space-y-3"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><h2 className="text-sm font-semibold">{noBill ? "1. The entry" : "1. The bill"}</h2><span className="ml-auto flex gap-2">{bill?.bill_path && !editHead && <a className="btn btn-sm" href={`/api/inventory/view?bill=${bill.id}`} target="_blank" rel="noreferrer">{generated ? "View challan" : noBill ? "View photo" : "View bill"}</a>}{editable && bill && (noBill || bill.bill_path) && !editHead && <button className="btn btn-sm" onClick={() => setEditHead(true)}>Edit</button>}</span></div>
         {editable && (!bill || editHead || (!noBill && !bill.bill_path)) ? <>
           {noBill ? <div className="grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2"><label className="lbl">Reason: where did these items come from?</label><textarea className="inp !min-h-20" value={h.note} onChange={(e) => setH({ ...h, note: e.target.value })} placeholder="For example: cash purchase, the shop gave no bill. Or: transferred from the MAN site." /></div>
@@ -222,12 +222,12 @@ export default function BillEditor({ projectId, bill, newKind = "bill", approval
       </section>}
 
       {/* the portal is optional: only an Admin can switch it on */}
-      {recorded && admin && !wanted && bill && <section className="card !p-3 space-y-2"><div className="flex items-center gap-2"><h2 className="text-sm font-semibold">JSL portal</h2><span className="text-[11px] rounded-full px-2 py-0.5 bg-slate-100 text-slate-600">Optional</span></div>
+      {recorded && admin && !wanted && bill && <section className="card !p-3 space-y-2"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><h2 className="text-sm font-semibold">JSL portal</h2><span className="text-[11px] rounded-full px-2 py-0.5 bg-slate-100 text-slate-600">Optional</span></div>
         <p className="text-sm text-slate-600">This {generated ? "delivery" : noBill ? "entry" : "bill"} is complete as it is. If you also want its items raised as one MRR on the JSL portal, switch that on for it. The person or vehicle details are then asked for.</p>
         <button className="btn" disabled={busy} onClick={() => act("inventory_set_jsl_wanted", { p_bill: bill.id, p_on: true }, "Switched on: this bill can now go to the JSL portal.")}>Also send to the JSL portal</button></section>}
 
       {/* 3. what the portal asks for before any material */}
-      {recorded && !viewer && wanted && <section className="card !p-3 space-y-3"><div className="flex items-center gap-2"><h2 className="text-sm font-semibold">3. Details for the JSL portal</h2>{gSaved && gateOpen && !gateForm && <button className="btn btn-sm ml-auto" onClick={() => setShowGate(true)}>Edit</button>}</div>
+      {recorded && !viewer && wanted && <section className="card !p-3 space-y-3"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><h2 className="text-sm font-semibold">3. Details for the JSL portal</h2>{gSaved && gateOpen && !gateForm && <button className="btn btn-sm ml-auto" onClick={() => setShowGate(true)}>Edit</button>}</div>
         {gateForm && gateOpen ? <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <div><label className="lbl">Received by</label><select className="inp" value={g.received_by} onChange={(e) => setGate({ received_by: e.target.value as Gatepass["received_by"] })}><option value="hand">By hand</option><option value="vehicle">By vehicle</option></select></div></div>

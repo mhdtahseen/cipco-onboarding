@@ -23,7 +23,7 @@ export default function ReviewNotes({ billId, kind, notes, items, mode, target, 
 
   return (
     <section className="card !p-3 space-y-3" id="review-notes">
-      <div className="flex items-center gap-2"><h2 className="text-sm font-semibold">Corrections</h2>{notes.length > 0 && <span className={`text-[11px] rounded-full px-2 py-0.5 ${open ? "bg-amber-50 text-amber-800" : "bg-green-50 text-green-800"}`}>{open ? `${open} to fix` : "all done"}</span>}</div>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><h2 className="text-sm font-semibold">Corrections</h2>{notes.length > 0 && <span className={`text-[11px] rounded-full px-2 py-0.5 ${open ? "bg-amber-50 text-amber-800" : "bg-green-50 text-green-800"}`}>{open ? `${open} to fix` : "all done"}</span>}</div>
       {err && <p className="warn" role="alert">{err}</p>}
       {notes.length === 0 ? <p className="text-sm text-slate-500">{mode === "review" ? "Nothing marked yet. Mark what is wrong, correct it yourself above, or send the entry back." : "No corrections."}</p> :
         <ul className="space-y-2">{notes.map((n) => (

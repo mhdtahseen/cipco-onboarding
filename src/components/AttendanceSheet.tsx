@@ -19,7 +19,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
   const admin = role === "admin";
   const [runs, setRuns] = useState<Run[]>([]); const [day, setDay] = useState<DayRow | null>(null);
   const [date, setDate] = useState(() => { const d = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("d") : null; return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : istToday(); }); const [people, setPeople] = useState<Person[]>([]); const [rows, setRows] = useState<Record<string, AttRow>>({});
-  const [loading, setLoading] = useState(true); const [err, setErr] = useState(""); const [msg, setMsg] = useState(""); const [bulkMeal, setBulkMeal] = useState<Meal>("lunch"); const [bulkVendor, setBulkVendor] = useState(""); const [q, setQ] = useState(""); const [onlyOpen, setOnlyOpen] = useState(false); const [qa, setQa] = useState(false); const [statusPick, setStatusPick] = useState<Status>("present"); const [scopePick, setScopePick] = useState<"open" | "all">("open"); const [qm, setQm] = useState(false); const qmRef = useRef<HTMLDivElement>(null); const wide = useMedia("(min-width: 1024px)");
+  const [loading, setLoading] = useState(true); const [err, setErr] = useState(""); const [msg, setMsg] = useState(""); const [bulkMeal, setBulkMeal] = useState<Meal>("lunch"); const [bulkVendor, setBulkVendor] = useState(""); const [q, setQ] = useState(""); const [onlyOpen, setOnlyOpen] = useState(false); const [qa, setQa] = useState(false); const [statusPick, setStatusPick] = useState<Status>("present"); const [scopePick, setScopePick] = useState<"open" | "all">("open"); const [qm, setQm] = useState(false); const qmRef = useRef<HTMLDivElement>(null); const wide = useMedia("(min-width: 1180px)");
   useEffect(() => {
     if (!qm) return;
     const down = (e: MouseEvent) => { if (!qmRef.current?.contains(e.target as Node)) setQm(false); }; const key = (e: KeyboardEvent) => { if (e.key === "Escape") setQm(false); };
@@ -285,7 +285,7 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
             {people.length > 0 && <button className={`btn ${onlyOpen ? "btn-primary" : ""}`} onClick={() => setOnlyOpen(!onlyOpen)} aria-pressed={onlyOpen}>Open only</button>}
             {!locked && people.length > 0 && <div ref={qmRef} className="relative">
               <button type="button" className="btn" aria-haspopup="menu" aria-expanded={qm} onClick={() => setQm(!qm)}>Quick actions<Icon name="chevron-down" className="h-4 w-4 text-slate-400" /></button>
-              {qm && <div role="menu" className="absolute right-0 top-full mt-1 w-80 rounded-xl border border-slate-200 bg-white shadow-lg p-3 z-30">{quickPanel(() => setQm(false), true)}</div>}
+              {qm && <div role="menu" className="absolute right-0 top-full mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white shadow-lg p-3 z-30">{quickPanel(() => setQm(false), true)}</div>}
             </div>}
             {!locked && people.length > 0 && <button className="btn btn-primary" onClick={everyonePresent} disabled={!sum.c.none}>Everyone present</button>}
           </div>
@@ -312,8 +312,8 @@ export default function AttendanceSheet({ projectId, role, vendors, vehicles, na
       {!loading && !err && !people.length && <p className="card text-center text-sm text-slate-500">Nobody is on this project for {dayName(date)} {date}. People appear once they have a joining date on or before the day.</p>}
       {!loading && people.length > 0 && !shown.length && <p className="card text-center text-sm text-slate-500">{onlyOpen && !q ? "Everyone is marked ✓" : "No one matches."}</p>}
 
-      {shown.length > 0 && <div className="card !p-0 overflow-hidden">
-        <table className="w-full text-sm">
+      {shown.length > 0 && <div className="card !p-0 overflow-x-auto">
+        <table className="w-full text-sm min-w-[56rem]">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="text-left font-medium pl-4 pr-2 py-2">Name</th><th className="text-left font-medium px-2 py-2 w-[19rem]">Work</th>{MEALS.map((m) => <th key={m.key} className="text-left font-medium px-2 py-2 w-32">{m.label}</th>)}<th className="text-left font-medium px-2 py-2 w-36">Last change</th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {shown.map((p) => { const r = rows[p.employee_id]; const st = effectiveStatus(p, date, r); const virtualOff = !r && st === "off"; return (

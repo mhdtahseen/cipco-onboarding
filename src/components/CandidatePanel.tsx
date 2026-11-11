@@ -24,7 +24,7 @@ export default function CandidatePanel({ emp, onChange, open, onClose, showInvit
     <div className="overlay z-40" data-open={open} role="dialog" aria-modal="true" aria-label="Resume, self-fill link and notes">
       <div className="overlay-bg bg-slate-900/30" onClick={close} />
       <div ref={ref} tabIndex={-1} className="overlay-panel from-right absolute right-0 top-0 h-full w-full max-w-md bg-slate-50 shadow-xl overflow-y-auto p-4 space-y-4 outline-none">
-        <div className="flex items-center gap-2"><h2 className="font-semibold text-base flex-1 truncate">{emp.full_name}</h2>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><h2 className="font-semibold text-base flex-1 truncate">{emp.full_name}</h2>
           <button type="button" className="btn btn-sm" onClick={close} aria-label="Close panel"><Icon name="x" className="h-4 w-4" />Close</button></div>
         <ResumeCard emp={emp} />
         {showInvite && <InviteCard emp={emp} onChange={onChange} onApplied={onApplied} />}

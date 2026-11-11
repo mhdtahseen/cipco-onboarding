@@ -37,7 +37,7 @@ export default function CsvImport({ projectId, onClose, onChanged, onCreated }: 
   const b = res?.bill; const blocked = !res || !b || res.errors.length > 0;
   return (
     <section className="card !p-3 space-y-3">
-      <div className="flex items-center gap-2"><h2 className="text-sm font-semibold">Import a bill from CSV</h2><span className="text-[11px] rounded-full px-2 py-0.5 bg-slate-100 text-slate-600">Admin</span><button className="btn btn-sm ml-auto" onClick={onClose}>Close</button></div>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><h2 className="text-sm font-semibold">Import a bill from CSV</h2><span className="text-[11px] rounded-full px-2 py-0.5 bg-slate-100 text-slate-600">Admin</span><button className="btn btn-sm ml-auto" onClick={onClose}>Close</button></div>
       <ol className="text-sm text-slate-600 list-decimal pl-5 space-y-1">
         <li>Give the bill to Gemini with the prompt below. It returns the CSV, with any missing HSN filled in and marked as a guess.</li>
         <li>Save it as a .csv file and choose it here. Check the preview.</li>

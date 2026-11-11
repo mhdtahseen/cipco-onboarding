@@ -105,6 +105,9 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
   useEffect(() => { try { setCollapsed(localStorage.getItem("cipco_nav_collapsed") === "1"); if (localStorage.getItem("cipco_nav_min") === "1") setHint("min"); } catch { /* storage unavailable */ } }, []);
   useEffect(() => { if (role) try { localStorage.setItem("cipco_nav_min", items.length <= 1 ? "1" : "0"); } catch { /* ignore */ } }, [role, items.length]);
   useEffect(() => { setDrawer(false); }, [path]);
+  // the page you are on stays in view in the sidebar (its list is taller than a tablet screen)
+  const sideRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { sideRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest" }); }, [path]);
   // each screen names its browser tab ("Payroll · CIPCO Operations") so tabs, history and bookmarks are tell-apart-able
   useEffect(() => { const l = itemFor(path)?.label; document.title = l ? `${l} · CIPCO Operations` : "CIPCO Operations"; }, [path]);
   const viewOnly = role === "viewer";   // the read-only role: edit controls are hidden everywhere (globals.css) and anything that slips through is refused (supabase/client.ts)
@@ -130,12 +133,12 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
       <PermGuard /><ActivityBar /><BusyButtons /><PullToRefresh />
       {!minimal && <PermissionPrompt role={role} />}
 
-      {!minimal && <aside aria-label="Sidebar" className={`hidden md:flex flex-col fixed inset-y-0 left-0 z-30 bg-white border-r border-slate-200 print:hidden transition-[width] duration-200 ease-out ${collapsed ? "w-16" : "w-16 xl:w-64"}`}>
+      {!minimal && <aside aria-label="Sidebar" className={`hidden md:flex flex-col fixed top-0 left-0 h-dvh z-30 bg-white border-r border-slate-200 print:hidden transition-[width] duration-200 ease-out ${collapsed ? "w-16" : "w-16 xl:w-64"}`}>
         <div className={`h-14 shrink-0 flex items-center gap-2 border-b border-slate-100 px-3 ${collapsed ? "justify-center" : "justify-center xl:justify-between"}`}>
           <Link href="/" aria-label="CIPCO home" className={`items-center gap-2 min-w-0 ${collapsed ? "hidden" : "hidden xl:flex"}`}><Logo className="h-7 w-auto" /><span className="text-sm font-semibold text-slate-500">Operations</span></Link>
           <button type="button" onClick={toggleSide} aria-label={collapsed ? "Expand sidebar" : "Menu"} title={collapsed ? "Expand sidebar" : "Menu"} className="h-10 w-10 grid place-items-center rounded-lg text-slate-500 hover:bg-slate-100 touch-manipulation"><Icon name={collapsed ? "chevron-right" : "menu"} /></button>
         </div>
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2"><NavList items={items} path={path} showLabels="wide" collapsed={collapsed} /></div>
+        <div ref={sideRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain p-2"><NavList items={items} path={path} showLabels="wide" collapsed={collapsed} /></div>
         {!collapsed && <div className="hidden xl:block p-3 border-t border-slate-100"><button type="button" onClick={toggleSide} className="w-full flex items-center gap-2 px-3 min-h-10 rounded-lg text-xs text-slate-500 hover:bg-slate-100"><Icon name="chevron-left" className="h-4 w-4" />Collapse</button></div>}
       </aside>}
 
@@ -164,7 +167,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
         <div className="overlay-panel from-left absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-white shadow-xl flex flex-col pt-[env(safe-area-inset-top)]">
           <div className="h-14 shrink-0 px-4 flex items-center gap-2 border-b border-slate-100"><Logo className="h-7 w-auto" /><span className="text-sm font-semibold text-slate-500">Operations</span>
             <button ref={closeRef} type="button" onClick={() => setDrawer(false)} aria-label="Close menu" className="ml-auto h-11 w-11 -mr-2 grid place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><Icon name="x" /></button></div>
-          <div className="flex-1 overflow-y-auto p-3"><NavList items={items} path={path} showLabels="always" onNavigate={() => setDrawer(false)} /></div>
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3"><NavList items={items} path={path} showLabels="always" onNavigate={() => setDrawer(false)} /></div>
           <div className="border-t border-slate-100 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><div className="px-3 pb-2"><div className="text-sm font-medium break-all">{name || email}</div>{name && <div className="text-xs text-slate-500 break-all">{email}</div>}<div className="text-xs text-slate-500">{role ? ROLE_LABEL[role] : ""}</div></div><ThemeSwitch /><button type="button" onClick={signOut} className="w-full flex items-center gap-3 px-3 min-h-11 rounded-lg text-sm text-slate-600 hover:bg-slate-100"><Icon name="logout" />Sign out</button></div>
         </div>
       </div>
