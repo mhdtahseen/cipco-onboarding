@@ -16,7 +16,7 @@ export default function LettersTab({ emp, onIssued }: { emp: Employee; onIssued?
   const vars = useMemo(() => buildVars(emp, { annexure: annexure && !!calc, accept_mode: acceptMode }), [emp, annexure, calc, acceptMode]);
   const tfa = clauses.some((c) => c.key === "site_allowances" && picked.has(c.id));
 
-  async function loadLetters() { const { data } = await supabase().from("letters").select("*").eq("employee_id", emp.id).order("created_at", { ascending: false }); setLetters((data || []) as LetterRow[]); }
+  async function loadLetters() { const { data } = await supabase().from("letters").select("*").eq("employee_id", emp.id).in("kind", ["offer", "appointment"]).order("created_at", { ascending: false }); setLetters((data || []) as LetterRow[]); }
   useEffect(() => { loadLetters(); }, [emp.id]);
   useEffect(() => { (async () => {
     const { data } = await supabase().from("clauses").select("*").eq("letter_type", kind).eq("active", true).order("sort_order");

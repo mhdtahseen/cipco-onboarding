@@ -24,8 +24,8 @@ export type Clause = {
 export type Section = { title: string; body: string };
 export type MailTemplate = { id: string; key: string; name: string; subject: string; body: string; sort_order: number };
 export type LetterRow = {
-  id: string; employee_id: string; kind: "offer" | "appointment"; ref_no: string; issued_on: string;
-  sections: Section[]; vars: Record<string, string>; with_seal: boolean; created_at: string; annexure: AnnexureSnapshot | null;
+  id: string; employee_id: string; kind: "offer" | "appointment" | import("./offboarding").ExitLetterKind; ref_no: string; issued_on: string;
+  sections: Section[]; vars: Record<string, string>; with_seal: boolean; created_at: string; annexure: AnnexureSnapshot | null; exit_id?: string | null;
 };
 
 export const DOC_TYPES: { key: string; label: string }[] = [

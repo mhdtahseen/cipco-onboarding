@@ -49,7 +49,7 @@ export async function middleware(req: NextRequest) {
   // Supabase on every request. It still refreshes an expired session. (getUser() asked Supabase "who is this?" on every single page and API call.)
   const { data: claims } = await sb.auth.getClaims(); const uid = (claims?.claims?.sub as string | undefined) || null;
   const isLogin = req.nextUrl.pathname.startsWith("/login");
-  const isPublic = req.nextUrl.pathname.startsWith("/apply") || req.nextUrl.pathname.startsWith("/api/apply") || req.nextUrl.pathname.startsWith("/api/cron/") || req.nextUrl.pathname.startsWith("/api/jsl-worker/") || req.nextUrl.pathname.startsWith("/api/slip/");   // candidate self-fill links; the scheduled day check proves itself with a secret; a salary slip link proves itself with its signed, expiring token
+  const isPublic = req.nextUrl.pathname.startsWith("/apply") || req.nextUrl.pathname.startsWith("/api/apply") || req.nextUrl.pathname.startsWith("/api/cron/") || req.nextUrl.pathname.startsWith("/api/jsl-worker/") || req.nextUrl.pathname.startsWith("/api/slip/") || req.nextUrl.pathname.startsWith("/api/doc/");   // candidate self-fill links; the scheduled day check proves itself with a secret; a salary slip or letter link proves itself with its signed, expiring token
   if (isPublic) return res;
   if (!uid && !isLogin) return NextResponse.redirect(new URL("/login", req.url));
   if (!uid) return res;

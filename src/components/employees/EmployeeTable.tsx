@@ -3,10 +3,21 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DOC_TYPES } from "@/lib/types";
 import { stageLabel } from "@/lib/pipeline";
-import { fmtShort, idleDays, initials, joinInfo, telHref, waHref, type ListRow, type Pile, type SortKey } from "@/lib/employeeList";
+import { fmtShort, idleDays, initials, joinInfo, telHref, waHref, type ExitSummary, type ListRow, type Pile, type SortKey } from "@/lib/employeeList";
+import { EXIT_TYPE, ITEMS, type ExitType } from "@/lib/offboarding";
 import { Icon } from "../NavIcons";
 
-type Common = { rows: ListRow[]; pile: Pile; sel: string[]; setSel: (s: string[]) => void; docs: Record<string, number>; loading: boolean; empty: string; emptyAction?: React.ReactNode };
+type Common = { rows: ListRow[]; pile: Pile; sel: string[]; setSel: (s: string[]) => void; docs: Record<string, number>; exits: Record<string, ExitSummary>; loading: boolean; empty: string; emptyAction?: React.ReactNode };
+
+/** How someone left, and where their exit stands. */
+function ExitBadges({ x }: { x?: ExitSummary }) {
+  if (!x) return <span className="text-xs text-slate-400">No exit recorded</span>;
+  return <span className="inline-flex flex-wrap items-center gap-1.5 text-xs">
+    <span className={`rounded-full px-2 py-0.5 ${x.exit_type === "absconded" ? "bg-rose-50 text-rose-700" : "bg-slate-100 text-slate-700"}`}>{EXIT_TYPE[x.exit_type as ExitType] ?? x.exit_type}</span>
+    {x.status === "open" ? <span className="text-amber-700">Checklist {x.done}/{ITEMS.length}</span> : <span className="text-emerald-700">Closed</span>}
+    {x.rehire === "no" && <span className="text-slate-500">Not for rehire</span>}
+  </span>;
+}
 
 const TONE = { soon: "text-amber-700", late: "text-red-700", plain: "text-slate-500" } as const;
 
@@ -34,7 +45,7 @@ function Skeleton({ table }: { table?: boolean }) {
     : <div key={i} className="card !p-3"><div className="skeleton h-4 w-2/3 mb-2" /><div className="skeleton h-3 w-1/2" /></div>)}</>;
 }
 
-export function EmployeeCards({ rows, pile, sel, setSel, docs, loading, empty, emptyAction }: Common) {
+export function EmployeeCards({ rows, pile, sel, setSel, docs, exits, loading, empty, emptyAction }: Common) {
   const toggle = (id: string, on: boolean) => setSel(on ? [...sel, id] : sel.filter((x) => x !== id));
   return (
     <div className="md:hidden space-y-2">
@@ -46,12 +57,13 @@ export function EmployeeCards({ rows, pile, sel, setSel, docs, loading, empty, e
           <Link href={`/employees/${r.id}`} className="flex-1 min-w-0 flex gap-3">
             <Avatar name={r.full_name} />
             <span className="min-w-0 flex-1">
-              <span className="flex items-start gap-2"><span className="font-semibold text-blue-800 truncate">{r.full_name}</span>{pile !== "rejected" && <span className="pill ml-auto">{stageLabel(r.stage)}</span>}</span>
+              <span className="flex items-start gap-2"><span className="font-semibold text-blue-800 truncate">{r.full_name}</span>{pile !== "rejected" && pile !== "offboarded" && <span className="pill ml-auto">{stageLabel(r.stage)}</span>}</span>
               <span className="block text-sm text-slate-600 truncate">{[r.designation, r.department].filter(Boolean).join(" · ") || "—"}</span>
               <span className="block text-xs text-slate-500 truncate">{[r.project, r.site_location].filter(Boolean).join(" · ")}</span>
               {pile === "rejected" && <span className="block text-xs text-red-800 mt-1">{r.closed_reason} · at {stageLabel(r.closed_stage)}</span>}
               {pile === "process" && <span className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs"><DocBar n={docs[r.id] || 0} />{j && <span className={TONE[j.tone]}>{j.text}</span>}{idle && <span className="text-slate-500">No update for {idle} days</span>}</span>}
-              {pile === "onboarded" && r.join_date && <span className="block text-xs text-slate-500 mt-1">Joined {fmtShort(r.join_date, true)}</span>}
+              {pile === "onboarded" && r.join_date && <span className="block text-xs text-slate-500 mt-1">Joined {fmtShort(r.join_date, true)}{r.left_on && <span className="text-amber-700"> · Leaving {fmtShort(r.left_on, true)}</span>}</span>}
+              {pile === "offboarded" && <span className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1"><span className="text-xs text-slate-500">Left {fmtShort(r.left_on, true)}</span><ExitBadges x={exits[r.id]} /></span>}
             </span>
           </Link>
           <Contact phone={r.phone} name={r.full_name} />
@@ -60,22 +72,22 @@ export function EmployeeCards({ rows, pile, sel, setSel, docs, loading, empty, e
   );
 }
 
-export function EmployeeTable({ rows, pile, sel, setSel, docs, loading, empty, emptyAction, sort, dir, onSort }: Common & { sort: SortKey; dir: "asc" | "desc"; onSort: (k: SortKey) => void }) {
+export function EmployeeTable({ rows, pile, sel, setSel, docs, exits, loading, empty, emptyAction, sort, dir, onSort }: Common & { sort: SortKey; dir: "asc" | "desc"; onSort: (k: SortKey) => void }) {
   const router = useRouter();
   const toggle = (id: string, on: boolean) => setSel(on ? [...sel, id] : sel.filter((x) => x !== id));
   const Th = ({ k, children }: { k: SortKey; children: React.ReactNode }) => (
     <th className="p-3 font-medium" aria-sort={sort === k ? (dir === "asc" ? "ascending" : "descending") : "none"}>
       <button type="button" onClick={() => onSort(k)} className="inline-flex items-center gap-1 hover:text-slate-800">{children}{sort === k ? <Icon name={dir === "asc" ? "arrow-up" : "arrow-down"} className="h-3.5 w-3.5" /> : null}</button>
     </th>);
-  const cols = pile === "process" ? 8 : 6;
+  const cols = pile === "process" ? 8 : pile === "offboarded" ? 7 : 6;
   return (
     <div className="card !p-0 overflow-x-auto hidden md:block">
       <table className="w-full text-sm">
-        <caption className="sr-only">{pile === "process" ? "Candidates in process" : pile === "onboarded" ? "Onboarded employees" : "Rejected candidates"}</caption>
+        <caption className="sr-only">{pile === "process" ? "Candidates in process" : pile === "onboarded" ? "Onboarded employees" : pile === "offboarded" ? "Offboarded employees" : "Rejected candidates"}</caption>
         <thead className="bg-slate-50 text-left text-slate-500"><tr>
           <th className="p-3 w-8"><input type="checkbox" aria-label="Select all shown" checked={rows.length > 0 && rows.every((r) => sel.includes(r.id))} onChange={(e) => setSel(e.target.checked ? rows.map((r) => r.id) : [])} /></th>
           <Th k="name">Name</Th><Th k="role">Role</Th><Th k="project">Project / site</Th>
-          {pile === "rejected" ? <th className="p-3 font-medium">Closed</th> : <Th k="join">{pile === "onboarded" ? "Joined" : "Joining"}</Th>}
+          {pile === "rejected" ? <th className="p-3 font-medium">Closed</th> : pile === "offboarded" ? <><th className="p-3 font-medium">Worked</th><th className="p-3 font-medium">Exit</th></> : <Th k="join">{pile === "onboarded" ? "Joined" : "Joining"}</Th>}
           {pile === "process" && <><Th k="stage">Stage</Th><th className="p-3 font-medium">Documents</th></>}
           <th className="p-3 font-medium text-right">Contact</th>
         </tr></thead>
@@ -88,9 +100,10 @@ export function EmployeeTable({ rows, pile, sel, setSel, docs, loading, empty, e
               <td className="p-3"><div className="flex items-center gap-3"><Avatar name={r.full_name} /><div className="min-w-0"><Link className="font-medium text-blue-800 hover:underline" href={`/employees/${r.id}`} onClick={(e) => e.stopPropagation()}>{r.full_name}</Link><div className="text-xs text-slate-500">{r.emp_no}</div></div></div></td>
               <td className="p-3">{r.designation}<div className="text-xs text-slate-500">{r.department}</div></td>
               <td className="p-3">{r.project}<div className="text-xs text-slate-500">{r.site_location}</div></td>
-              {pile === "rejected"
+              {pile === "offboarded" ? <><td className="p-3 whitespace-nowrap text-xs">{fmtShort(r.join_date, true)} –<div className="text-sm">{fmtShort(r.left_on, true)}</div></td><td className="p-3"><ExitBadges x={exits[r.id]} /></td></>
+                : pile === "rejected"
                 ? <td className="p-3"><div className="text-xs font-medium text-red-800">{r.closed_reason}</div><div className="text-xs text-slate-500">at {stageLabel(r.closed_stage)}</div></td>
-                : <td className="p-3 whitespace-nowrap">{fmtShort(r.join_date, true)}{j && <div className={`text-xs ${TONE[j.tone]}`}>{j.text}</div>}</td>}
+                : <td className="p-3 whitespace-nowrap">{fmtShort(r.join_date, true)}{j && <div className={`text-xs ${TONE[j.tone]}`}>{j.text}</div>}{pile === "onboarded" && r.left_on && <div className="text-xs text-amber-700">Leaving {fmtShort(r.left_on, true)}</div>}</td>}
               {pile === "process" && <>
                 <td className="p-3"><span className="pill">{stageLabel(r.stage)}</span>{idle && <div className="text-xs text-slate-500 mt-1">No update for {idle} days</div>}</td>
                 <td className="p-3"><DocBar n={docs[r.id] || 0} wide /></td></>}

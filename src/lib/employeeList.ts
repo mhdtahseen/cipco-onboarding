@@ -1,18 +1,25 @@
 import { pileOf } from "./pipeline";
+import { istToday } from "./attendance";
 
 // Only what the list shows. The full record (Aadhaar, PAN, bank…) is loaded on the employee's own page, not for everyone at once.
-export const LIST_COLUMNS = "id,emp_no,full_name,designation,department,project,project_id,site_location,join_date,stage,outcome,closed_reason,closed_stage,phone,email,created_at,updated_at";
+export const LIST_COLUMNS = "id,emp_no,full_name,designation,department,project,project_id,site_location,join_date,left_on,stage,outcome,closed_reason,closed_stage,phone,email,created_at,updated_at";
 export type ListRow = {
   id: string; emp_no: string | null; full_name: string; designation: string | null; department: string | null; project: string | null; project_id: string | null; site_location: string | null;
-  join_date: string | null; stage: string; outcome: "active" | "rejected"; closed_reason: string | null; closed_stage: string | null; phone: string | null; email: string | null; created_at: string; updated_at: string | null;
+  join_date: string | null; left_on: string | null; stage: string; outcome: "active" | "rejected"; closed_reason: string | null; closed_stage: string | null; phone: string | null; email: string | null; created_at: string; updated_at: string | null;
 };
-export type Pile = "process" | "onboarded" | "rejected";
-export const PILES: { key: Pile; label: string }[] = [{ key: "process", label: "In process" }, { key: "onboarded", label: "Onboarded" }, { key: "rejected", label: "Rejected" }];
+export type Pile = "process" | "onboarded" | "offboarded" | "rejected";
+export const PILES: { key: Pile; label: string }[] = [{ key: "process", label: "In process" }, { key: "onboarded", label: "Onboarded" }, { key: "offboarded", label: "Offboarded" }, { key: "rejected", label: "Rejected" }];
 export type SortKey = "newest" | "name" | "role" | "project" | "join" | "stage" | "updated";
 export const SORT_LABEL: Record<SortKey, string> = { newest: "Newest first", name: "Name", role: "Role", project: "Project", join: "Joining date", stage: "Stage", updated: "Last updated" };
 
 export const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("") || "?";
-export const pileOfRow = (r: ListRow) => pileOf(r);
+/** Offboarded: onboarded people whose last working day has passed. Until then they stay in Onboarded (with a "Leaving" note). */
+export const pileOfRow = (r: ListRow): Pile => { const p = pileOf(r); return p === "onboarded" && r.left_on && r.left_on < istToday() ? "offboarded" : p; };
+/** The latest exit of each person, for the Offboarded list (empty until the offboarding migration is run). */
+export type ExitSummary = { exit_type: string; status: string; rehire: string; done: number };
+export type ExitFilter = "" | "absconded" | "pending" | "rehire";
+export const EXIT_FILTERS: { key: ExitFilter; label: string }[] = [{ key: "", label: "All" }, { key: "pending", label: "Checklist pending" }, { key: "absconded", label: "Absconded" }, { key: "rehire", label: "Can rehire" }];
+export const exitMatches = (x: ExitSummary | undefined, f: ExitFilter) => !f || (f === "absconded" ? x?.exit_type === "absconded" : f === "pending" ? !!x && x.status === "open" : x?.rehire === "yes" && x.exit_type !== "absconded");
 export const digits = (p: string | null | undefined) => { const d = (p || "").replace(/\D/g, ""); return d.length > 10 && d.startsWith("91") ? d.slice(-10) : d; };
 export const telHref = (p: string | null | undefined) => (digits(p).length === 10 ? `tel:+91${digits(p)}` : "");
 export const waHref = (p: string | null | undefined) => (digits(p).length === 10 ? `https://wa.me/91${digits(p)}` : "");

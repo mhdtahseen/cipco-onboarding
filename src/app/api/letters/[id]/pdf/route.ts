@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serverClient } from "@/lib/supabase/server";
-import { buildLetterPdf } from "@/lib/pdf/letters";
+import { issuedLetterPdf } from "@/lib/letterPdf";
 import type { LetterRow } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!data) return new NextResponse("Not found", { status: 404 });
   const l = data as LetterRow;
   const seal = req.nextUrl.searchParams.has("seal") ? req.nextUrl.searchParams.get("seal") !== "0" : l.with_seal;
-  const bytes = await buildLetterPdf({ kind: l.kind, sections: l.sections, vars: l.vars, refNo: l.ref_no, issuedOn: l.issued_on, withSeal: seal, annexure: l.annexure });
-  const fname = `${l.kind === "offer" ? "Offer Letter" : "Appointment Letter"} - ${l.vars.full_name}.pdf`;
-  return new NextResponse(Buffer.from(bytes), { headers: { "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="${encodeURIComponent(fname)}"` } });
+  const { bytes, file } = await issuedLetterPdf(l, seal);
+  const how = req.nextUrl.searchParams.get("download") === "1" ? "attachment" : "inline";
+  return new NextResponse(Buffer.from(bytes), { headers: { "Content-Type": "application/pdf", "Content-Disposition": `${how}; filename="${encodeURIComponent(file)}"` } });
 }

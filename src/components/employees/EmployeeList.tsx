@@ -6,18 +6,19 @@ import { swrDrop, swrGet, swrSet } from "@/lib/swr";
 import { supabase } from "@/lib/supabase/client";
 import type { Project } from "@/lib/types";
 import { STAGES, stageIndex, stageLabel } from "@/lib/pipeline";
-import { LIST_COLUMNS, PILES, SORT_LABEL, matches, pileOfRow, sortRows, type ListRow, type Pile, type SortKey } from "@/lib/employeeList";
+import { EXIT_FILTERS, LIST_COLUMNS, PILES, SORT_LABEL, exitMatches, matches, pileOfRow, sortRows, type ExitFilter, type ExitSummary, type ListRow, type Pile, type SortKey } from "@/lib/employeeList";
 import { Icon } from "../NavIcons";
 import { EmployeeCards, EmployeeTable } from "./EmployeeTable";
 
 export const LIST_QS_KEY = "cipco_emp_list_qs";   // the employee page reads this so "← Employees" returns to the same filtered list
-const isPile = (x: string | null): x is Pile => x === "process" || x === "onboarded" || x === "rejected";
+const isPile = (x: string | null): x is Pile => x === "process" || x === "onboarded" || x === "offboarded" || x === "rejected";
 const isSort = (x: string | null): x is SortKey => !!x && x in SORT_LABEL;
 
 export default function EmployeeList() {
   const router = useRouter(); const path = usePathname(); const sp = useSearchParams();
   // Filters live in the address bar, so Back, refresh and "← Employees" all return to the same view.
   const pile: Pile = isPile(sp.get("pile")) ? (sp.get("pile") as Pile) : "process";
+  const exf = (EXIT_FILTERS.find((f) => f.key === sp.get("exit"))?.key ?? "") as ExitFilter;
   const stage = sp.get("stage") || ""; const proj = sp.get("project") || ""; const qParam = sp.get("q") || "";
   const sort: SortKey = isSort(sp.get("sort")) ? (sp.get("sort") as SortKey) : "newest"; const dir: "asc" | "desc" = sp.get("dir") === "asc" ? "asc" : sp.get("dir") === "desc" ? "desc" : sort === "newest" || sort === "updated" ? "desc" : "asc";
   const setParams = useCallback((patch: Record<string, string | null>) => {
@@ -29,7 +30,7 @@ export default function EmployeeList() {
   const snap = swrGet<{ rows: ListRow[]; docs: Record<string, number>; projects: Project[] }>("employees");   // last result, shown at once while a fresh one loads
   const [rows, setRows] = useState<ListRow[]>(snap?.rows ?? []); const [docs, setDocs] = useState<Record<string, number>>(snap?.docs ?? {}); const [projects, setProjects] = useState<Project[]>(snap?.projects ?? []);
   const [loading, setLoading] = useState(!snap); const [err, setErr] = useState(""); const [sel, setSel] = useState<string[]>([]); const [q, setQ] = useState(qParam); const [filters, setFilters] = useState(false);
-  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(""); const [exits, setExits] = useState<Record<string, ExitSummary>>({});
 
   const load = useCallback(async () => {
     if (!swrGet("employees")) setLoading(true); setErr(""); const sb = supabase();   // with something already on screen there is nothing to wait for
@@ -39,6 +40,13 @@ export default function EmployeeList() {
     const rw = (em.data || []) as unknown as ListRow[]; const pj = (pr.data || []) as Project[];   // projects are empty until the projects migration has been run
     const c: Record<string, number> = {}; (dc.data || []).forEach((x: any) => { if (x.status === "verified" || x.status === "received") c[x.employee_id] = (c[x.employee_id] || 0) + 1; });
     setRows(rw); setProjects(pj); setDocs(c); setLoading(false);
+    // each person's latest exit, for the Offboarded list (nothing until the offboarding migration is run)
+    const [xs, its] = await Promise.all([sb.from("employee_exits").select("id,employee_id,exit_type,status,rehire,created_at").neq("status", "cancelled").order("created_at"), sb.from("employee_exit_items").select("exit_id")]);
+    if (!xs.error) {
+      const n: Record<string, number> = {}; (its.data || []).forEach((i: { exit_id: string }) => { n[i.exit_id] = (n[i.exit_id] || 0) + 1; });
+      const m: Record<string, ExitSummary> = {}; (xs.data || []).forEach((x: { id: string; employee_id: string; exit_type: string; status: string; rehire: string }) => { m[x.employee_id] = { exit_type: x.exit_type, status: x.status, rehire: x.rehire, done: n[x.id] || 0 }; });
+      setExits(m);
+    }
     swrSet("employees", { rows: rw, docs: c, projects: pj });
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -50,16 +58,17 @@ export default function EmployeeList() {
   // Everything is filtered by project and search first, so the pile and stage counts always describe what you would see.
   const base = useMemo(() => rows.filter((r) => !proj || r.project_id === proj).filter((r) => matches(r, qParam)), [rows, proj, qParam]);
   const inPile = useMemo(() => base.filter((r) => pileOfRow(r) === pile), [base, pile]);
-  const shown = useMemo(() => sortRows(inPile.filter((r) => pile !== "process" || !stage || r.stage === stage), sort, dir, stageIndex), [inPile, pile, stage, sort, dir]);
+  const shown = useMemo(() => sortRows(inPile.filter((r) => (pile !== "process" || !stage || r.stage === stage) && (pile !== "offboarded" || exitMatches(exits[r.id], exf))), sort, dir, stageIndex), [inPile, pile, stage, sort, dir, exits, exf]);
+  const exitCount = (f: ExitFilter) => inPile.filter((r) => exitMatches(exits[r.id], f)).length;
   const pileCount = (k: Pile) => base.filter((r) => pileOfRow(r) === k).length;
   const stageCount = (k: string) => base.filter((r) => pileOfRow(r) === "process" && r.stage === k).length;
   const live = sel.filter((id) => rows.some((r) => r.id === id)); const hidden = live.filter((id) => !shown.some((r) => r.id === id)).length;
   const filtersOn = (proj ? 1 : 0) + (stage ? 1 : 0) + (sort !== "newest" ? 1 : 0);
 
   const onSort = (k: SortKey) => setParams(k === sort ? { dir: dir === "asc" ? "desc" : "asc" } : { sort: k === "newest" ? null : k, dir: null });
-  const empty = qParam ? "Nothing matches your search." : proj || stage ? "Nobody here with these filters." : pile === "rejected" ? "Nobody has been rejected or declined." : pile === "onboarded" ? "Nobody has been marked Onboarded yet." : "No candidates here yet.";
-  const clearAll = () => { setQ(""); setParams({ q: null, stage: null, project: null, sort: null, dir: null }); };
-  const emptyAction = qParam || proj || stage ? <button className="btn btn-sm" onClick={clearAll}>Clear search and filters</button> : pile === "process" ? <Link className="btn btn-primary btn-sm" href="/employees/new">+ New candidate</Link> : undefined;
+  const empty = qParam ? "Nothing matches your search." : proj || stage || exf ? "Nobody here with these filters." : pile === "offboarded" ? "Nobody has left yet. People appear here the day after their last working day." : pile === "rejected" ? "Nobody has been rejected or declined." : pile === "onboarded" ? "Nobody has been marked Onboarded yet." : "No candidates here yet.";
+  const clearAll = () => { setQ(""); setParams({ q: null, stage: null, project: null, sort: null, dir: null, exit: null }); };
+  const emptyAction = qParam || proj || stage || exf ? <button className="btn btn-sm" onClick={clearAll}>Clear search and filters</button> : pile === "process" ? <Link className="btn btn-primary btn-sm" href="/employees/new">+ New candidate</Link> : undefined;
 
   async function bulk(patch: Record<string, any>, done: string, confirmText?: string) {
     if (!live.length || (confirmText && !confirm(confirmText))) return;
@@ -104,26 +113,30 @@ export default function EmployeeList() {
       {filters && <div className="md:hidden grid gap-2">{filterControls}</div>}
 
       <div role="tablist" aria-label="Employee lists" className="flex border-b border-slate-200 overflow-x-auto">
-        {PILES.map((p) => <button key={p.key} role="tab" aria-selected={pile === p.key} className={`tab ${pile === p.key ? "tab-on" : ""}`} onClick={() => { setParams({ pile: p.key === "process" ? null : p.key, stage: null }); setSel([]); }}>{p.label} <span className="text-slate-500 font-normal">({pileCount(p.key)})</span></button>)}
+        {PILES.map((p) => <button key={p.key} role="tab" aria-selected={pile === p.key} className={`tab ${pile === p.key ? "tab-on" : ""}`} onClick={() => { setParams({ pile: p.key === "process" ? null : p.key, stage: null, exit: null }); setSel([]); }}>{p.label} <span className="text-slate-500 font-normal">({pileCount(p.key)})</span></button>)}
       </div>
       {pile === "process" && <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap" aria-label="Filter by stage">
         <button className={`chip ${!stage ? "chip-on" : ""}`} onClick={() => setParams({ stage: null })}>All stages</button>
         {STAGES.filter((s) => s.key !== "onboarded").map((s) => <button key={s.key} className={`chip ${stage === s.key ? "chip-on" : ""}`} aria-pressed={stage === s.key} onClick={() => setParams({ stage: stage === s.key ? null : s.key })}>{s.label} <span className="text-slate-500">{stageCount(s.key)}</span></button>)}
       </div>}
 
+      {pile === "offboarded" && <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap" aria-label="Filter offboarded">
+        {EXIT_FILTERS.map((f) => <button key={f.key || "all"} className={`chip ${exf === f.key ? "chip-on" : ""}`} aria-pressed={exf === f.key} onClick={() => setParams({ exit: f.key || null })}>{f.label} <span className="text-slate-500">{exitCount(f.key)}</span></button>)}
+      </div>}
+
       {err && <div className="warn !text-sm flex flex-wrap items-center gap-3"><span>Couldn't load the list: {err}</span><button className="btn btn-sm" onClick={load}>Try again</button></div>}
       {live.length > 0 && <div className="card !py-2 !px-3 flex flex-wrap items-center gap-2 text-sm sticky top-14 z-10 border-blue-200 bg-blue-50/60">
         <b>{live.length} selected</b>{hidden > 0 && <span className="text-xs text-slate-500">({hidden} hidden by filters)</span>}
         {pile === "process" && <select className="inp !w-auto" aria-label="Move selected to stage" disabled={busy} value="" onChange={(e) => moveStage(e.target.value)}><option value="">Move to stage…</option>{STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</select>}
-        {pile !== "rejected" && projects.length > 0 && <select className="inp !w-auto" aria-label="Assign selected to project" disabled={busy} value="" onChange={(e) => assignProject(e.target.value)}><option value="">Assign to project…</option>{projects.filter((p) => p.status === "active").map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>}
+        {pile !== "rejected" && pile !== "offboarded" && projects.length > 0 && <select className="inp !w-auto" aria-label="Assign selected to project" disabled={busy} value="" onChange={(e) => assignProject(e.target.value)}><option value="">Assign to project…</option>{projects.filter((p) => p.status === "active").map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>}
         <a className="btn btn-sm" href={`/api/export/excel?ids=${live.join(",")}`}>Export</a>
         <button className="btn btn-sm ml-auto" onClick={() => setSel([])}>Clear selection</button>
       </div>}
       {msg && <p role="status" className="text-sm text-slate-600">{msg}</p>}
 
       {!loading && !err && <p className="text-xs text-slate-500" aria-live="polite">Showing {shown.length} of {rows.filter((r) => pileOfRow(r) === pile).length}</p>}
-      <EmployeeCards rows={shown} pile={pile} sel={sel} setSel={setSel} docs={docs} loading={loading} empty={empty} emptyAction={emptyAction} />
-      <EmployeeTable rows={shown} pile={pile} sel={sel} setSel={setSel} docs={docs} loading={loading} empty={empty} emptyAction={emptyAction} sort={sort} dir={dir} onSort={onSort} />
+      <EmployeeCards rows={shown} pile={pile} sel={sel} setSel={setSel} docs={docs} exits={exits} loading={loading} empty={empty} emptyAction={emptyAction} />
+      <EmployeeTable rows={shown} pile={pile} sel={sel} setSel={setSel} docs={docs} exits={exits} loading={loading} empty={empty} emptyAction={emptyAction} sort={sort} dir={dir} onSort={onSort} />
     </div>
   );
 }

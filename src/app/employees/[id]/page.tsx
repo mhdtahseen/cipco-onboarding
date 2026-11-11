@@ -13,14 +13,17 @@ import PipelineBar from "@/components/PipelineBar";
 import CandidatePanel from "@/components/CandidatePanel";
 import { swrDrop } from "@/lib/swr";
 import { ActivityTab, PayTab } from "@/components/EmployeeWorkTabs";
+import ExitTab from "@/components/employees/ExitTab";
+import { useRole } from "@/lib/roles";
+import { istToday } from "@/lib/attendance";
 import { Icon } from "@/components/NavIcons";
 import { LIST_QS_KEY } from "@/components/employees/EmployeeList";
-import { initials, telHref, waHref } from "@/lib/employeeList";
+import { fmtShort, initials, telHref, waHref } from "@/lib/employeeList";
 import { stageIndex, stageLabel } from "@/lib/pipeline";
 
 const TABS = [
   { slug: "details", label: "Details" }, { slug: "letters", label: "Letters" }, { slug: "forms", label: "Forms & kit" }, { slug: "documents", label: "Documents" }, { slug: "mail", label: "Mail" },
-  { slug: "pay", label: "Pay & attendance", onboarded: true }, { slug: "activity", label: "Activity", onboarded: true },
+  { slug: "pay", label: "Pay & attendance", onboarded: true }, { slug: "activity", label: "Activity", onboarded: true }, { slug: "exit", label: "Exit & documents" },
 ] as const;
 type Slug = (typeof TABS)[number]["slug"];
 
@@ -35,7 +38,7 @@ function EmployeeScreen() {
   const { id } = useParams<{ id: string }>(); const isNew = id === "new"; const back = useBackHref();
   const router = useRouter(); const path = usePathname(); const sp = useSearchParams();
   const [emp, setEmp0] = useState<Employee | null>(null); const [docsKey, setDocsKey] = useState(0); const [panel, setPanel] = useState(false); const [err, setErr] = useState(""); const [missing, setMissing] = useState(false);
-  const [counts, setCounts] = useState<{ docs: number; letters: number }>({ docs: 0, letters: 0 });
+  const [counts, setCounts] = useState<{ docs: number; letters: number; exits: number }>({ docs: 0, letters: 0, exits: 0 }); const { staff } = useRole();
   // The employee list is remembered between visits. It is only thrown away if something it shows (a name, stage, project, document count) was changed here.
   const touched = useRef(false); const firstDocs = useRef<number | null>(null);
   const setEmp = useCallback((e: Employee) => { touched.current = true; setEmp0(e); }, []);
@@ -46,10 +49,10 @@ function EmployeeScreen() {
   })(); }, [id, isNew]);
   const loadCounts = useCallback(async () => {
     if (isNew) return; const sb = supabase();
-    const [d, l] = await Promise.all([sb.from("employee_documents").select("status").eq("employee_id", id).neq("doc_type", "resume"), sb.from("letters").select("id", { count: "exact", head: true }).eq("employee_id", id)]);
+    const [d, l, x] = await Promise.all([sb.from("employee_documents").select("status").eq("employee_id", id).neq("doc_type", "resume"), sb.from("letters").select("id", { count: "exact", head: true }).eq("employee_id", id).in("kind", ["offer", "appointment"]), sb.from("employee_exits").select("id", { count: "exact", head: true }).eq("employee_id", id)]);
     const docsN = (d.data || []).filter((x: any) => x.status === "verified" || x.status === "received").length;
     if (firstDocs.current === null) firstDocs.current = docsN; else if (docsN !== firstDocs.current) touched.current = true;   // the list shows this count
-    setCounts({ docs: docsN, letters: l.count ?? 0 });
+    setCounts({ docs: docsN, letters: l.count ?? 0, exits: x.error ? 0 : x.count ?? 0 });   // exits: 0 until the offboarding migration is run
   }, [id, isNew]);
   useEffect(() => { loadCounts(); }, [loadCounts, docsKey]);
 
@@ -60,7 +63,8 @@ function EmployeeScreen() {
   if (!emp) return <Skeleton />;
 
   const onboarded = emp.stage === "onboarded" && emp.outcome !== "rejected"; const rejected = emp.outcome === "rejected";
-  const tabs = TABS.filter((t) => !("onboarded" in t) || onboarded);
+  const left = !!emp.left_on && emp.left_on < istToday();   // their last working day has passed: they are in the Offboarded list
+  const tabs = TABS.filter((t) => (t.slug === "exit" ? staff && (onboarded || !!emp.left_on || counts.exits > 0) : !("onboarded" in t) || onboarded));
   const slug = (tabs.find((t) => t.slug === sp.get("tab"))?.slug ?? "details") as Slug;
   const goTab = (s: Slug) => { const n = new URLSearchParams(sp.toString()); if (s === "details") n.delete("tab"); else n.set("tab", s); const q = n.toString(); router.replace(q ? `${path}?${q}` : path, { scroll: false }); };
   const badge = (s: Slug) => s === "documents" ? `${counts.docs}/${DOC_TYPES.length}` : s === "letters" && counts.letters ? String(counts.letters) : "";
@@ -72,7 +76,7 @@ function EmployeeScreen() {
       <div className="flex flex-wrap items-center gap-3">
         <span aria-hidden className="h-12 w-12 shrink-0 rounded-full bg-blue-50 text-blue-800 font-semibold grid place-items-center">{initials(emp.full_name)}</span>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-bold truncate">{emp.full_name}</h1>{rejected ? <span className="pill !bg-red-50 !text-red-800">Rejected</span> : <span className="pill">{stageLabel(emp.stage)}</span>}{emp.emp_no && <span className="text-xs text-slate-500">{emp.emp_no}</span>}</div>
+          <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-bold truncate">{emp.full_name}</h1>{rejected ? <span className="pill !bg-red-50 !text-red-800">Rejected</span> : left && onboarded ? <span className="pill !bg-slate-100 !text-slate-700">Left {fmtShort(emp.left_on!, true)}</span> : <span className="pill">{stageLabel(emp.stage)}</span>}{!left && onboarded && emp.left_on && <span className="pill !bg-amber-50 !text-amber-800">Leaving {fmtShort(emp.left_on, true)}</span>}{emp.emp_no && <span className="text-xs text-slate-500">{emp.emp_no}</span>}</div>
           <p className="text-sm text-slate-500">{[emp.designation, emp.department, emp.project, emp.site_location].filter(Boolean).join(" · ") || "No role or project yet"}</p>
         </div>
         <div className="flex flex-wrap items-center gap-1">
@@ -95,6 +99,7 @@ function EmployeeScreen() {
           {slug === "mail" && <MailTab emp={emp} />}
           {slug === "pay" && <PayTab emp={emp} />}
           {slug === "activity" && <ActivityTab emp={emp} />}
+          {slug === "exit" && <ExitTab emp={emp} onChange={(e) => { setEmp(e); loadCounts(); }} />}
           </div>
         </div>
       </div>
