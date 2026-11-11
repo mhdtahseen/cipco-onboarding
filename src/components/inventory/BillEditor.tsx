@@ -1,4 +1,5 @@
 "use client";
+import ToolsLink from "./ToolsLink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { istToday } from "@/lib/attendance";
@@ -211,6 +212,7 @@ export default function BillEditor({ projectId, bill, newKind = "bill", approval
         </>}
         {recorded && (Number(bill.bill_total) > 0 ? <p className="text-sm text-green-700">₹{inr(Number(bill.bill_total))} is in this project's expenses under Site consumables. The items are counted as received.</p> : <p className="text-sm text-green-700">The items are counted as received. No expense was added.</p>)}
       </section>}
+      {recorded && staff && !viewer && !generated && bill && <ToolsLink bill={bill} items={items} />}
   </>);
   const rightCards = (<>
       {mineOpen && bill && <section className="card !p-3 space-y-3 hidden lg:block"><h2 className="text-sm font-semibold">{noBill ? "Check the entry" : "Check against the bill"}</h2>
