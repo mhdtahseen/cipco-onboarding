@@ -44,6 +44,7 @@ export const MODULES: Module[] = [
   { key: "accommodation", label: "Accommodation", section: "Operations" },
   { key: "site_supplies", label: "Site supplies", section: "Operations", note: "Gas cylinders and hired equipment." },
   { key: "inventory", label: "Inventory", section: "Operations", note: "Sending a bill to the JSL portal stays Admin-only." },
+  { key: "tools", label: "Tools & equipment", section: "Operations", note: "What the company owns and where it is. Changes need Admin or Operations whatever is set here." },
   { key: "expenses", label: "Expenses", section: "Operations", tabs: [{ key: "due", label: "Due" }, { key: "spent", label: "Spent" }] },
   { key: "quotations", label: "Quotations", section: "Sales" },
   { key: "invoices", label: "Invoices", section: "Sales" },
@@ -65,7 +66,7 @@ export const ALL_KEYS = MODULES.flatMap((m) => [m.key, ...(m.tabs ?? []).map((t)
 // Quotations create/read/update, Payroll and Clients, and view-only for Projects, Expenses and Meals (Overview, Daily log, People, Bills).
 type Row = Record<string, Level>;
 const staff: Row = {
-  employees: "full", payroll: "edit", attendance: "full", projects: "view", site_supplies: "full", inventory: "full", expenses: "view",
+  employees: "full", payroll: "edit", attendance: "full", projects: "view", site_supplies: "full", inventory: "full", tools: "full", expenses: "view",
   quotations: "edit", clients: "edit", clauses: "full", mail_templates: "full", quote_library: "full", settings: "full",
   "meals.overview": "view", "meals.daily": "view", "meals.people": "view", "meals.bills": "view",
 };

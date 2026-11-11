@@ -63,7 +63,7 @@ function InventoryScreen() {
     // Gas cylinders are swapped on every truck visit, not used up, so their stock is the count we hold now (from Site supplies), not a total of every delivery
     const [gm, gp] = await Promise.all([sb.from("gas_movements").select("product_id, kind, qty").eq("project_id", pid).is("voided_at", null), sb.from("gas_products").select("id, name, capacity")]);
     if (!gm.error && !gp.error) {
-      const held = new Map<string, number>(); for (const m of (gm.data ?? []) as { product_id: string; kind: string; qty: number }[]) held.set(m.product_id, (held.get(m.product_id) ?? 0) + (m.kind === "delivery" ? Number(m.qty) : -Number(m.qty)));
+      const held = new Map<string, number>(); for (const m of (gm.data ?? []) as { product_id: string; kind: string; qty: number }[]) held.set(m.product_id, (held.get(m.product_id) ?? 0) + (m.kind === "delivery" || m.kind === "opening" ? Number(m.qty) : m.kind === "emptied" ? 0 : -Number(m.qty)));
       setGasHeld(((gp.data ?? []) as { id: string; name: string; capacity: string | null }[]).filter((x) => held.has(x.id)).map((x) => ({ name: gasItemName(x.name, x.capacity), qty: held.get(x.id) ?? 0 })).sort((a, b) => a.name.localeCompare(b.name)));
     } else setGasHeld([]);
     setBills(list); setItems(all); setBusy(false);

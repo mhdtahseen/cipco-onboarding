@@ -1,6 +1,17 @@
 // What gas deliveries cost. One set of rules used by the Bills tab (what the site records come to for a bill), the order cards and the project's "gas cost to date",
 // so the three can never disagree. Pure functions: the callers fetch the data.
-export type GMove = { vendor_id: string; product_id: string; order_id: string | null; kind: "delivery" | "return" | "lost" | "damaged"; qty: number; moved_on: string; challan_no: string; voided_at: string | null; carrier?: string | null };   // carrier: who brought it (vendor | own | none); missing = vendor (before 2026-11-gas-own-transport.sql)
+export type GKind = "delivery" | "return" | "lost" | "damaged" | "opening" | "emptied";
+
+/** The cylinders of one product at a site. total = opening + delivered − taken back − lost − damaged (full and empty together). A swap (one full in, one empty out) leaves the total unchanged.
+ *  empty = what was used up, less the empties already taken back, never below 0 and never more than the total; full = total − empty. Voided entries must be left out by the caller.
+ *  The same rule is in the database (gas_stock_total / gas_stock_full in 2026-11-gas-stock.sql), which is what refuses an entry that does not fit. */
+export function stockOf(moves: { kind: string; qty: number }[]): { total: number; full: number; empty: number; opening: number; delivered: number; returned: number; lost: number; damaged: number; emptied: number } {
+  const n = (k: string) => moves.filter((m) => m.kind === k).reduce((s, m) => s + Number(m.qty), 0);
+  const opening = n("opening"), delivered = n("delivery"), returned = n("return"), lost = n("lost"), damaged = n("damaged"), emptied = n("emptied");
+  const total = opening + delivered - returned - lost - damaged; const empty = Math.max(0, Math.min(total, emptied - returned));
+  return { total, full: total - empty, empty, opening, delivered, returned, lost, damaged, emptied };
+}
+export type GMove = { vendor_id: string; product_id: string; order_id: string | null; kind: GKind; qty: number; moved_on: string; challan_no: string; voided_at: string | null; carrier?: string | null };   // carrier: who brought it (vendor | own | none); missing = vendor (before 2026-11-gas-own-transport.sql)
 export type GOrder = { id: string; gas_order_lines: { id: string; product_id: string; qty: number }[] };
 export type GPricing = { line_id: string; rate: number; gst_pct: number };
 export type GRate = { product_id: string; rate: number; gst_pct: number; valid_from: string };

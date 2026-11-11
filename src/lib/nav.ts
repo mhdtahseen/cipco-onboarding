@@ -34,6 +34,7 @@ export const NAV: NavItem[] = [
   { href: "/accommodation", label: "Accommodation", icon: "bed", section: "Operations", module: "accommodation", roles: ["admin", "viewer"], paths: ["/accommodation"] },
   { href: "/site-supplies", label: "Site supplies", icon: "wheelbarrow", section: "Operations", module: "site_supplies", roles: CONSUMABLES_ROLES, paths: ["/site-supplies", "/gas", "/equipment", "/api/gas"], bar: CONSUMABLES_BAR },
   { href: "/inventory", label: "Inventory", icon: "box", section: "Operations", module: "inventory", roles: ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"], paths: ["/inventory", "/api/inventory"], bar: ["site_engineer", "supervisor", "attendance"] },
+  { href: "/tools", label: "Tools & equipment", icon: "wrench", section: "Operations", module: "tools", roles: ["admin", "staff", "viewer"], paths: ["/tools", "/api/tools"] },
   { href: "/expenses", label: "Expenses", icon: "rupee-down", section: "Operations", module: "expenses", roles: ["admin", "staff", "viewer"], paths: ["/expenses", "/payments-due"] },
   { href: "/quotations", label: "Quotations", icon: "calculator", section: "Sales", module: "quotations", roles: ["admin", "staff", "viewer"], paths: ["/quotations"], bar: true },
   { href: "/invoices", label: "Invoices", icon: "receipt", section: "Sales", module: "invoices", roles: ["admin", "viewer"], paths: ["/invoices"] },

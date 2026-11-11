@@ -7,7 +7,7 @@ import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
 import PayeeBank from "@/components/PayeeBank";
 import type { Computed } from "@/components/SiteBills";
 import GasCostCard from "@/components/GasCostCard";
-import { countTrips, gasCost, type GMove, type GOrder } from "@/lib/gas";
+import { countTrips, gasCost, stockOf, type GKind, type GMove, type GOrder } from "@/lib/gas";
 import GasDeposits from "@/components/GasDeposits";
 import { JSL_LABEL, type JslStatus } from "@/lib/inventory";
 
@@ -16,7 +16,7 @@ type Vendor = { id: string; name: string; contact: string; phone: string; gstin:
 type Product = { id: string; vendor_id: string; name: string; capacity: string; active: boolean; sort_order: number; deposit_per_cylinder: number };
 type Line = { id: string; product_id: string; qty: number };
 type Order = { id: string; order_no: string; project_id: string; vendor_id: string; status: string; needed_by: string | null; note: string; requested_by: string | null; requested_role: string | null; decided_by: string | null; decided_at: string | null; reject_reason: string; created_at: string; gas_order_lines: Line[] };
-type Move = { id: string; project_id: string; vendor_id: string; product_id: string; order_id: string | null; kind: "delivery" | "return" | "lost" | "damaged"; qty: number; moved_on: string; challan_no: string; photo_path: string | null; note: string; entered_by: string | null; entered_role: string | null; created_at: string; voided_at: string | null; gas_movement_serials: { serial: string }[]; carrier?: Carrier | null; vehicle_id?: string | null; trip_ref?: string | null };
+type Move = { id: string; project_id: string; vendor_id: string; product_id: string; order_id: string | null; kind: GKind; qty: number; moved_on: string; challan_no: string; photo_path: string | null; note: string; entered_by: string | null; entered_role: string | null; created_at: string; voided_at: string | null; gas_movement_serials: { serial: string }[]; carrier?: Carrier | null; vehicle_id?: string | null; trip_ref?: string | null };
 type Carrier = "vendor" | "own" | "none";
 type TVehicle = { id: string; name: string; operator: string; active: boolean };
 type TripErrand = { id: string; gas_trip_ref: string; amount: number | null; voided_at: string | null };
@@ -29,9 +29,10 @@ type Pricing = { line_id: string; rate: number; gst_pct: number };
 type GasBill = { id: string; vendor_name: string; bill_no: string; bill_date: string; jsl_wanted: boolean; jsl_status: JslStatus; voided_at: string | null };
 
 const STATUS: Record<string, [string, string]> = { requested: ["Waiting for approval", "bg-amber-50 text-amber-800"], approved: ["Approved", "bg-blue-50 text-blue-800"], sent: ["Sent to vendor", "bg-blue-50 text-blue-800"], partly_delivered: ["Partly delivered", "bg-violet-50 text-violet-800"], delivered: ["Delivered", "bg-green-50 text-green-800"], closed: ["Closed", "bg-slate-100 text-slate-600"], rejected: ["Rejected", "bg-rose-50 text-rose-800"], cancelled: ["Cancelled", "bg-slate-100 text-slate-500"] };
-const KIND: Record<string, string> = { delivery: "Delivered (new, full)", return: "Picked up (empties)", lost: "Lost", damaged: "Damaged (valve / cap)" };
+const KIND: Record<string, string> = { delivery: "Delivered (new, full)", return: "Picked up (empties)", lost: "Lost", damaged: "Damaged (valve / cap)", opening: "Opening stock (already at the site)", emptied: "Used up (went empty)" };
 const CARRIER: Record<Carrier, string> = { vendor: "The gas vendor's vehicle", own: "Our transport vehicle", none: "Collected / no charge" };
-const FORM_KIND: Record<string, string> = { trip: "Delivery trip: new cylinders in, empties out", lost: "Lost", damaged: "Damaged (valve / cap)" };
+const FORM_KIND: Record<string, string> = { trip: "Delivery trip: new cylinders in, empties out", emptied: "Cylinders used up (went empty)", lost: "Lost", damaged: "Damaged (valve / cap)" };
+const OPENING_KIND = "Opening stock: cylinders already at the site before this app";
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const dmy = (iso: string) => new Date(iso.length === 10 ? iso + "T00:00:00" : iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: iso.length === 10 ? undefined : "Asia/Kolkata" });
 const plusDays = (iso: string, n: number) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return d.toLocaleDateString("sv-SE"); };
@@ -87,9 +88,9 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
   const myVendors = useMemo(() => { const ids = new Set(links.filter((l) => l.project_id === pid).map((l) => l.vendor_id)); return vendors.filter((v) => ids.has(v.id) && v.active); }, [vendors, links, pid]);
   const live = moves.filter((m) => !m.voided_at);
 
-  // cylinders with us per product: every full cylinder in, less the empties taken back and any lost or damaged. A swap leaves the count unchanged.
-  const held = useMemo(() => { const out = new Map<string, { qty: number }>(); live.forEach((m) => { const e = out.get(m.product_id) ?? { qty: 0 }; e.qty += m.kind === "delivery" ? m.qty : -m.qty; out.set(m.product_id, e); }); return out; }, [moves]);
-  const totals = (pidd: string) => { let d = 0, r = 0, l = 0, g = 0; live.filter((m) => m.product_id === pidd).forEach((m) => { if (m.kind === "delivery") d += m.qty; else if (m.kind === "return") r += m.qty; else if (m.kind === "lost") l += m.qty; else g += m.qty; }); return { d, r, l, g }; };
+  // cylinders at the site per product: opening stock and every delivery, less the empties taken back and any lost or damaged (full and empty together; a swap leaves it unchanged). Of those, "empty" are the ones used up and not yet taken back.
+  const held = useMemo(() => { const out = new Map<string, { qty: number; full: number; empty: number }>(); [...new Set(live.map((m) => m.product_id))].forEach((id) => { const s = stockOf(live.filter((m) => m.product_id === id)); out.set(id, { qty: s.total, full: s.full, empty: s.empty }); }); return out; }, [moves]);
+  const totals = (pidd: string) => { const s = stockOf(live.filter((m) => m.product_id === pidd)); return { d: s.delivered, r: s.returned, l: s.lost, g: s.damaged, o: s.opening, e: s.emptied }; };
   const projectProducts = useMemo(() => products.filter((p) => myVendors.some((v) => v.id === p.vendor_id) || moves.some((m) => m.product_id === p.id)), [products, myVendors, moves]);
   // the bill a delivery became (2026-11-inventory-gas.sql names it the same way: vendor, delivery date, challan); only a delivery makes one
   const gasBillOf = (m: Move) => (m.kind !== "delivery" ? undefined : gasBills.find((b) => !b.voided_at && b.vendor_name === vName(m.vendor_id) && b.bill_date === m.moved_on && b.bill_no === m.challan_no.trim()));
@@ -140,12 +141,14 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
     const fd = new FormData(); fd.set("file", file); fd.set("projectId", pid); const r = await fetch("/api/gas/upload", { method: "POST", body: fd }); if (!r.ok) return { error: await r.text() }; return { path: (await r.json()).path };
   };
   const addMove = async (row: Record<string, unknown>, serials: string[]) => {
-    const sb = supabase(); const { data, error } = await sb.from("gas_movements").insert(row).select("id").single(); if (error) return /carrier|trip_ref|vehicle_id/.test(error.message) ? "choosing who brought the cylinders needs 2026-11-gas-own-transport.sql to be run first" : error.message;
+    const sb = supabase(); const { data, error } = await sb.from("gas_movements").insert(row).select("id").single(); if (error) return /carrier|trip_ref|vehicle_id/.test(error.message) ? "choosing who brought the cylinders needs 2026-11-gas-own-transport.sql to be run first" : /gas_movements_kind_check/.test(error.message) ? "opening stock and used-up cylinders need 2026-11-gas-stock.sql to be run first" : error.message;
     if (serials.length) { const s2 = await sb.from("gas_movement_serials").insert(serials.map((serial) => ({ movement_id: data!.id, serial }))); if (s2.error) return "the serial numbers were not saved: " + s2.error.message; } return "";
   };
   // a lost or damaged cylinder: one entry
   async function saveMove() {
     const qty = parseInt(mf.qty, 10); const prod = pName(mf.product_id); if (!prod || !(qty > 0)) { setErr("Choose the product and enter how many cylinders."); return; }
+    if (mf.kind === "emptied") { const full = held.get(prod.id)?.full ?? 0; if (qty > full) { setErr(`Only ${full} full ${prodLabel(prod.id)} ${full === 1 ? "is" : "are"} at the site, so ${qty} cannot be marked empty.`); return; } }
+    if ((mf.kind === "lost" || mf.kind === "damaged") && qty > (held.get(prod.id)?.qty ?? 0)) { setErr(`Only ${held.get(prod.id)?.qty ?? 0} ${prodLabel(prod.id)} ${(held.get(prod.id)?.qty ?? 0) === 1 ? "is" : "are"} at the site, so ${qty} cannot be entered.`); return; }
     const serials = serialList(mf.serials); if (serials.length > qty) { setErr(`You entered ${serials.length} serial numbers for ${qty} cylinders.`); return; }
     setBusy(true); setErr(""); const up = await uploadPhoto(); if ("error" in up) { setErr(up.error); setBusy(false); return; }
     const e = await addMove({ project_id: pid, vendor_id: prod.vendor_id, product_id: prod.id, order_id: null, kind: mf.kind, qty, moved_on: mf.moved_on, challan_no: mf.challan_no.trim(), photo_path: up.path, note: mf.note.trim() }, serials);
@@ -165,6 +168,12 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
     for (const r of rows.filter((x) => x.i > 0)) { const e = await addMove({ ...base, vendor_id: r.p.vendor_id, product_id: r.p.id, order_id: mf.order_id || null, kind: "delivery", qty: r.i }, r.sIn); if (e) { setErr(`${prodLabel(r.p.id)} delivery: ${e}. Nothing after it was saved.`); setBusy(false); loadProject(); return; } }
     for (const r of rows.filter((x) => x.o > 0)) { const e = await addMove({ ...base, vendor_id: r.p.vendor_id, product_id: r.p.id, order_id: null, kind: "return", qty: r.o }, r.sOut); if (e) { setErr(`${prodLabel(r.p.id)} pick-up: ${e}. The deliveries above were saved.`); setBusy(false); loadProject(); return; } }
     setBusy(false); setPhoto(null); setTr({}); setMf({ ...mf, challan_no: "", note: "", order_id: "", carrier: "vendor", vehicle_id: "" }); note(`Trip recorded ✓${mf.carrier === "own" ? " · an errand was added on the vehicle; Operations / Admin enter its amount" : ""} (${rows.filter((x) => x.i > 0).map((x) => `${x.i} ${prodLabel(x.p.id)} in`).concat(rows.filter((x) => x.o > 0).map((x) => `${x.o} ${prodLabel(x.p.id)} out`)).join(", ")})`); loadProject();
+  }
+  // one tap: a cylinder was used up (full → empty). The database refuses it when no full cylinder of this product is at the site.
+  async function markEmpty(productId: string) {
+    const prod = pName(productId); if (!prod) return; setBusy(true); setErr("");
+    const e = await addMove({ project_id: pid, vendor_id: prod.vendor_id, product_id: prod.id, order_id: null, kind: "emptied", qty: 1, moved_on: today, challan_no: "", photo_path: null, note: "" }, []);
+    setBusy(false); if (e) { setErr(/gas_movements_kind_check|kind_check/.test(e) ? "Marking cylinders empty needs 2026-11-gas-stock.sql to be run first" : e); return; } note(`1 ${prodLabel(productId)} marked empty ✓ It goes back with the next truck.`); loadProject();
   }
   async function voidMove(m: Move) {
     const lastOfTrip = m.carrier === "own" && m.trip_ref && moves.filter((x) => x.trip_ref === m.trip_ref && !x.voided_at).length === 1;
@@ -222,7 +231,7 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
             </div></div>); })}
       </div>;
   const moveForm = !showMove ? null : <div className="card !p-3 space-y-3"><div className="font-medium">A truck came, or a cylinder was lost or damaged</div>
-          <div className="grid gap-3 sm:grid-cols-4"><div className="sm:col-span-2"><label className="lbl">What happened</label><select className="inp" value={mf.kind} onChange={(e) => setMf({ ...mf, kind: e.target.value })}>{Object.entries(FORM_KIND).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
+          <div className="grid gap-3 sm:grid-cols-4"><div className="sm:col-span-2"><label className="lbl">What happened</label><select className="inp" value={mf.kind} onChange={(e) => setMf({ ...mf, kind: e.target.value })}>{Object.entries({ ...FORM_KIND, ...(mayAct ? { opening: OPENING_KIND } : {}) }).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
             <div><label className="lbl">Date</label><input type="date" className="inp" max={today} value={mf.moved_on} onChange={(e) => setMf({ ...mf, moved_on: e.target.value })} /></div>
             <div><label className="lbl">Vendor's challan no.</label><input className="inp" value={mf.challan_no} onChange={(e) => setMf({ ...mf, challan_no: e.target.value })} /></div>
             {mf.kind === "trip" && <div className="sm:col-span-2"><label className="lbl">For order (optional)</label><select className="inp" value={mf.order_id} onChange={(e) => setMf({ ...mf, order_id: e.target.value })}><option value="">Not linked to an order</option>{openOrders.map((o) => <option key={o.id} value={o.id}>{o.order_no}</option>)}</select></div>}
@@ -328,8 +337,11 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
       </div>;
   const todayNode = !pid ? null : <section className="space-y-3"><div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold sm:mr-auto">Gas cylinders</h2>{canOrder && myVendors.length > 0 && <button className="btn btn-sm" onClick={() => { go("orders"); startOrder(); }}>New order</button>}</div>
     {!projectProducts.length && <p className="text-sm text-slate-500">No gas vendor is set up for {proj?.name ?? "this project"} yet.{money ? " Add one under Setup." : " Ask Operations or the Admin."}</p>}
-    <div className="grid gap-3 grid-cols-2 lg:grid-cols-3">{projectProducts.map((p) => { const h = held.get(p.id); const t = totals(p.id); return (
-      <div key={p.id} className="card !p-3 space-y-1"><div className="font-medium">{p.name}{p.capacity ? ` · ${p.capacity}` : ""}</div><div className="text-2xl font-semibold tabular-nums">{h?.qty ?? 0}<span className="text-sm font-normal text-slate-500"> with us</span></div><div className="text-xs text-slate-500">{t.d} refills in · {t.r} empties out{t.l ? ` · ${t.l} lost` : ""}{t.g ? ` · ${t.g} damaged` : ""}</div></div>); })}</div>
+    <div className="grid gap-3 grid-cols-2 lg:grid-cols-3">{projectProducts.map((p) => { const h = held.get(p.id); const t = totals(p.id); const full = h?.full ?? 0, empty = h?.empty ?? 0; return (
+      <div key={p.id} className="card !p-3 space-y-1" data-gas-card><div className="font-medium">{p.name}{p.capacity ? ` · ${p.capacity}` : ""}</div>
+        <div className="text-2xl font-semibold tabular-nums">{full}<span className="text-sm font-normal text-slate-500"> full</span>{empty > 0 && <span className="ml-3 text-lg text-amber-700">{empty}<span className="text-sm font-normal"> empty</span></span>}</div>
+        <div className="text-xs text-slate-500">{h?.qty ?? 0} at the site{t.o ? ` (${t.o} opening stock)` : ""} · {t.d} refills in · {t.r} empties out{t.l ? ` · ${t.l} lost` : ""}{t.g ? ` · ${t.g} damaged` : ""}</div>
+        {!viewer && full > 0 && <button type="button" className="tlink text-xs" disabled={busy} onClick={() => markEmpty(p.id)}>1 went empty</button>}{!viewer && !(h?.qty) && money && !t.o && <div className="text-[11px] text-slate-400">Already had some here? Add opening stock under "A truck came".</div>}</div>); })}</div>
     {orders.some((o) => ["approved", "sent", "partly_delivered"].includes(o.status)) && <div className="card !p-3"><div className="text-sm font-medium mb-1">Expected deliveries</div><ul className="text-sm space-y-0.5">{orders.filter((o) => ["approved", "sent", "partly_delivered"].includes(o.status)).map((o) => <li key={o.id}><b>{o.order_no}</b> · {o.gas_order_lines.map((l) => `${l.qty} ${prodLabel(l.product_id)}`).join(", ")}{o.needed_by ? ` · needed by ${dmy(o.needed_by)}` : ""} {badge(o.status)}</li>)}</ul></div>}
     {projectProducts.length > 0 && !showMove && <button className="btn btn-primary w-full sm:w-auto justify-center !min-h-14 !text-base !font-semibold" onClick={() => { setShowMove(true); setMf((f) => ({ ...f, product_id: f.product_id || moveProducts[0]?.id || "" })); }}>+ A truck came: cylinders in / out</button>}
     {moveForm}</section>;
