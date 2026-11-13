@@ -5,9 +5,14 @@ import Link from "next/link";
 import { stageLabel } from "@/lib/pipeline";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import { EMPTY, FIELD_GROUPS, PAYROLL_GROUP, PCC_GROUP, validate, withPoliceStation } from "@/lib/fields";
+import { EMPTY, FIELD_GROUPS, PAYROLL_GROUP, PCC_GROUP, validate, withPoliceStation, type FieldDef } from "@/lib/fields";
 import { usePoliceLists } from "@/lib/policeStations";
 import ListPick from "@/components/ListPick";
+import ProjectLinks from "@/components/employees/ProjectLinks";
+
+/** Stationed at: Site (posted to one project, on its attendance) or Head office (no posting, linked to projects). Departments that are head office by default. */
+const STATION_FIELD: FieldDef = { key: "stationed_at", label: "Stationed at", hint: "Head office: never on a site's attendance or onsite team; linked to projects for gate passes." };
+const isHeadOfficeDept = (d: string) => ["ops", "operations", "csuite"].includes(String(d || "").trim().toLowerCase().replace(/[\s_-]+/g, ""));
 import SalaryEditor from "./SalaryEditor";
 import PromptDialog, { type PromptSpec } from "./PromptDialog";
 import { Icon } from "./NavIcons";
@@ -34,12 +39,15 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
   const warn = validate(v); const isNew = !initial;
   // "Unsaved" = any field differs from the saved record (or from the blank form when adding a candidate)
   const ref0 = (initial ?? EMPTY) as Record<string, any>;
-  const dirty = [...FIELD_GROUPS, PAYROLL_GROUP, PCC_GROUP].flatMap((g) => g.fields).some((f) => String(v[f.key] ?? "") !== String(ref0[f.key] ?? "")) || (!isNew && JSON.stringify(v.salary ?? {}) !== JSON.stringify(ref0.salary ?? {})) || String(v.project_id ?? "") !== String(ref0.project_id ?? "");
+  const dirty = [...FIELD_GROUPS, PAYROLL_GROUP, PCC_GROUP, { fields: [STATION_FIELD] }].flatMap((g) => g.fields).some((f) => String(v[f.key] ?? "") !== String(ref0[f.key] ?? "")) || (!isNew && JSON.stringify(v.salary ?? {}) !== JSON.stringify(ref0.salary ?? {})) || String(v.project_id ?? "") !== String(ref0.project_id ?? "");
   useEffect(() => { if (!dirty) return; const warnLeave = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; }; window.addEventListener("beforeunload", warnLeave); return () => window.removeEventListener("beforeunload", warnLeave); }, [dirty]);
   const payGroup = { ...PAYROLL_GROUP, fields: PAYROLL_GROUP.fields.filter((f) => f.key !== "esic_no" || (!!initial && "esic_no" in (initial as object))) };   // the ESIC number appears once 2026-10-esic-number.sql has added the column
   // the police station of the permanent address sits in Address, right after PIN, once 2026-11-pcc-form.sql has added its column
   const hasPs = !!initial && "native_police_station" in (initial as object);
-  const fieldGroups = hasPs ? FIELD_GROUPS.map((g) => (g.title === "Address" ? { ...g, fields: withPoliceStation(g.fields) } : g)) : FIELD_GROUPS;
+  // Stationed at (2026-11-stationed-at.sql), just before Project: a head-office person has no site posting, only project links (below the form)
+  const hasStation = !!initial && "stationed_at" in (initial as object); const headOffice = hasStation && v.stationed_at === "head_office";
+  const fieldGroups = FIELD_GROUPS.map((g) => (g.title === "Address" && hasPs ? { ...g, fields: withPoliceStation(g.fields) }
+    : g.title === "Employment" && hasStation ? { ...g, fields: g.fields.flatMap((f) => (f.key === "project" ? [STATION_FIELD, f] : [f])) } : g));
   const groups = isNew ? [{ title: "Candidate", fields: FIELD_GROUPS.flatMap((g) => g.fields).filter((f) => ["full_name", "phone", "email", "designation", "department"].includes(f.key)) }] : [...fieldGroups, ...(initial && "pay_mode" in (initial as object) ? [payGroup] : [])];   // the payroll group appears once its migration has added the columns
   // State → District → police station come from the police-station lists; changing the State or District clears what depends on it
   const ps = usePoliceLists(v.state, v.district);
@@ -65,8 +73,9 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
   const refField = (key: string) => {
     if (key === "department") {
       const cur = v.department ?? ""; const hit = depts.find((d) => d.name.toLowerCase() === cur.toLowerCase()); const val = hit?.name ?? cur;
-      return <select className="inp" value={val} onChange={(e) => (e.target.value === "__new" ? addDept() : set("department", e.target.value))}><option value=""></option>{cur && !hit && <option value={cur}>{cur}</option>}{depts.map((d) => <option key={d.id}>{d.name}</option>)}<option value="__new">+ Add new department…</option></select>;
+      return <select className="inp" value={val} onChange={(e) => (e.target.value === "__new" ? addDept() : setV((p) => ({ ...p, department: e.target.value, ...(hasStation && isHeadOfficeDept(e.target.value) ? { stationed_at: "head_office" } : {}) })))}><option value=""></option>{cur && !hit && <option value={cur}>{cur}</option>}{depts.map((d) => <option key={d.id}>{d.name}</option>)}<option value="__new">+ Add new department…</option></select>;
     }
+    if (headOffice) return <p className="inp !bg-slate-50 text-slate-500 text-sm">No site posting. Head-office people are linked to projects below.</p>;
     const sel = projects.find((x) => x.id === v.project_id); const active = projects.filter((x) => x.status === "active");
     const val = v.project_id && sel ? sel.id : v.project ? "__legacy" : "";
     return <><select className="inp" value={val} onChange={(e) => pickProject(e.target.value)}><option value=""></option>
@@ -84,6 +93,7 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
     if (clean.aadhaar) clean.aadhaar = String(clean.aadhaar).replace(/\s/g, "");
     if (clean.pan) clean.pan = String(clean.pan).toUpperCase(); if (clean.ifsc) clean.ifsc = String(clean.ifsc).toUpperCase();
     if (v.project_id !== undefined) clean.project_id = v.project_id;   // only once the projects migration exists
+    if (!isNew && "stationed_at" in (initial as object)) { clean.stationed_at = v.stationed_at || "site"; if (clean.stationed_at === "head_office") clean.project_id = null; }
     clean.salary = v.salary ?? {};
     clean.monthly_ctc = calcSalary(v.salary ?? {}, v.gender)?.monthly.ctc ?? null;
     clean.updated_at = new Date().toISOString();
@@ -167,7 +177,8 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
             {g.fields.map((f) => (
               <div key={f.key} className={f.wide ? "sm:col-span-2 lg:col-span-3" : ""}>
                 <label className="lbl">{f.label}</label>
-                {f.key === "department" || f.key === "project" ? refField(f.key)
+                {f.key === "stationed_at" ? <select className="inp" value={v.stationed_at || "site"} onChange={(e) => set("stationed_at", e.target.value)}><option value="site">Site</option><option value="head_office">Head office</option></select>
+                : f.key === "department" || f.key === "project" ? refField(f.key)
                 : (f.key === "state" || f.key === "district" || f.key === "native_police_station") && ps.ready ? <ListPick value={v[f.key]} options={listFor(f.key)} onChange={(x) => pick(f.key as "state" | "district" | "native_police_station", x)} />
                 : f.type === "select" ? (
                   <select className="inp" value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}><option value=""></option>{f.options!.map((o) => <option key={o}>{o}</option>)}</select>
@@ -179,6 +190,7 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
               </div>))}
           </div>
         </details>); })}
+      {headOffice && v.id && <ProjectLinks employeeId={v.id} projects={projects} />}
       {!isNew && <SalaryEditor value={v.salary ?? {}} gender={v.gender} onChange={(c) => set("salary", c)} />}
       <div className="flex flex-wrap items-center gap-3 sticky bottom-[var(--bottom-nav-h,0px)] z-10 border-t border-slate-200 bg-[#f6f7fb] py-3">
         <button className="btn btn-primary" disabled={busy || (!isNew && !dirty)} onClick={save}>{busy ? "Saving…" : v.id ? "Save changes" : "Add candidate"}</button>

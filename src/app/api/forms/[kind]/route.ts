@@ -24,9 +24,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
     if (d?.file_path) photo = await r2Get(d.file_path);
   }
   // the person's project decides the unit details on the police verification form, and whether the kit includes it
-  let proj: any = null;
-  if ((kind === "pcc" || kind === "kit") && emp.project_id) {
-    const { data: pr } = await sb.from("projects").select("*").eq("id", emp.project_id).maybeSingle();
+  // a head-office person has no site posting: ?project= names one of the projects they need a gate pass for (2026-11-stationed-at.sql)
+  let proj: any = null; let pid = emp.project_id ?? null;
+  const asked = req.nextUrl.searchParams.get("project");
+  if (asked && /^[0-9a-f-]{36}$/.test(asked) && asked !== pid) { const { data: l } = await sb.from("employee_projects").select("id").eq("employee_id", emp.id).eq("project_id", asked).eq("gate_pass", true).maybeSingle(); if (l) pid = asked; }
+  if ((kind === "pcc" || kind === "kit") && pid) {
+    const { data: pr } = await sb.from("projects").select("*").eq("id", pid).maybeSingle();
     if (pr?.client_id) { const { data: c } = await sb.from("clients").select("name").eq("id", pr.client_id).maybeSingle(); proj = { ...pr, client_name: c?.name ?? null }; } else proj = pr;
   }
   const pcc = kind === "pcc" || (kind === "kit" && proj?.police_verification) ? await fillPccForm(emp, proj, photo, req.nextUrl.searchParams.get("pan") === "1") : null;

@@ -13,6 +13,7 @@ export type Employee = {
   week_off: string | null; left_on?: string | null; pay_mode?: string | null; upi_id?: string | null; esic_no?: string | null; status: string | null; notes: string | null;
   call_notes: string | null; interview_notes: string | null;
   native_police_station?: string | null;   // PCC form (2026-11-pcc-form.sql)
+  stationed_at?: "site" | "head_office";    // 2026-11-stationed-at.sql: head office has no site posting, only project links
   stage: string; outcome: "active" | "rejected"; closed_reason: string | null; closed_note: string | null; closed_stage: string | null; closed_at: string | null;
 };
 
@@ -44,6 +45,13 @@ export const DOC_TYPES: { key: string; label: string }[] = [
   { key: "form11_signed", label: "Signed PF Form 11" },
   { key: "gratuity_signed", label: "Signed Gratuity Form F" },
 ];
+
+/** Head-office people need the same documents as the site team for a gate pass, except the ESIC and medical ones. */
+export const HEAD_OFFICE_SKIP_DOCS = new Set(["esic_card", "esic_medical", "form32", "form33"]);
+export const isHeadOffice = (e: { stationed_at?: string | null } | null | undefined) => e?.stationed_at === "head_office";
+/** The document checklist that applies to this person. */
+export const docTypesFor = (e: { stationed_at?: string | null } | null | undefined) => (isHeadOffice(e) ? DOC_TYPES.filter((d) => !HEAD_OFFICE_SKIP_DOCS.has(d.key)) : DOC_TYPES);
+export type EmployeeProject = { id: string; employee_id: string; project_id: string; role: string; from_date: string | null; to_date: string | null; gate_pass: boolean };
 
 export type AnnexureSnapshot = { rows: AnnexureRow[]; notes: string[]; name: string; designation: string; department: string };
 

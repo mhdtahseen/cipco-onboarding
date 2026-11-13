@@ -38,6 +38,10 @@ export default function ProjectPage() {
   const [tab, setTab] = useState<Tab>("overview"); const [edit, setEdit] = useState(false); const [ed, setEd] = useState({ name: "", location: "", description: "", client_id: "", state_code: "", ...PCC_BLANK }); const [clients, setClients] = useState<Client[]>([]);
   useEffect(() => { supabase().from("clients").select("*").eq("active", true).order("name").then(({ data }) => setClients((data || []) as Client[])); }, []);
   const [docOpen, setDocOpen] = useState(0); const [msg, setMsg] = useState("");
+  // head-office people linked to this project (2026-11-stationed-at.sql): shown under the onsite team, never part of it
+  const [hoLinks, setHoLinks] = useState<{ id: string; role: string; from_date: string | null; to_date: string | null; gate_pass: boolean; employees: { id: string; full_name: string; emp_no: string | null; designation: string | null; department: string | null } | null }[]>([]);
+  useEffect(() => { supabase().from("employee_projects").select("id, role, from_date, to_date, gate_pass, employees(id, full_name, emp_no, designation, department)").eq("project_id", id).order("created_at")
+    .then(({ data, error }) => setHoLinks(error ? [] : ((data || []) as any[]).filter((x) => x.employees))); }, [id]);
   if (d.loading) return <PageLoader />;
   if (d.err || !p) return <p className="warn">{d.err || "Project not found"}</p>;
 
@@ -126,6 +130,13 @@ export default function ProjectPage() {
           <tbody>{r.live.map((e) => <tr key={e.id} className="border-t border-slate-100"><td className="p-3"><Link className="font-medium text-blue-800 hover:underline" href={`/employees/${e.id}`}>{e.full_name}</Link><div className="text-xs text-slate-500">{e.emp_no}</div></td><td className="p-3">{e.designation || "—"}</td><td className="p-3">{e.department || "—"}</td><td className="p-3 whitespace-nowrap">{fmtD(e.join_date)}</td><td className="p-3"><span className="text-xs bg-blue-50 text-blue-800 rounded-full px-2 py-1">{stageLabel(e.stage)}</span></td></tr>)}
             {!r.live.length && <tr><td className="p-6 text-center text-slate-500" colSpan={5}>Nobody is assigned to this project yet. Pick this project in a person's <b>Project</b> field to add them.</td></tr>}</tbody></table>
       </div>}
+      {tab === "people" && hoLinks.length > 0 && <section className="card !p-0 overflow-x-auto" data-head-office>
+        <div className="px-3 pt-3"><h3 className="font-semibold">Head office support</h3><p className="text-xs text-slate-500">Working on this project from head office: not on the site's attendance or onsite team. Linked from each person's record.</p></div>
+        <table className="w-full text-sm mt-2"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="p-3">Name</th><th className="p-3">Role on the project</th><th className="p-3">Department</th><th className="p-3">Dates</th><th className="p-3">Gate pass</th></tr></thead>
+          <tbody>{hoLinks.map((x) => <tr key={x.id} className="border-t border-slate-100"><td className="p-3"><Link className="font-medium text-blue-800 hover:underline" href={`/employees/${x.employees!.id}`}>{x.employees!.full_name}</Link><div className="text-xs text-slate-500">{x.employees!.emp_no}{x.employees!.designation ? ` · ${x.employees!.designation}` : ""}</div></td>
+            <td className="p-3">{x.role || "—"}</td><td className="p-3">{x.employees!.department || "—"}</td><td className="p-3 whitespace-nowrap">{x.from_date || x.to_date ? `${x.from_date ? fmtD(x.from_date) : "…"} – ${x.to_date ? fmtD(x.to_date) : "ongoing"}` : "—"}</td>
+            <td className="p-3">{x.gate_pass ? <span className="text-xs bg-emerald-50 text-emerald-800 rounded-full px-2 py-1">Needed</span> : <span className="text-xs text-slate-400">No</span>}</td></tr>)}</tbody></table>
+      </section>}
 
       {tab === "forecast" && (!showForecast ? <p className="text-sm text-slate-500">The forecast is only for active projects.</p> : fcErr ? <p className="warn" role="alert">{fcErr}</p> : !fc ? <PageLoader /> : fcEmpty ? <p className="card text-sm text-slate-500">Nothing to forecast yet: this project has no people, rooms or costs.</p> : <div className="mob"><ForecastView key={fc.projectId} input={fc} /></div>)}
       {tab === "documents" && (d.docErr ? <p className="warn">{d.docErr}</p> : <ProjectDocuments project={p} types={dTypes} setTypes={d.setDTypes} docs={pdocs} reload={d.loadDocs} openSignal={docOpen} />)}

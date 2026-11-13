@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
-import { DOC_TYPES, type Employee } from "@/lib/types";
+import { docTypesFor, isHeadOffice, type Employee } from "@/lib/types";
 
 type Row = { doc_type: string; status: string; file_path: string | null; notes: string | null };
 const STATUS = ["pending", "received", "verified", "not_required"];
@@ -24,12 +24,13 @@ export default function DocsTab({ emp }: { emp: Employee }) {
     if (r.ok) { const { path } = await r.json(); await upsert(doc_type, { file_path: path, status: "received" }); } else alert(await r.text()); setBusy("");
   }
   function view(path: string) { window.open(`/api/docs/view?path=${encodeURIComponent(path)}`, "_blank"); }
-  const done = DOC_TYPES.filter((d) => ["received", "verified", "not_required"].includes(rows[d.key]?.status)).length;
+  const types = docTypesFor(emp);   // head office: no ESIC or medical documents
+  const done = types.filter((d) => ["received", "verified", "not_required"].includes(rows[d.key]?.status)).length;
   return (
     <div className="card">
-      <div className="flex items-center justify-between mb-3"><h3 className="font-semibold">Document checklist</h3><span className="text-sm text-slate-500">{done}/{DOC_TYPES.length} complete</span></div>
+      <div className="flex items-center justify-between mb-3"><h3 className="font-semibold">Document checklist</h3><span className="text-sm text-slate-500">{done}/{types.length} complete{isHeadOffice(emp) ? " · head office: no ESIC or medical documents" : ""}</span></div>
       <div className="divide-y divide-slate-100">
-        {DOC_TYPES.map((d) => { const r = rows[d.key]; return (
+        {types.map((d) => { const r = rows[d.key]; return (
           <div key={d.key} className="py-3 flex flex-wrap items-center gap-3">
             <div className="w-full sm:w-64 text-sm font-medium">{d.label}</div>
             <select className="inp !w-auto sm:!w-36" value={r?.status || "pending"} onChange={(e) => upsert(d.key, { status: e.target.value })}>{STATUS.map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}</select>

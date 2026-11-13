@@ -3,7 +3,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
-import { DOC_TYPES, type Employee } from "@/lib/types";
+import { docTypesFor, type Employee } from "@/lib/types";
 import EmployeeForm from "@/components/EmployeeForm";
 import LettersTab from "@/components/LettersTab";
 import FormsTab from "@/components/FormsTab";
@@ -38,7 +38,7 @@ function EmployeeScreen() {
   const { id } = useParams<{ id: string }>(); const isNew = id === "new"; const back = useBackHref();
   const router = useRouter(); const path = usePathname(); const sp = useSearchParams();
   const [emp, setEmp0] = useState<Employee | null>(null); const [docsKey, setDocsKey] = useState(0); const [panel, setPanel] = useState(false); const [err, setErr] = useState(""); const [missing, setMissing] = useState(false);
-  const [counts, setCounts] = useState<{ docs: number; letters: number; exits: number; submitted: number }>({ docs: 0, letters: 0, exits: 0, submitted: 0 }); const { staff } = useRole();
+  const [counts, setCounts] = useState<{ docs: number; letters: number; exits: number; submitted: number; have: string[] }>({ docs: 0, letters: 0, exits: 0, submitted: 0, have: [] }); const { staff } = useRole();
   // The employee list is remembered between visits. It is only thrown away if something it shows (a name, stage, project, document count) was changed here.
   const touched = useRef(false); const firstDocs = useRef<number | null>(null);
   const setEmp = useCallback((e: Employee) => { touched.current = true; setEmp0(e); }, []);
@@ -49,12 +49,12 @@ function EmployeeScreen() {
   })(); }, [id, isNew]);
   const loadCounts = useCallback(async () => {
     if (isNew) return; const sb = supabase();
-    const [d, l, x, f] = await Promise.all([sb.from("employee_documents").select("status").eq("employee_id", id).neq("doc_type", "resume"), sb.from("letters").select("id", { count: "exact", head: true }).eq("employee_id", id).in("kind", ["offer", "appointment"]), sb.from("employee_exits").select("id", { count: "exact", head: true }).eq("employee_id", id),
+    const [d, l, x, f] = await Promise.all([sb.from("employee_documents").select("status, doc_type").eq("employee_id", id).neq("doc_type", "resume"), sb.from("letters").select("id", { count: "exact", head: true }).eq("employee_id", id).in("kind", ["offer", "appointment"]), sb.from("employee_exits").select("id", { count: "exact", head: true }).eq("employee_id", id),
       sb.from("form_invites").select("id", { count: "exact", head: true }).eq("employee_id", id).eq("status", "submitted")]);
     const docsN = (d.data || []).filter((x: any) => x.status === "verified" || x.status === "received").length;
     if (firstDocs.current === null) firstDocs.current = docsN; else if (docsN !== firstDocs.current) touched.current = true;   // the list shows this count
     // submitted: the candidate has filled in their self-fill link and nobody has applied it yet (applying sets the invite to "applied", and onApplied reloads this)
-    setCounts({ docs: docsN, letters: l.count ?? 0, exits: x.error ? 0 : x.count ?? 0, submitted: f.error ? 0 : f.count ?? 0 });   // exits: 0 until the offboarding migration is run
+    setCounts({ docs: docsN, letters: l.count ?? 0, exits: x.error ? 0 : x.count ?? 0, submitted: f.error ? 0 : f.count ?? 0, have: (d.data || []).filter((x: any) => x.status === "verified" || x.status === "received").map((x: any) => x.doc_type) });   // exits: 0 until the offboarding migration is run
   }, [id, isNew]);
   useEffect(() => { loadCounts(); }, [loadCounts, docsKey]);
 
@@ -69,7 +69,7 @@ function EmployeeScreen() {
   const tabs = TABS.filter((t) => (t.slug === "exit" ? staff && (onboarded || !!emp.left_on || counts.exits > 0) : !("onboarded" in t) || onboarded));
   const slug = (tabs.find((t) => t.slug === sp.get("tab"))?.slug ?? "details") as Slug;
   const goTab = (s: Slug) => { const n = new URLSearchParams(sp.toString()); if (s === "details") n.delete("tab"); else n.set("tab", s); const q = n.toString(); router.replace(q ? `${path}?${q}` : path, { scroll: false }); };
-  const badge = (s: Slug) => s === "documents" ? `${counts.docs}/${DOC_TYPES.length}` : s === "letters" && counts.letters ? String(counts.letters) : "";
+  const badge = (s: Slug) => s === "documents" ? `${docTypesFor(emp).filter((t) => counts.have.includes(t.key)).length}/${docTypesFor(emp).length}` : s === "letters" && counts.letters ? String(counts.letters) : "";
   const tel = telHref(emp.phone); const wa = waHref(emp.phone); const hasNotes = !!(emp.notes || emp.call_notes || emp.interview_notes);
 
   return (

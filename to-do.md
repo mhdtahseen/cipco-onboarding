@@ -238,6 +238,16 @@ Each project has its own currency (INR by default; QAR, AED, SAR, OMR, KWD, BHD,
 - [ ] Payroll on a foreign project: workers paid in that currency? ESIC / EPFO switched off for it?
 - [ ] Invoices and quotations: follow the project's currency, or allow billing the client in another currency (e.g. USD for a Qatar project)?
 
+## Stationed at: Site / Head office (built 2026-11-13; migration `2026-11-stationed-at.sql` to run)
+Head-office people (Operations / Ops, C-Suite) have no site posting: never on a site's attendance, onsite team, meals, transport or payroll. They are linked to projects (role, dates, gate pass) and listed under "Head office support" on each project. Their document checklist leaves out ESIC (e-Pehchan, ESIC medical) and the medical forms (32, 33); the joining kit and police verification form are made for a gate-pass project.
+- [ ] Run `2026-11-stationed-at.sql`: it moves current Operations / Ops / C-Suite people to Head office, keeps their site as a project link (gate pass on) and clears the posting, so they leave that project's payroll from now on
+- [ ] Check the moved people on each project's People tab and their record's Projects panel
+
+### Head Office module (later)
+- [ ] Head-office payroll: full month unless leave is entered; not a "Head Office" project (decided 2026-11-13); some people are not on payroll at all
+- [ ] Leave tracker for head-office staff
+- [ ] Show "Head office" in the Employees list's project column
+
 ## Pending from earlier work — needs running / deciding
 - [ ] Run in Supabase (in this order, each is safe to re-run):
   - `supabase/migrations/2026-10-candidate-form-invites.sql` (self-fill links; re-run to get the 7-day expiry and pre-fill)
