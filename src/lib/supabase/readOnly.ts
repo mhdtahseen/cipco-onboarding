@@ -5,6 +5,8 @@
 //   full   : no limit
 // The database still refuses what a role may never do; for modules whose rows other roles may already write, this is the guard. The shell sets it from the person's level in the module they are on,
 // and tabbed screens (Meals, Payroll, Expenses) narrow it to the tab. See lib/perms.ts.
+import { isPractice, practiceRead, practiceRpc, practiceRpcResult, practiceWrite, PRACTICE_MESSAGE } from "./practice";
+export { setPractice, isPractice, PRACTICE_MESSAGE } from "./practice";
 export type WriteLevel = "view" | "create" | "edit" | "full";
 let level: WriteLevel = "full"; let viewer = false;
 export const setReadOnly = (on: boolean) => { viewer = on; };          // the Viewer role: always view
@@ -17,12 +19,18 @@ const refused = (l: WriteLevel): any => new Proxy(function () { /* chainable sta
   get: (_t, k) => (k === "then" ? (res: any, rej: any) => Promise.resolve({ data: null, error: { message: message(l), code: "view_only" }, count: null, status: 403, statusText: "not allowed" }).then(res, rej) : () => refused(l)),
   apply: () => refused(l),
 });
+const WRITES = ["insert", "update", "upsert", "delete"];
 const BLOCKED: Record<WriteLevel, string[]> = { view: ["insert", "update", "upsert", "delete"], create: ["update", "upsert", "delete"], edit: ["delete"], full: [] };
 export const guard = <T extends object>(client: T): T => new Proxy(client, {
   get(target, key) {
     const value = (target as any)[key];
-    if (key === "rpc") return (name: string, ...args: unknown[]) => { const l = effective(); return l === "view" && !READ_RPCS.has(name) ? refused(l) : value.call(target, name, ...args); };
-    if (key === "from") return (table: string) => new Proxy(value.call(target, table), { get(q, qk) { const v = (q as any)[qk]; const l = effective(); if (BLOCKED[l].includes(qk as string)) return () => refused(l); return typeof v === "function" ? v.bind(q) : v; } });
+    if (key === "rpc") return (name: string, ...args: unknown[]) => { const l = effective(); return l === "view" && !READ_RPCS.has(name) ? refused(l) : isPractice() && practiceRpc(name) ? practiceRpcResult() : value.call(target, name, ...args); };
+    // Practice mode: what the person's level allows is kept in the browser instead of being sent (lib/supabase/practice.ts); what it doesn't allow is refused as usual
+    if (key === "from") return (table: string) => new Proxy(value.call(target, table), { get(q, qk) { const v = (q as any)[qk]; const l = effective(); if (BLOCKED[l].includes(qk as string)) return () => refused(l);
+      if (isPractice() && WRITES.includes(qk as string)) return (payload: unknown, opts: unknown) => practiceWrite(target, table, qk as any, payload, opts);
+      if (isPractice() && qk === "select") return (...a: unknown[]) => practiceRead(table, v.apply(q, a));
+      return typeof v === "function" ? v.bind(q) : v; } });
+    if (key === "auth" && isPractice()) return new Proxy(value, { get: (a, ak) => (ak === "updateUser" ? () => Promise.resolve({ data: { user: null }, error: { message: PRACTICE_MESSAGE } }) : typeof (a as any)[ak] === "function" ? (a as any)[ak].bind(a) : (a as any)[ak]) });
     return typeof value === "function" ? value.bind(target) : value;
   },
 });

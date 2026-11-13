@@ -1,9 +1,9 @@
 "use client";
-import { setReadOnly, supabase } from "./supabase/client";
+import { setPractice, setReadOnly, supabase } from "./supabase/client";
 import type { Role } from "./roles";
 import { swrClear } from "./swr";
 
-export type Me = { userId: string; email: string; name: string; role: Role };
+export type Me = { userId: string; email: string; name: string; role: Role; practice: boolean };   // practice: nothing they change is saved (lib/supabase/practice.ts)
 
 // Who is signed in, their role and their name: fetched ONCE per browser tab and shared by the shell and every screen that asks.
 // Before this each of them asked Supabase separately ("who is this?", then the role, then the profile): several round trips in a row on every page.
@@ -15,11 +15,13 @@ let lastUid: string | null = null;   // who filled the list cache, so it is empt
 
 async function fetchMe(uid: string, email: string): Promise<Me> {
   const sb = supabase();
-  const [r, p] = await Promise.all([sb.from("user_roles").select("role").eq("user_id", uid).maybeSingle(), sb.from("user_profiles").select("full_name").eq("user_id", uid).maybeSingle()]);
+  let [r, p] = await Promise.all([sb.from("user_roles").select("role, practice").eq("user_id", uid).maybeSingle(), sb.from("user_profiles").select("full_name").eq("user_id", uid).maybeSingle()]);
+  if (r.error && /practice/.test(r.error.message)) r = await sb.from("user_roles").select("role").eq("user_id", uid).maybeSingle() as typeof r;   // before 2026-11-practice-mode.sql is run
   // If the roles table does not exist yet (migration not run) everyone is treated as admin, so nobody is locked out.
   const raw = r.error ? "admin" : ((r.data?.role as string) ?? "none");
   const role = (raw === "attendance" ? "supervisor" : raw) as Role; setReadOnly(role === "viewer");   // a Viewer cannot change anything: see supabase/client.ts
-  return { userId: uid, email, name: ((p.data?.full_name as string) || "").trim(), role };
+  const practice = !r.error && (r.data as { practice?: boolean } | null)?.practice === true && role !== "admin"; setPractice(practice);   // an Admin is never in practice mode, so nobody can lock the Users page
+  return { userId: uid, email, name: ((p.data?.full_name as string) || "").trim(), role, practice };
 }
 
 /** The signed-in user, or null if nobody is. Repeated calls share one fetch. */
@@ -40,5 +42,5 @@ export async function loadMe(): Promise<Me | null> {
 export const peekMe = (): Me | null => resolved;
 
 /** Forget what is cached (after a role or name changes) so the next read fetches it again. */
-export const resetMe = () => { cache = null; resolved = null; setReadOnly(false); };
+export const resetMe = () => { cache = null; resolved = null; setReadOnly(false); };   // practice mode stays on until the next read says otherwise, so nothing slips through in between
 

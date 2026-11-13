@@ -16,13 +16,16 @@ const norm = (r: string | null) => (r === "attendance" ? "supervisor" : r ?? "no
 
 // Admin only: who can sign in, what they are called, what they can do. Logins themselves are created in Supabase (Authentication → Add user).
 export default function UsersPage() {
-  const { admin } = useRole(); const [me, setMe] = useState(""); const [users, setUsers] = useState<U[]>([]); const [projects, setProjects] = useState<Project[]>([]); const [edit, setEdit] = useState<Record<string, { role: string; projects: string[]; name: string; employee: string }>>({}); const [emps, setEmps] = useState<Emp[]>([]);
+  const { admin } = useRole(); const [me, setMe] = useState(""); const [users, setUsers] = useState<U[]>([]); const [projects, setProjects] = useState<Project[]>([]); const [edit, setEdit] = useState<Record<string, { role: string; projects: string[]; name: string; employee: string; practice: boolean }>>({});
+  const [practice, setPractice] = useState<Record<string, boolean> | null>(null);   // who is in practice mode; null until 2026-11-practice-mode.sql is run
+  const [emps, setEmps] = useState<Emp[]>([]);
   const [tab, setTab] = useState<"users" | "activity">("users"); const [seen, setSeen] = useState<Record<string, string>>({});   // last time each person had the app open (2026-11-usage-activity.sql)
   const [geo, setGeo] = useState<Record<string, { status: string; at: string }>>({}); const [msg, setMsg] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState("");
   async function load() {
     const sb = supabase(); const { data: u } = await sb.auth.getUser(); setMe(u.user?.id ?? "");
     const [l, p, em] = await Promise.all([sb.rpc("admin_list_users"), sb.from("projects").select("*").order("name"), sb.from("employees").select("id, full_name, emp_no, email, stage, left_on").eq("outcome", "active").order("full_name")]);
     setEmps((em.data || []) as Emp[]);
+    const pr = await sb.from("user_roles").select("user_id, practice"); const pm: Record<string, boolean> | null = pr.error ? null : Object.fromEntries(((pr.data || []) as { user_id: string; practice: boolean }[]).map((x) => [x.user_id, !!x.practice])); setPractice(pm);
     const us = await sb.from("usage_sessions").select("user_id, last_seen_at").order("last_seen_at", { ascending: false }).limit(1000);
     const ls: Record<string, string> = {}; ((us.data || []) as { user_id: string; last_seen_at: string }[]).forEach((r) => { if (!ls[r.user_id]) ls[r.user_id] = r.last_seen_at; }); setSeen(ls);
     if (l.error) { setErr(l.error.message + " — has the latest attendance SQL migration been run, and are you an Admin?"); return; }
@@ -30,7 +33,7 @@ export default function UsersPage() {
     const g = await sb.from("entry_geo").select("user_id, geo_status, created_at").order("created_at", { ascending: false }).limit(2000);
     const last: Record<string, { status: string; at: string }> = {}; ((g.data || []) as { user_id: string; geo_status: string; created_at: string }[]).forEach((r) => { if (!last[r.user_id]) last[r.user_id] = { status: r.geo_status, at: r.created_at }; }); setGeo(last);
     const list = (l.data || []) as U[]; setUsers(list); setProjects(((p.data || []) as Project[]).filter((x) => x.status === "active"));
-    setEdit(Object.fromEntries(list.map((x) => [x.user_id, { role: norm(x.role), projects: x.project_ids || [], name: x.full_name || "", employee: x.employee_id || "" }])));
+    setEdit(Object.fromEntries(list.map((x) => [x.user_id, { role: norm(x.role), projects: x.project_ids || [], name: x.full_name || "", employee: x.employee_id || "", practice: !!pm?.[x.user_id] }])));
   }
   useEffect(() => { load(); }, []);
   async function save(u: U) {
@@ -39,7 +42,7 @@ export default function UsersPage() {
     if (e.employee !== (u.employee_id || "")) { const { error: le } = await sb.rpc("admin_link_login", { p_user: u.user_id, p_employee: e.employee || null }); if (le) { setErr(/admin_link_login|schema cache/.test(le.message) ? "Linking to an employee needs 2026-11-login-disable.sql to be run first." : le.message); setBusy(""); return; } }
     if (e.role === "none") { await sb.from("user_projects").delete().eq("user_id", u.user_id); const { error } = await sb.from("user_roles").delete().eq("user_id", u.user_id); if (error) { setMsg(error.message); setBusy(""); return; } }
     else {
-      const { error } = await sb.from("user_roles").upsert({ user_id: u.user_id, role: e.role }, { onConflict: "user_id" }); if (error) { setMsg(error.message); setBusy(""); return; }
+      const { error } = await sb.from("user_roles").upsert({ user_id: u.user_id, role: e.role, ...(practice ? { practice: e.role !== "admin" && e.practice } : {}) }, { onConflict: "user_id" }); if (error) { setMsg(error.message); setBusy(""); return; }
       await sb.from("user_projects").delete().eq("user_id", u.user_id);
       if (SITE_ROLES.includes(e.role) && e.projects.length) { const { error: e2 } = await sb.from("user_projects").insert(e.projects.map((project_id) => ({ user_id: u.user_id, project_id }))); if (e2) { setMsg(e2.message); setBusy(""); return; } }
     }
@@ -88,9 +91,9 @@ export default function UsersPage() {
       {tab === "users" && err && <p className="warn">{err}</p>}{tab === "users" && msg && <p className="text-sm text-green-700">{msg}</p>}
       {tab === "users" && users.map((u) => { const e = edit[u.user_id]; if (!e) return null; const mine = u.user_id === me;
         const suggest = !e.employee && !u.employee_id ? emps.find((m) => m.email && m.email.trim().toLowerCase() === u.email.toLowerCase() && !users.some((x) => x.employee_id === m.id)) : undefined;
-        const changed = e.employee !== (u.employee_id || "") || e.role !== norm(u.role) || e.name.trim() !== (u.full_name || "") || JSON.stringify([...e.projects].sort()) !== JSON.stringify([...(u.project_ids || [])].sort()); return (
+        const changed = e.practice !== !!practice?.[u.user_id] || e.employee !== (u.employee_id || "") || e.role !== norm(u.role) || e.name.trim() !== (u.full_name || "") || JSON.stringify([...e.projects].sort()) !== JSON.stringify([...(u.project_ids || [])].sort()); return (
         <div key={u.user_id} className="card !p-3 space-y-3">
-          <div className="flex flex-wrap items-center gap-2"><span className="font-medium break-all">{u.email}</span>{mine && <span className="text-xs bg-blue-50 text-blue-800 rounded-full px-2 py-0.5">you</span>}{alertBadge(u)}{geoBadge(u)}<span className="text-xs text-slate-400 sm:ml-auto" title={`Last signed in ${fmt(u.last_sign_in_at)}`}>{seen[u.user_id] ? `last active ${ago(seen[u.user_id])}` : `last sign-in ${fmt(u.last_sign_in_at)}`}</span>{u.disabled_at && <span className="text-xs bg-rose-50 text-rose-700 rounded-full px-2 py-0.5" title={u.disabled_reason || ""}>Login disabled · {fmt(u.disabled_at)}</span>}
+          <div className="flex flex-wrap items-center gap-2"><span className="font-medium break-all">{u.email}</span>{mine && <span className="text-xs bg-blue-50 text-blue-800 rounded-full px-2 py-0.5">you</span>}{practice?.[u.user_id] && <span className="text-xs bg-amber-100 text-amber-900 rounded-full px-2 py-0.5" title="Nothing they change is saved">Practice mode</span>}{alertBadge(u)}{geoBadge(u)}<span className="text-xs text-slate-400 sm:ml-auto" title={`Last signed in ${fmt(u.last_sign_in_at)}`}>{seen[u.user_id] ? `last active ${ago(seen[u.user_id])}` : `last sign-in ${fmt(u.last_sign_in_at)}`}</span>{u.disabled_at && <span className="text-xs bg-rose-50 text-rose-700 rounded-full px-2 py-0.5" title={u.disabled_reason || ""}>Login disabled · {fmt(u.disabled_at)}</span>}
             {!mine && !u.disabled_at && <button className="btn !py-1 !text-xs" disabled={busy === u.user_id} onClick={() => signOutUser(u)}>Sign out now</button>}
             {!mine && (u.disabled_at ? <button className="btn !py-1 !text-xs" disabled={busy === u.user_id} onClick={() => setLogin(u, "enable")}>Enable login</button> : <button className="btn btn-danger !py-1 !text-xs" disabled={busy === u.user_id} onClick={() => setLogin(u, "disable")}>Disable login</button>)}</div>
           {u.disabled_at && u.disabled_reason && <p className="text-xs text-rose-700">Disabled: {u.disabled_reason}</p>}
@@ -106,6 +109,7 @@ export default function UsersPage() {
                 {emps.filter((m) => m.id === e.employee || !users.some((x) => x.user_id !== u.user_id && x.employee_id === m.id)).map((m) => <option key={m.id} value={m.id}>{m.full_name}{m.emp_no ? ` (${m.emp_no})` : ""}{m.left_on ? ` · left ${fmt(m.left_on)}` : ""}</option>)}</select></label>
             {suggest && <button type="button" className="tlink text-xs mb-2" onClick={() => setEdit({ ...edit, [u.user_id]: { ...e, employee: suggest.id } })}>Suggested: {empLabel(suggest.id)} (same email) · link</button>}
           </div>
+          {practice && !mine && e.role !== "admin" && e.role !== "none" && <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={e.practice} onChange={(ev) => setEdit({ ...edit, [u.user_id]: { ...e, practice: ev.target.checked } })} /><span><b>Practice mode</b> <span className="text-slate-500">They use the app as a {ROLE_LABEL[e.role]} with the real data, but nothing they change is saved, sent or uploaded. A refresh resets it. Untick when they start for real (it applies from their next sign-in or refresh).</span></span></label>}
           {SITE_ROLES.includes(e.role) && <div className="space-y-1"><div className="lbl">Sites this {ROLE_LABEL[e.role].toLowerCase()} can work on</div><div className="flex flex-wrap gap-x-4 gap-y-1">{projects.map((p) => <label key={p.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={e.projects.includes(p.id)} onChange={(ev) => setEdit({ ...edit, [u.user_id]: { ...e, projects: ev.target.checked ? [...e.projects, p.id] : e.projects.filter((x) => x !== p.id) } })} />{p.name}</label>)}{!projects.length && <span className="text-sm text-slate-400">No active projects.</span>}</div></div>}
         </div>); })}
     </div>
