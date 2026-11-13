@@ -31,6 +31,8 @@ const en = {
   "f.alt_phone": "Alt number",
   "f.permanent_address": "Permanent address",
   "f.native_police_station": "Police station of permanent address",
+  "ps.other": "Not in the list (type it)",
+  "ps.back": "Choose from the list",
   "f.current_address": "Current / local address (blank = same)",
   "f.city": "City",
   "f.district": "District",

@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
-import { FIELD_GROUPS, validate, type FieldDef } from "@/lib/fields";
+import { FIELD_GROUPS, validate, withPoliceStation, type FieldDef } from "@/lib/fields";
+import { usePoliceLists } from "@/lib/policeStations";
+import ListPick from "@/components/ListPick";
 import { DEFAULT_LANG, LANGS, NON_ENGLISH, en, isLang, loadDict, makeT, stripNonEnglish, type Dict, type LangCode } from "@/lib/apply-i18n";
 import { PageLoader } from "@/components/Loader";
 
@@ -14,10 +16,11 @@ const GROUPS = [
   { title: "Your name", tk: "s.name", fields: FIELD_GROUPS[0].fields.filter((f) => f.key === "full_name") },
   ...FIELD_GROUPS.slice(1).map((g) => ({ ...g, tk: `s.${({ Personal: "personal", Family: "family", Address: "address", "Statutory & bank": "statutory", "Nominee & emergency contact": "nominee" } as Record<string, string>)[g.title] ?? "personal"}` })),
 ];
-// A project that needs police verification (the Gujarat PCC form) also asks for the police station of the permanent address, right after that address.
-// invite_get says so (needs_pcc); before 2026-11-invite-police-station.sql is run it never does, and the form stays as it was.
+// A project that needs police verification (the Gujarat PCC form) also asks for the police station of the permanent address, right after PIN
+// (State → District → City → PIN → police station). invite_get says so (needs_pcc); before 2026-11-invite-police-station.sql is run it never does.
 const PCC_FIELD: FieldDef = { key: "native_police_station", label: "Police station of permanent address", wide: true };
-const withPcc = (gs: typeof GROUPS) => gs.map((g) => g.tk !== "s.address" ? g : { ...g, fields: g.fields.flatMap((f) => (f.key === "permanent_address" ? [f, PCC_FIELD] : [f])) });
+const withPcc = (gs: typeof GROUPS) => gs.map((g) => g.tk !== "s.address" ? g : { ...g, fields: withPoliceStation(g.fields, PCC_FIELD) });
+const PICKED = new Set(["state", "district", "native_police_station"]);   // picked from the police-station lists when they are loaded
 const UPLOADS = [{ key: "aadhaar", hint: true }, { key: "pan" }, { key: "bank" }, { key: "photo", hint: true }, { key: "uan", hint: true }, { key: "resume" }];
 // On a phone, short fields share a row two at a time; everything else takes the full width. Tablets and up use two columns throughout.
 const HALF = new Set(["father_spouse_type", "dob", "gender", "marital_status", "religion", "blood_group", "city", "district", "state", "pin", "nominee_relation", "nominee_age_dob"]);
@@ -51,6 +54,10 @@ export default function ApplyPage() {
   })(); }, [token]);
   const warn = validate(v);
   const groups = inv?.needs_pcc ? withPcc(GROUPS) : GROUPS;
+  // State → District → police station: changing the State or District clears what depends on it
+  const ps = usePoliceLists(v.state, v.district);
+  const pick = (k: string, x: string) => setV((p) => ({ ...p, [k]: x,
+    ...(k === "state" && x !== p.state ? { district: "", native_police_station: "" } : {}), ...(k === "district" && x !== p.district ? { native_police_station: "" } : {}) }));
   // every typed answer goes through here: anything that is not English (another script) is dropped and a short reminder shows under that field
   const set = (k: string, x: string) => {
     if (NON_ENGLISH.test(x)) { x = stripNonEnglish(x); setEnKey(k); clearTimeout(enTimer.current); enTimer.current = setTimeout(() => setEnKey(""), 5000); }
@@ -126,6 +133,7 @@ export default function ApplyPage() {
               <label className="lbl" htmlFor={f.key}>{labelOf(f.key, f.label)}</label>
               {onFile.includes(f.key) && masked[f.key] !== undefined && !changing.has(f.key) && !String(v[f.key] ?? "").trim()
                 ? <div className="flex items-center gap-2"><div id={f.key} className="inp flex items-center justify-between !bg-slate-50 text-slate-600 tracking-wide" aria-label={`${labelOf(f.key, f.label)}, ${t("onFile")}, ${masked[f.key] ? `…${masked[f.key]}` : ""}`}><span>{masked[f.key] ? maskOf(f.key, masked[f.key]) : "••••••••"}</span><span className="text-xs text-green-700 ml-2 shrink-0">✓ {t("onFile")}</span></div><button type="button" className="btn shrink-0" onClick={() => setChanging((x) => new Set(x).add(f.key))}>{t("change")}</button></div>
+                : PICKED.has(f.key) && ps.ready ? <ListPick id={f.key} lang="en" value={v[f.key]} options={f.key === "state" ? ps.states : f.key === "district" ? ps.districts : ps.stations} onChange={(x) => pick(f.key, stripNonEnglish(x))} other={t("ps.other")} back={t("ps.back")} />
                 : f.type === "select" ? <select id={f.key} className="inp" value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}><option value=""></option>{f.options!.map((o) => <option key={o} value={o}>{t(`o.${o}`)}</option>)}</select>
                 : f.type === "textarea" ? <textarea id={f.key} className="inp" rows={2} lang="en" autoComplete={AUTO[f.key] ?? "off"} value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />
                 : <input id={f.key} className="inp" lang="en" type={f.type === "date" ? "date" : f.key === "email" ? "email" : "text"} inputMode={f.key === "email" ? "email" : ["phone", "alt_phone", "nominee_phone", "emergency_phone"].includes(f.key) ? "tel" : ["pin", "aadhaar", "account_no", "uan"].includes(f.key) ? "numeric" : undefined} autoComplete={AUTO[f.key] ?? "off"} maxLength={MAXLEN[f.key]} enterKeyHint="next" autoCapitalize={["pan", "ifsc"].includes(f.key) ? "characters" : undefined} placeholder={onFile.includes(f.key) ? t("onFilePh") : undefined} value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />}

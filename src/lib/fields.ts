@@ -19,9 +19,11 @@ export const FIELD_GROUPS: { title: string; fields: FieldDef[] }[] = [
     { key: "father_spouse_name", label: "Father's / spouse's name" }, { key: "father_spouse_type", label: "Relation", type: "select", options: ["Father", "Spouse"] },
   ] },
   { title: "Address", fields: [
+    // State and District are picked from the police-station lists (src/lib/policeStations.ts), in this order, so the police station of the permanent
+    // address can then be offered from that district; it goes right after PIN (withPoliceStation)
     { key: "permanent_address", label: "Permanent address", type: "textarea", wide: true },
+    { key: "state", label: "State" }, { key: "district", label: "District" }, { key: "city", label: "City" }, { key: "pin", label: "PIN" },
     { key: "current_address", label: "Current / local address (blank = same)", type: "textarea", wide: true },
-    { key: "city", label: "City" }, { key: "district", label: "District" }, { key: "state", label: "State" }, { key: "pin", label: "PIN" },
   ] },
   { title: "Statutory & bank", fields: [
     { key: "aadhaar", label: "Aadhaar number" }, { key: "pan", label: "PAN" }, { key: "bank_name", label: "Bank name" }, { key: "bank_branch", label: "Branch" },
@@ -44,6 +46,8 @@ export const PAYROLL_GROUP: { title: string; fields: FieldDef[] } = { title: "Pa
 export const PCC_GROUP: { title: string; fields: FieldDef[] } = { title: "Police verification (PCC form)", fields: [
   { key: "native_police_station", label: "Police station of permanent address (optional)", wide: true },
 ] };
+/** The Address group's fields with the police-station field placed right after PIN (State → District → City → PIN → police station). */
+export const withPoliceStation = (fields: FieldDef[], ps: FieldDef = PCC_GROUP.fields[0]) => fields.flatMap((f) => (f.key === "pin" ? [f, ps] : [f]));
 export const EMPTY: Record<string, any> = { father_spouse_type: "Father", base_location: "Pune, Maharashtra", employment_type: "Employee", probation_months: 6, week_off: "Sunday", status: "onboarding" };
 
 export function validate(e: Record<string, any>): Record<string, string> {

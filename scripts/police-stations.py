@@ -47,7 +47,7 @@ def main():
     print(f"{len(states)} states")
     every = []
     for s in sorted(states, key=lambda x: str(pick(x, "STATE_NAME"))):
-        sid, sname = pick(s, "STATE_ID", "STATE_CODE", "ID"), str(pick(s, "STATE_NAME")).strip()
+        sid, sname = str(pick(s, "STATE_ID_PK", "STATE_ID")), str(pick(s, "STATE_NAME")).strip()
         path = os.path.join(OUT, re.sub(r"[^A-Za-z0-9 &()-]+", "_", sname) + ".csv")
         if os.path.exists(path):  # saved on an earlier run
             with open(path, encoding="utf-8") as f:
@@ -57,11 +57,11 @@ def main():
         dists = ((call("getDistrictList", {"stateId": sid}) or {}).get("requestResponseMap") or {}).get("districtList") or []
         rows = []
         for d in dists:
-            did, dname = pick(d, "DISTRICT_ID", "DISTRICT_CODE", "ID"), str(pick(d, "DISTRICT_NAME")).strip()
+            did, dname = str(pick(d, "DISTRICT_ID_PK", "DISTRICT_ID")), str(pick(d, "DISTRICT_NAME")).strip()
             got = call("locatePoliceStation", {"stateId": sid, "districtId": did}) or {}
             for p in (got.get("requestResponseMap") or {}).get("psList") or []:
                 extra = {k: v for k, v in p.items() if not isinstance(v, (dict, list))}
-                rows.append({"state": sname, "district": dname, "police_station": str(pick(p, "PS_NAME", "POLICE_STATION_NAME", "NAME")).strip(), **extra})
+                rows.append({"state": sname, "district": dname, "police_station": str(pick(p, "POLICE_STATION_NAME", "PS_NAME", "NAME")).strip(), **extra})
         keys = ["state", "district", "police_station"] + sorted({k for r in rows for k in r} - {"state", "district", "police_station"})
         with open(path, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=keys); w.writeheader(); w.writerows(rows)

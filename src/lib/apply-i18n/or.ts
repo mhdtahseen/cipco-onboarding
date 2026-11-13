@@ -30,6 +30,8 @@ const d: Dict = {
   "f.alt_phone": "ଅନ୍ୟ ନମ୍ବର",
   "f.permanent_address": "ସ୍ଥାୟୀ ଠିକଣା",
   "f.native_police_station": "ସ୍ଥାୟୀ ଠିକଣାର ଥାନା",
+  "ps.other": "ତାଲିକାରେ ନାହିଁ (ଲେଖନ୍ତୁ)",
+  "ps.back": "ତାଲିକାରୁ ବାଛନ୍ତୁ",
   "f.current_address": "ବର୍ତ୍ତମାନର / ସ୍ଥାନୀୟ ଠିକଣା (ଖାଲି = ସମାନ)",
   "f.city": "ସହର",
   "f.district": "ଜିଲ୍ଲା",

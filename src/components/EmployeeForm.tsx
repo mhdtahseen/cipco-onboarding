@@ -5,7 +5,9 @@ import Link from "next/link";
 import { stageLabel } from "@/lib/pipeline";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import { EMPTY, FIELD_GROUPS, PAYROLL_GROUP, PCC_GROUP, validate } from "@/lib/fields";
+import { EMPTY, FIELD_GROUPS, PAYROLL_GROUP, PCC_GROUP, validate, withPoliceStation } from "@/lib/fields";
+import { usePoliceLists } from "@/lib/policeStations";
+import ListPick from "@/components/ListPick";
 import SalaryEditor from "./SalaryEditor";
 import PromptDialog, { type PromptSpec } from "./PromptDialog";
 import { Icon } from "./NavIcons";
@@ -35,7 +37,16 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
   const dirty = [...FIELD_GROUPS, PAYROLL_GROUP, PCC_GROUP].flatMap((g) => g.fields).some((f) => String(v[f.key] ?? "") !== String(ref0[f.key] ?? "")) || (!isNew && JSON.stringify(v.salary ?? {}) !== JSON.stringify(ref0.salary ?? {})) || String(v.project_id ?? "") !== String(ref0.project_id ?? "");
   useEffect(() => { if (!dirty) return; const warnLeave = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; }; window.addEventListener("beforeunload", warnLeave); return () => window.removeEventListener("beforeunload", warnLeave); }, [dirty]);
   const payGroup = { ...PAYROLL_GROUP, fields: PAYROLL_GROUP.fields.filter((f) => f.key !== "esic_no" || (!!initial && "esic_no" in (initial as object))) };   // the ESIC number appears once 2026-10-esic-number.sql has added the column
-  const groups = isNew ? [{ title: "Candidate", fields: FIELD_GROUPS.flatMap((g) => g.fields).filter((f) => ["full_name", "phone", "email", "designation", "department"].includes(f.key)) }] : [...FIELD_GROUPS, ...(initial && "pay_mode" in (initial as object) ? [payGroup] : []), ...(initial && "native_police_station" in (initial as object) ? [PCC_GROUP] : [])];   // the payroll and PCC groups appear once their migrations have added the columns
+  // the police station of the permanent address sits in Address, right after PIN, once 2026-11-pcc-form.sql has added its column
+  const hasPs = !!initial && "native_police_station" in (initial as object);
+  const fieldGroups = hasPs ? FIELD_GROUPS.map((g) => (g.title === "Address" ? { ...g, fields: withPoliceStation(g.fields) } : g)) : FIELD_GROUPS;
+  const groups = isNew ? [{ title: "Candidate", fields: FIELD_GROUPS.flatMap((g) => g.fields).filter((f) => ["full_name", "phone", "email", "designation", "department"].includes(f.key)) }] : [...fieldGroups, ...(initial && "pay_mode" in (initial as object) ? [payGroup] : [])];   // the payroll group appears once its migration has added the columns
+  // State → District → police station come from the police-station lists; changing the State or District clears what depends on it
+  const ps = usePoliceLists(v.state, v.district);
+  const pick = (k: "state" | "district" | "native_police_station", x: string) => setV((p) => ({ ...p, [k]: x,
+    ...(k === "state" && x !== p.state ? { district: "", ...(hasPs ? { native_police_station: "" } : {}) } : {}),
+    ...(k === "district" && x !== p.district && hasPs ? { native_police_station: "" } : {}) }));
+  const listFor = (k: string) => (k === "state" ? ps.states : k === "district" ? ps.districts : ps.stations);
   const need: Record<string, string> = { Employment: "needed for offer", Personal: "needed for joining forms", Family: "needed for joining forms", Address: "needed for joining forms", "Statutory & bank": "needed for joining forms", "Nominee & emergency contact": "needed for joining forms" };
   const set = (k: string, val: any) => setV((p) => ({ ...p, [k]: val }));
   async function addDept() {
@@ -156,7 +167,9 @@ export default function EmployeeForm({ initial, onSaved }: { initial: Record<str
             {g.fields.map((f) => (
               <div key={f.key} className={f.wide ? "sm:col-span-2 lg:col-span-3" : ""}>
                 <label className="lbl">{f.label}</label>
-                {f.key === "department" || f.key === "project" ? refField(f.key) : f.type === "select" ? (
+                {f.key === "department" || f.key === "project" ? refField(f.key)
+                : (f.key === "state" || f.key === "district" || f.key === "native_police_station") && ps.ready ? <ListPick value={v[f.key]} options={listFor(f.key)} onChange={(x) => pick(f.key as "state" | "district" | "native_police_station", x)} />
+                : f.type === "select" ? (
                   <select className="inp" value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}><option value=""></option>{f.options!.map((o) => <option key={o}>{o}</option>)}</select>
                 ) : f.type === "textarea" ? (
                   <textarea className="inp" rows={2} value={v[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />
