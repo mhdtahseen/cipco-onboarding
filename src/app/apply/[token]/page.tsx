@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
-import { FIELD_GROUPS, validate } from "@/lib/fields";
+import { FIELD_GROUPS, validate, type FieldDef } from "@/lib/fields";
 import { DEFAULT_LANG, LANGS, NON_ENGLISH, en, isLang, loadDict, makeT, stripNonEnglish, type Dict, type LangCode } from "@/lib/apply-i18n";
 import { PageLoader } from "@/components/Loader";
 
@@ -14,6 +14,10 @@ const GROUPS = [
   { title: "Your name", tk: "s.name", fields: FIELD_GROUPS[0].fields.filter((f) => f.key === "full_name") },
   ...FIELD_GROUPS.slice(1).map((g) => ({ ...g, tk: `s.${({ Personal: "personal", Family: "family", Address: "address", "Statutory & bank": "statutory", "Nominee & emergency contact": "nominee" } as Record<string, string>)[g.title] ?? "personal"}` })),
 ];
+// A project that needs police verification (the Gujarat PCC form) also asks for the police station of the permanent address, right after that address.
+// invite_get says so (needs_pcc); before 2026-11-invite-police-station.sql is run it never does, and the form stays as it was.
+const PCC_FIELD: FieldDef = { key: "native_police_station", label: "Police station of permanent address", wide: true };
+const withPcc = (gs: typeof GROUPS) => gs.map((g) => g.tk !== "s.address" ? g : { ...g, fields: g.fields.flatMap((f) => (f.key === "permanent_address" ? [f, PCC_FIELD] : [f])) });
 const UPLOADS = [{ key: "aadhaar", hint: true }, { key: "pan" }, { key: "bank" }, { key: "photo", hint: true }, { key: "uan", hint: true }, { key: "resume" }];
 // On a phone, short fields share a row two at a time; everything else takes the full width. Tablets and up use two columns throughout.
 const HALF = new Set(["father_spouse_type", "dob", "gender", "marital_status", "religion", "blood_group", "city", "district", "state", "pin", "nominee_relation", "nominee_age_dob"]);
@@ -46,6 +50,7 @@ export default function ApplyPage() {
     setState(data.status === "applied" ? "applied" : "form");
   })(); }, [token]);
   const warn = validate(v);
+  const groups = inv?.needs_pcc ? withPcc(GROUPS) : GROUPS;
   // every typed answer goes through here: anything that is not English (another script) is dropped and a short reminder shows under that field
   const set = (k: string, x: string) => {
     if (NON_ENGLISH.test(x)) { x = stripNonEnglish(x); setEnKey(k); clearTimeout(enTimer.current); enTimer.current = setTimeout(() => setEnKey(""), 5000); }
@@ -66,7 +71,7 @@ export default function ApplyPage() {
   async function submit() {
     setErr("");
     if (!v.full_name?.trim()) { setErr(t("e.name")); return; }
-    const bad = GROUPS.flatMap((g) => g.fields).find((f) => NON_ENGLISH.test(v[f.key] ?? ""));   // an old answer on file in another script
+    const bad = groups.flatMap((g) => g.fields).find((f) => NON_ENGLISH.test(v[f.key] ?? ""));   // an old answer on file in another script
     if (bad) { setErr(t("e.english", { field: labelOf(bad.key, bad.label) })); return; }
     if (!ok) {   // take them to the tick box, which is far below on a phone, and flash it so it is obvious what is missing
       setErr(t("e.tick"));
@@ -87,7 +92,7 @@ export default function ApplyPage() {
   const cur = LANGS.find((l) => l.code === lang)!;
   const shell = (c: React.ReactNode, showLang = true) => <div className="apply min-h-screen px-4 sm:px-6 pt-[max(16px,env(safe-area-inset-top))] sm:pt-8"><div className="max-w-2xl mx-auto space-y-4 pb-4"><div className="flex items-center gap-3"><Logo className="h-8 w-auto" /><span className="text-sm font-semibold text-slate-500 flex-1 min-w-0 truncate">{t("joining")}</span>
     {showLang && <button type="button" className="btn !px-3 shrink-0" onClick={() => setPicking(true)} aria-label={`${t("lang.change")}: ${cur.english}`}><span aria-hidden>🌐</span><span>{cur.native}</span></button>}</div>{c}</div></div>;
-  const allKeys = GROUPS.flatMap((g) => g.fields.map((f) => f.key)).filter((k) => k !== "father_spouse_type");
+  const allKeys = groups.flatMap((g) => g.fields.map((f) => f.key)).filter((k) => k !== "father_spouse_type");
   const filled = allKeys.filter((k) => String(v[k] ?? "").trim() || onFile.includes(k)).length + UPLOADS.filter((u) => files[u.key]).length, total = allKeys.length + UPLOADS.length;
 
   if (state === "loading") return shell(<PageLoader />, false);
@@ -112,7 +117,7 @@ export default function ApplyPage() {
     <div><h1 className="text-xl font-bold">{inv?.name ? t("helloName", { name: inv.name.split(" ")[0] }) : t("hello")} 👋</h1>
       <p className="text-sm text-slate-500">{t("intro")}</p></div>
     {lang !== "en" && <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{t("enNote")}</p>}
-    {GROUPS.map((g) => (
+    {groups.map((g) => (
       <section key={g.title} className="card !p-4 sm:!p-5">
         <h3 className="font-semibold mb-3">{t(g.tk)}</h3>
         <div className="grid gap-x-3 gap-y-3.5 grid-cols-2">

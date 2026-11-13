@@ -221,6 +221,23 @@ Tools live in one container and go out to project sites. Track what is at each s
 - [ ] QR stickers on heavy items? [yes]
 - [ ] A cost per item, for lost-tool reporting or salary deductions? [no]
 
+## Currency per project (proposed 2026-11-12; not started, waiting on the four decisions below)
+Each project has its own currency (INR by default; QAR, AED, SAR, OMR, KWD, BHD, USD, EUR, GBP, SGD, MYR, JPY, CNY, AUD, CAD, ZAR). On a QAR project every amount is in QAR: payroll and payslips, meals, gas, equipment, tools, inventory, transport, rent, expenses, quotations, work orders, invoices and all PDFs. Today the rupee is hard-coded about 437 times in 61 files, with about 25 separate "₹" helpers and 9 PDFs that print it.
+
+### Plan
+- [ ] Migration: `projects.currency` (ISO code, default `INR`); set when the project is created, changeable only by an Admin with a warning once money is recorded (it relabels, never converts)
+- [ ] One shared money formatter (replaces the ~25 helpers): symbol or code, decimals per currency (2 for most, 3 for OMR / KWD / BHD, 0 for JPY), lakh grouping for INR only, international grouping for the rest
+- [ ] Every money screen and form reads the project's currency; vendors and rates set up for a project use it
+- [ ] PDFs (invoice, quotation, payslip, payroll register, bank letter, vendor statement, payments due, gas order, challan, letters): currency label and amount in words per currency ("Qatari Riyals … and Dirhams"); check the PDF font prints each symbol, otherwise print the code (QAR)
+- [ ] Pages across projects (Expenses, Payments due, Forecast, Overview): a total per currency (e.g. "₹4,20,000 · QAR 18,500"), never rupees and riyals added together
+- [ ] Project screens: a currency picker on create and edit; the currency shown next to the project name where money appears
+
+### Decisions to settle before building (recommendation in brackets)
+- [ ] Combined total in INR on pages across projects? Admin-entered monthly rate / live rate / no conversion [per-currency totals plus an optional monthly rate the Admin enters; needs an exchange-rates table]
+- [ ] Tax outside India: GST off and a per-project tax setting (VAT 5% UAE and Oman, 15% Saudi, 10% Bahrain, none in Qatar), or no tax on foreign projects for now?
+- [ ] Payroll on a foreign project: workers paid in that currency? ESIC / EPFO switched off for it?
+- [ ] Invoices and quotations: follow the project's currency, or allow billing the client in another currency (e.g. USD for a Qatar project)?
+
 ## Pending from earlier work — needs running / deciding
 - [ ] Run in Supabase (in this order, each is safe to re-run):
   - `supabase/migrations/2026-10-candidate-form-invites.sql` (self-fill links; re-run to get the 7-day expiry and pre-fill)

@@ -29,6 +29,7 @@ const d: Dict = {
   "f.phone": "ಸಂಪರ್ಕ ಸಂಖ್ಯೆ",
   "f.alt_phone": "ಪರ್ಯಾಯ ಸಂಖ್ಯೆ",
   "f.permanent_address": "ಶಾಶ್ವತ ವಿಳಾಸ",
+  "f.native_police_station": "ಶಾಶ್ವತ ವಿಳಾಸದ ಪೊಲೀಸ್ ಠಾಣೆ",
   "f.current_address": "ಪ್ರಸ್ತುತ / ಸ್ಥಳೀಯ ವಿಳಾಸ (ಖಾಲಿ = ಅದೇ)",
   "f.city": "ನಗರ",
   "f.district": "ಜಿಲ್ಲೆ",

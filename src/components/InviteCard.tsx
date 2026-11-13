@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
-import { FIELD_GROUPS } from "@/lib/fields";
+import { FIELD_GROUPS, PCC_GROUP } from "@/lib/fields";
 import type { Employee } from "@/lib/types";
 
-const LABEL: Record<string, string> = Object.fromEntries(FIELD_GROUPS.flatMap((g) => g.fields).map((f) => [f.key, f.label]));
+const LABEL: Record<string, string> = Object.fromEntries([...FIELD_GROUPS.flatMap((g) => g.fields), ...PCC_GROUP.fields].map((f) => [f.key, f.label]));
 const DOC_LABEL: Record<string, string> = { aadhaar: "Aadhaar card", pan: "PAN card", bank: "Bank passbook / cheque", uan: "UAN / PF details", photo: "Photograph", resume: "Resume" };
 type Invite = { id: string; token: string; status: "sent" | "submitted" | "applied" | "revoked"; expires_at: string; submitted_at: string | null; submission: Record<string, string>; files: Record<string, string> };
 const fmt = (d: string) => new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" });

@@ -29,6 +29,7 @@ const d: Dict = {
   "f.phone": "संपर्क नंबर",
   "f.alt_phone": "दूसरा नंबर",
   "f.permanent_address": "स्थायी पता",
+  "f.native_police_station": "स्थायी पते का पुलिस स्टेशन",
   "f.current_address": "वर्तमान / स्थानीय पता (खाली = वही)",
   "f.city": "शहर",
   "f.district": "ज़िला",

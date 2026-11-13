@@ -30,6 +30,7 @@ const en = {
   "f.phone": "Contact number",
   "f.alt_phone": "Alt number",
   "f.permanent_address": "Permanent address",
+  "f.native_police_station": "Police station of permanent address",
   "f.current_address": "Current / local address (blank = same)",
   "f.city": "City",
   "f.district": "District",
