@@ -13,6 +13,9 @@ type Pay = Money & { paid_on: string; reference: string; note: string; bill_path
 type Errand = Money & { work_date: string; description: string; pending?: boolean; gas_trip_ref?: string | null };   // pending: made by a gas trip, amount not entered yet (counted as 0 until then)
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const BILL: Record<Billing, string> = { per_trip: "per trip", monthly: "per month" };
+const fmtD = (d: string) => new Date(d + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+const fmtDay = (d: string) => new Date(d + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+type Line = { date: string; label: string; amount: number | null };
 
 // Admin: per project, the locally hired vehicles, how each is paid, whether they showed up, extra errand charges and what has been paid.
 // Per-trip vehicles bill only the trips that showed up; monthly vehicles bill a fixed amount for each month that has records (no-show days are shown so a deduction can be negotiated).
@@ -22,7 +25,10 @@ export default function TransportPage() {
   const [nv, setNv] = useState<{ name: string; operator: string; billing: Billing }>({ name: "", operator: "", billing: "per_trip" }); const [rateIn, setRateIn] = useState<Record<string, string>>({}); const [rateFrom, setRateFrom] = useState(istToday());
   const [pfBill, setPfBill] = useState<File | null>(null); const [pf, setPf] = useState({ vehicle_id: "", amount: "", paid_on: istToday(), reference: "", note: "" }); const [ef, setEf] = useState({ vehicle_id: "", amount: "", work_date: istToday(), description: "" }); const [editing, setEditing] = useState<Errand | null>(null);
   async function load() {
-    const sb = supabase(); const [pr, v, r, t, p, e] = await Promise.all([sb.from("projects").select("*").eq("status", "active").order("name"), sb.from("transport_vehicles").select("*").order("sort_order").order("name"), sb.from("transport_rates").select("*"), sb.from("transport_runs").select("*"), sb.from("transport_payments").select("*").order("paid_on", { ascending: false }), sb.from("transport_errands").select("*").order("work_date", { ascending: false })]);
+    // The database returns at most 1,000 rows per request: the long lists are read page by page, so totals never come out short
+    const sb = supabase();
+    const every = async (make: () => any): Promise<{ data: any[]; error: { message: string } | null }> => { const out: any[] = []; for (let from = 0; ; from += 1000) { const { data, error } = await make().range(from, from + 999); if (error) return { data: [], error }; out.push(...(data || [])); if (!data || data.length < 1000) return { data: out, error: null }; } };
+    const [pr, v, r, t, p, e] = await Promise.all([sb.from("projects").select("*").eq("status", "active").order("name"), sb.from("transport_vehicles").select("*").order("sort_order").order("name"), every(() => sb.from("transport_rates").select("*").order("id")), every(() => sb.from("transport_runs").select("*").order("id")), every(() => sb.from("transport_payments").select("*").order("paid_on", { ascending: false }).order("id")), every(() => sb.from("transport_errands").select("*").order("work_date", { ascending: false }).order("id"))]);
     const x = pr.error || v.error || r.error || t.error || p.error || e.error; if (x) { setErr(x.message + " — has the accountability migration been run?"); setLoading(false); return; }
     const pl = (pr.data || []) as Project[]; setProjects(pl); setPid((c) => c || pl[0]?.id || ""); setVehicles((v.data || []) as Vehicle[]);
     setRates(((r.data || []) as TransportRate[]).map((q) => ({ ...q, price: Number(q.price) }))); setRuns((t.data || []) as Run[]);
@@ -34,18 +40,30 @@ export default function TransportPage() {
   const pays = useMemo(() => allPays.filter((x) => ids.has(x.vehicle_id)), [allPays, ids]); const errands = useMemo(() => allErr.filter((x) => ids.has(x.vehicle_id)), [allErr, ids]);
 
   const rows = useMemo(() => vehicles.map((v) => {
-    const mine = runs.filter((r) => r.vehicle_id === v.id); let all = 0, inMonth = 0, unpriced = 0;
-    if (v.billing === "per_trip") mine.filter((r) => r.status === "showed").forEach((r) => { const pr = tripRate(rates, v.id, r.work_date); if (pr === null) unpriced++; else { all += pr; if (r.work_date.startsWith(month)) inMonth += pr; } });
+    const mine = runs.filter((r) => r.vehicle_id === v.id); let all = 0, inMonth = 0, unpriced = 0; const monthRates = new Set<number>(); let hireFrom = "";
+    const tripLines: Line[] = []; const charges: { d: string; a: number }[] = [];   // tripLines: what makes up this month's trips figure; charges: everything billed, oldest first, to find the oldest unpaid
+    if (v.billing === "per_trip") [...mine].filter((r) => r.status === "showed").sort((a, b) => a.work_date.localeCompare(b.work_date) || a.leg.localeCompare(b.leg) * -1).forEach((r) => { const pr = tripRate(rates, v.id, r.work_date); const inM = r.work_date.startsWith(month);
+      if (inM) tripLines.push({ date: r.work_date, label: r.leg === "pickup" ? "Pickup" : "Drop", amount: pr });
+      if (pr === null) unpriced++; else { all += pr; charges.push({ d: r.work_date, a: pr }); if (inM) { inMonth += pr; monthRates.add(pr); } } });
     else { const first: Record<string, string> = {}; mine.forEach((r) => { const m = r.work_date.slice(0, 7); if (!first[m] || r.work_date < first[m]) first[m] = r.work_date; });   // a monthly vehicle bills each month that has records, at the price in force on its first record
-      Object.entries(first).forEach(([m, d]) => { const pr = tripRate(rates, v.id, d); if (pr === null) unpriced++; else { all += pr; if (m === month) inMonth += pr; } }); }
-    const er = errands.filter((x) => x.vehicle_id === v.id && !x.voided_at); const erAll = er.reduce((s, x) => s + x.amount, 0), erMonth = er.filter((x) => x.work_date.startsWith(month)).reduce((s, x) => s + x.amount, 0);
+      Object.entries(first).forEach(([m, d]) => { const pr = tripRate(rates, v.id, d); if (m === month) { hireFrom = d; tripLines.push({ date: d, label: `Monthly hire, at the price in force on its first record (${fmtD(d)})`, amount: pr }); }
+        if (pr === null) unpriced++; else { all += pr; charges.push({ d, a: pr }); if (m === month) inMonth += pr; } }); }
+    const er = errands.filter((x) => x.vehicle_id === v.id && !x.voided_at); const erAll = er.reduce((s, x) => s + x.amount, 0); const erM = er.filter((x) => x.work_date.startsWith(month)).sort((a, b) => a.work_date.localeCompare(b.work_date)); const erMonth = erM.reduce((s, x) => s + x.amount, 0);
+    er.forEach((x) => charges.push({ d: x.work_date, a: x.amount }));
     const paid = pays.filter((x) => x.vehicle_id === v.id && !x.voided_at).reduce((s, x) => s + x.amount, 0); const mr = mine.filter((r) => r.work_date.startsWith(month));
-    return { v, showed: mr.filter((r) => r.status === "showed").length, missed: mr.filter((r) => r.status === "no_show").length, month: inMonth + erMonth, erMonth, billed: all + erAll, paid, due: all + erAll - paid, unpriced };
+    const showed = mr.filter((r) => r.status === "showed").length;
+    // how the trips figure was reached, shown under it: "26 × ₹450", or "Monthly hire from 3 Nov"
+    const how = v.billing === "per_trip" ? (showed === 0 ? "" : monthRates.size === 1 ? `${showed} × ₹${inr([...monthRates][0])}` : `${showed} trips at ${monthRates.size} rates`) : hireFrom ? `monthly hire from ${fmtD(hireFrom)}` : "";
+    // payments clear the oldest charges first: the first charge they don't cover is the oldest unpaid
+    charges.sort((a, b) => a.d.localeCompare(b.d)); let cum = 0, oldest: string | null = null; for (const c of charges) { cum += c.a; if (cum > paid + 0.005) { oldest = c.d; break; } }
+    const noShows = mr.filter((r) => r.status === "no_show").sort((a, b) => a.work_date.localeCompare(b.work_date)).map((r) => `${fmtD(r.work_date)} ${r.leg}`);
+    return { v, tripLines, erLines: erM, noShows, oldest, showed, missed: mr.filter((r) => r.status === "no_show").length, tripMonth: inMonth, erMonth, erCount: erM.length, month: inMonth + erMonth, how, tripAll: all, erAll, billed: all + erAll, paid, due: all + erAll - paid, unpriced };
   }), [vehicles, runs, rates, errands, pays, month]);
   const today = istToday(); const daysOfMonth = useMemo(() => { const [y, m] = month.split("-").map(Number); return Array.from({ length: new Date(y, m, 0).getDate() }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`).filter((d) => d <= today); }, [month, today]);
   const unrecorded = useMemo(() => !vehicles.some((v) => v.active) ? [] : daysOfMonth.filter((d) => d < today && vehicles.filter((v) => v.active).some((v) => (["pickup", "drop"] as const).some((leg) => !runs.some((r) => r.vehicle_id === v.id && r.work_date === d && r.leg === leg)))), [daysOfMonth, vehicles, runs, today]);
   const vName = (id: string) => allVehicles.find((v) => v.id === id)?.name ?? "?";
-  const tot = rows.reduce((a, r) => ({ month: a.month + r.month, billed: a.billed + r.billed, paid: a.paid + r.paid }), { month: 0, billed: 0, paid: 0 });
+  const tot = rows.reduce((a, r) => ({ trips: a.trips + r.tripMonth, errands: a.errands + r.erMonth, erCount: a.erCount + r.erCount, month: a.month + r.month, tripAll: a.tripAll + r.tripAll, erAll: a.erAll + r.erAll, billed: a.billed + r.billed, paid: a.paid + r.paid, showed: a.showed + r.showed, missed: a.missed + r.missed }), { trips: 0, errands: 0, erCount: 0, month: 0, tripAll: 0, erAll: 0, billed: 0, paid: 0, showed: 0, missed: 0 });
+  const monthName = new Date(month + "-01T00:00:00").toLocaleDateString("en-IN", { month: "short", year: "numeric" });
 
   async function run(p: PromiseLike<{ error: { message: string } | null }>) { setErr(""); const { error } = await p; if (error) { setErr(error.message); return false; } await load(); return true; }
   const sb = () => supabase();
@@ -60,6 +78,10 @@ export default function TransportPage() {
     setEditing(null); setEf({ ...ef, amount: "", description: "" });
   } };
   const [pendAmt, setPendAmt] = useState<Record<string, string>>({});
+  // the breakdown behind a figure on a vehicle card: t = trips, e = errands
+  const [open, setOpen] = useState<{ v: string; k: "t" | "e" } | null>(null);
+  const toggle = (v: string, k: "t" | "e") => setOpen((o) => (o?.v === v && o.k === k ? null : { v, k }));
+  const payNow = (v: Vehicle, due: number) => { setErr(""); setPf((f) => ({ ...f, vehicle_id: v.id, amount: String(Math.round(due * 100) / 100) })); setTab("payments"); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const setPendingAmount = async (x: Errand) => { const amount = parseFloat(pendAmt[x.id] || ""); if (!(amount > 0)) { setErr("Enter the amount for this errand."); return; } if (await run(sb().from("transport_errands").update({ amount }).eq("id", x.id))) setPendAmt((s) => ({ ...s, [x.id]: "" })); };
   const editErrand = (x: Errand) => { setErr(""); setEditing(x); setEf({ vehicle_id: x.vehicle_id, amount: String(x.amount), work_date: x.work_date, description: x.description }); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const cancelEdit = () => { setEditing(null); setEf({ vehicle_id: "", amount: "", work_date: istToday(), description: "" }); };
@@ -72,14 +94,57 @@ export default function TransportPage() {
         {projects.length > 0 && <select className="inp w-full sm:!w-auto max-w-full" aria-label="Project" value={pid} onChange={(e) => { setPid(e.target.value); setPf((f) => ({ ...f, vehicle_id: "" })); setEf((f) => ({ ...f, vehicle_id: "" })); }}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.location ? ` — ${p.location}` : ""}</option>)}</select>}</div>
       {err && <p className="warn">{err}</p>}{loading && <PageLoader />}
       {!loading && <>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">{[["This month", tot.month], ["Paid (all time)", tot.paid], ["Balance due", tot.billed - tot.paid]].map(([l, n]) => <div key={l as string} className="rounded-2xl bg-white border border-slate-200/80 p-3"><div className="text-xs text-slate-400">{l}</div><div className="text-lg font-medium tabular-nums">₹{inr(n as number)}</div></div>)}</div>
+        {(() => { const bal = tot.billed - tot.paid; const owing = rows.filter((r) => r.due > 0.005); const ops = new Set(owing.map((r) => (r.v.operator || r.v.name).trim().toLowerCase())).size; const oldest = owing.map((r) => r.oldest).filter(Boolean).sort()[0] as string | undefined;
+          const tp = tot.month > 0 ? (tot.trips / tot.month) * 100 : 0;
+          return <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]" data-transport-hero>
+            <div className="rounded-2xl bg-white border border-slate-200/80 p-4">
+              <div className="text-xs text-slate-500">Balance due</div>
+              <div className={`text-3xl font-semibold tabular-nums ${bal > 0.005 ? "text-amber-800" : bal < -0.005 ? "text-rose-700" : "text-slate-900"}`}>₹{inr(bal)}</div>
+              <div className="text-sm text-slate-500 mt-0.5">{owing.length ? <>{ops} {ops === 1 ? "operator" : "operators"} to pay{oldest && <> · oldest unpaid <b className="font-medium text-slate-700">{fmtD(oldest)}</b></>}</> : bal < -0.005 ? "Paid ahead" : "Nothing owed"}<span className="text-slate-400"> · paid so far ₹{inr(tot.paid)}</span></div>
+            </div>
+            <div className="rounded-2xl bg-white border border-slate-200/80 p-4 space-y-2">
+              <div className="flex items-baseline gap-2"><span className="text-xs text-slate-500">Spent in {monthName}</span><span className="text-2xl font-semibold tabular-nums ml-auto">₹{inr(tot.month)}</span></div>
+              <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100" role="img" aria-label={`Trips ₹${inr(tot.trips)}, errands ₹${inr(tot.errands)}`}>{tot.month > 0 && <><div className="bg-blue-600" style={{ width: `${tp}%` }} /><div className="bg-amber-400" style={{ width: `${100 - tp}%` }} /></>}</div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums"><span className="flex items-center gap-1.5"><span aria-hidden className="h-2.5 w-2.5 rounded-full bg-blue-600" />Trips <b className="font-medium">₹{inr(tot.trips)}</b></span><span className="flex items-center gap-1.5"><span aria-hidden className="h-2.5 w-2.5 rounded-full bg-amber-400" />Errands <b className="font-medium">{tot.erCount ? `₹${inr(tot.errands)}` : "—"}</b>{tot.erCount > 0 && <span className="text-slate-400">({tot.erCount})</span>}</span></div>
+            </div>
+          </div>; })()}
         <div role="tablist" className="flex border-b border-slate-200 overflow-x-auto">{([["overview", "Overview"], ["daily", "Daily log"], ["vehicles", "Vehicles & prices"], ["errands", "Errands"], ["payments", "Payments"]] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab whitespace-nowrap ${tab === k ? "tab-on" : ""}`} onClick={() => setTab(k)}>{l}{k === "errands" && errands.some((x) => x.pending && !x.voided_at) ? <span className="ml-1.5 text-xs font-normal text-amber-700">{errands.filter((x) => x.pending && !x.voided_at).length} need amount</span> : null}</button>)}</div>
-        {tab === "overview" && <section className="card space-y-2"><div className="flex flex-wrap items-center gap-x-3 gap-y-2"><h2 className="font-medium">This month by vehicle</h2><label className="ml-auto text-xs text-slate-500 flex items-center gap-2">Month<input type="month" className="inp !w-40" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} aria-label="Month" /></label></div>
-          <div className="overflow-x-auto"><table className="w-full text-sm min-w-[36rem]"><thead className="text-[11px] uppercase tracking-wide text-slate-400"><tr><th className="text-left py-1">Vehicle</th><th className="text-right">Showed</th><th className="text-right">No-show</th><th className="text-right">No-show rate</th><th className="text-right">This month</th><th className="text-right">Due (all)</th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{rows.map((o) => <tr key={o.v.id}><td className="py-2 font-medium">{o.v.name}<div className="text-xs font-normal text-slate-400">{o.v.operator || "—"} · {o.v.billing === "monthly" ? "monthly" : "per trip"}</div></td><td className="text-right tabular-nums">{o.showed}</td><td className={`text-right tabular-nums ${o.missed ? "text-rose-700 font-medium" : ""}`}>{o.missed}</td><td className="text-right tabular-nums">{o.showed + o.missed ? `${Math.round((o.missed / (o.showed + o.missed)) * 100)}%` : "—"}</td><td className="text-right tabular-nums">₹{inr(o.month)}</td><td className={`text-right tabular-nums ${o.due > 0 ? "text-amber-800 font-medium" : ""}`}>₹{inr(o.due)}</td></tr>)}</tbody></table></div>
-          {!vehicles.length && <p className="text-sm text-slate-400">No vehicles for this project yet. Add the first one on the Vehicles &amp; prices tab.</p>}
+        {tab === "overview" && <section className="space-y-3" data-vehicle-cards>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2"><h2 className="font-medium">By vehicle</h2><span className="text-xs text-slate-400">Tap a figure to see what it is made of</span><label className="ml-auto text-xs text-slate-500 flex items-center gap-2">Month<input type="month" className="inp !w-40" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} aria-label="Month" /></label></div>
+          {rows.map((o) => { const on = (k: "t" | "e") => open?.v === o.v.id && open.k === k;
+            const chip = (k: "t" | "e") => `rounded-lg border px-2 py-1 text-left hover:bg-slate-50 touch-manipulation ${on(k) ? "border-blue-300 bg-blue-50" : "border-slate-200"}`;
+            return <div key={o.v.id} className="rounded-2xl bg-white border border-slate-200/80 p-3 sm:p-4 space-y-2" data-vehicle-card>
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1"><div className="font-medium truncate">{o.v.name}{!o.v.active && <span className="text-xs font-normal text-slate-400"> (inactive)</span>}</div><div className="text-xs text-slate-400 truncate">{o.v.operator || "No operator"} · {o.v.billing === "monthly" ? "monthly" : "per trip"}</div></div>
+                <div className="text-right shrink-0"><div className="text-[11px] text-slate-400">{o.due < -0.005 ? "Paid ahead" : "Due"}</div><div className={`text-lg font-semibold tabular-nums leading-tight ${o.due > 0.005 ? "text-amber-800" : o.due < -0.005 ? "text-rose-700" : "text-slate-400"}`}>₹{inr(Math.abs(o.due))}</div></div>
+                {o.due > 0.005 && <button type="button" className="btn btn-primary btn-sm self-center shrink-0" onClick={() => payNow(o.v, o.due)}>Pay</button>}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-sm tabular-nums">
+                <span className="text-xs text-slate-400 w-full sm:w-auto sm:mr-1">{monthName}</span>
+                <button type="button" className={chip("t")} aria-expanded={on("t")} onClick={() => toggle(o.v.id, "t")}>Trips <b className="font-medium">₹{inr(o.tripMonth)}</b>{o.how && <span className="text-xs text-slate-500"> · {o.how}</span>}</button>
+                <span className="text-slate-400" aria-hidden>+</span>
+                <button type="button" className={chip("e")} aria-expanded={on("e")} onClick={() => toggle(o.v.id, "e")}>Errands <b className="font-medium">{o.erCount ? `₹${inr(o.erMonth)}` : "—"}</b>{o.erCount > 0 && <span className="text-xs text-slate-500"> · {o.erCount}</span>}</button>
+                <span className="text-slate-400" aria-hidden>=</span><b className="font-semibold">₹{inr(o.month)}</b>
+              </div>
+              <div className="text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-1"><span className="text-emerald-700">✓ {o.showed} showed</span><span className={o.missed ? "text-rose-700 font-medium" : ""}>✗ {o.missed} no-show{o.showed + o.missed > 0 && o.missed > 0 ? ` (${Math.round((o.missed / (o.showed + o.missed)) * 100)}%)` : ""}</span>{o.unpriced > 0 && <span className="text-amber-700">{o.unpriced} without a price: set it on Vehicles &amp; prices</span>}</div>
+
+              {on("t") && <div className="rounded-xl bg-slate-50 p-3 text-sm space-y-1" data-breakdown="trips">
+                {o.tripLines.length ? <ul className="max-h-72 overflow-y-auto divide-y divide-slate-200/70">{o.tripLines.map((l, n) => <li key={n} className="py-1 flex gap-2"><span className="tabular-nums w-28 shrink-0 text-slate-600">{fmtDay(l.date)}</span><span className="flex-1 min-w-0">{l.label}</span><span className={`tabular-nums ${l.amount === null ? "text-amber-700" : ""}`}>{l.amount === null ? "no price" : `₹${inr(l.amount)}`}</span></li>)}</ul> : <p className="text-slate-500">{o.v.billing === "monthly" ? "No records this month, so no monthly hire is charged." : "No trips showed up this month."}</p>}
+                {o.tripLines.length > 0 && <div className="flex justify-between border-t border-slate-300 pt-1 font-medium"><span>{o.v.billing === "per_trip" ? `${o.tripLines.length} trip${o.tripLines.length === 1 ? "" : "s"}` : "Monthly hire"}</span><span className="tabular-nums">₹{inr(o.tripMonth)}</span></div>}
+                {o.noShows.length > 0 && <p className="text-xs text-rose-700">No-show{o.v.billing === "monthly" ? " (not deducted from the monthly hire: raise with the operator)" : " (not charged)"}: {o.noShows.join(", ")}</p>}
+              </div>}
+              {on("e") && <div className="rounded-xl bg-slate-50 p-3 text-sm space-y-1" data-breakdown="errands">
+                {o.erLines.length ? <ul className="divide-y divide-slate-200/70">{o.erLines.map((x) => <li key={x.id} className="py-1 flex gap-2"><span className="tabular-nums w-28 shrink-0 text-slate-600">{fmtDay(x.work_date)}</span><span className="flex-1 min-w-0 break-words">{x.description}</span><span className={`tabular-nums ${x.pending ? "text-amber-700" : ""}`}>{x.pending ? "needs amount" : `₹${inr(x.amount)}`}</span></li>)}</ul> : <p className="text-slate-500">No errands this month.</p>}
+                {o.erLines.length > 0 && <div className="flex justify-between border-t border-slate-300 pt-1 font-medium"><span>{o.erCount} errand{o.erCount === 1 ? "" : "s"}</span><span className="tabular-nums">₹{inr(o.erMonth)}</span></div>}
+                <button type="button" className="text-xs text-blue-700 underline" onClick={() => setTab("errands")}>Add or change errands</button>
+              </div>}
+
+              <div className="text-xs text-slate-500 tabular-nums border-t border-slate-100 pt-2">All time: billed ₹{inr(o.billed)} <span className="text-slate-400">(trips ₹{inr(o.tripAll)} · errands ₹{inr(o.erAll)})</span> − paid ₹{inr(o.paid)} = <b className="text-slate-700">₹{inr(o.due)}</b>{o.oldest && o.due > 0.005 && <span className="text-amber-800"> · unpaid since {fmtD(o.oldest)}</span>}</div>
+            </div>; })}
+          {!vehicles.length && <p className="card text-sm text-slate-400">No vehicles for this project yet. Add the first one on the Vehicles &amp; prices tab.</p>}
           {unrecorded.length > 0 && <p className="text-sm text-amber-900 bg-amber-50 rounded-xl px-3 py-2" data-alerts><b>{unrecorded.length}</b> past day{unrecorded.length > 1 ? "s have" : " has"} vehicle show-ups not recorded: {unrecorded.slice(0, 6).map((d) => d.slice(8)).join(", ")}{unrecorded.length > 6 ? "…" : ""}. <button className="underline" onClick={() => setTab("daily")}>See the daily log</button></p>}
-          <p className="text-xs text-slate-400">Show-ups are marked on the <a className="underline" href="/attendance">Attendance</a> page by the Supervisor or Site Engineer.</p></section>}
+          <p className="text-xs text-slate-400">Trips: per-trip vehicles count the trips that showed up, at the price in force that day; monthly vehicles count the month's fixed hire. Errands are the extra jobs on the Errands tab. Payments go against the whole balance, oldest charges first. Show-ups are marked on the <a className="underline" href="/attendance">Attendance</a> page.</p>
+        </section>}
         {tab === "daily" && <section className="card space-y-2"><div className="flex flex-wrap items-center gap-x-3 gap-y-2"><h2 className="font-medium">Daily log</h2><label className="ml-auto text-xs text-slate-500 flex items-center gap-2">Month<input type="month" className="inp !w-40" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} aria-label="Month" /></label></div>
           <div className="overflow-x-auto"><table className="w-full text-sm min-w-[32rem]" data-daily><thead className="text-[11px] uppercase tracking-wide text-slate-400"><tr><th className="text-left py-1">Date</th>{vehicles.map((v) => <th key={v.id} className="text-center">{v.name} <span className="normal-case">pickup · drop</span></th>)}<th></th></tr></thead>
             <tbody className="divide-y divide-slate-100">{daysOfMonth.map((d) => <tr key={d}><td className="py-1.5 tabular-nums whitespace-nowrap">{new Date(d + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric" })}</td>{vehicles.map((v) => <td key={v.id} className="text-center">{(["pickup", "drop"] as const).map((leg) => { const r = runs.find((x) => x.vehicle_id === v.id && x.work_date === d && x.leg === leg); return <span key={leg} className={`inline-block w-14 ${r ? (r.status === "showed" ? "text-emerald-700" : "text-rose-700 font-medium") : "text-slate-300"}`}>{r ? (r.status === "showed" ? "✓" : "✗ no show") : "–"}</span>; })}</td>)}<td className="text-right pl-2"><a className="text-xs text-blue-700 underline" href={`/attendance?p=${pid}&d=${d}`}>Open</a></td></tr>)}</tbody></table></div>
@@ -92,7 +157,7 @@ export default function TransportPage() {
                 <td><select className="inp !w-28 !py-1" aria-label={`Billing for ${o.v.name}`} value={o.v.billing} onChange={(e) => setBilling(o.v, e.target.value as Billing)}><option value="per_trip">Per trip</option><option value="monthly">Monthly</option></select></td>
                 <td className="text-right"><div className="flex items-center justify-end gap-1.5"><span className="tabular-nums">{cur === null ? "not set" : `₹${inr(cur)}`}</span><span className="text-xs text-slate-400">{BILL[o.v.billing]}</span><input className="inp !w-20 !py-1" inputMode="decimal" placeholder="new" aria-label={`New price for ${o.v.name}`} value={rateIn[o.v.id] ?? ""} onChange={(e) => setRateIn((s) => ({ ...s, [o.v.id]: e.target.value }))} /><button className="btn !min-h-8" onClick={() => setRate(o.v.id)}>Set</button></div></td>
                 <td className="text-right tabular-nums">{o.showed}</td><td className={`text-right tabular-nums ${o.missed ? "text-rose-700 font-medium" : ""}`}>{o.missed}</td>
-                <td className="text-right tabular-nums">₹{inr(o.month)}{o.erMonth > 0 && <div className="text-[11px] text-slate-400">incl. ₹{inr(o.erMonth)} errands</div>}</td>
+                <td className="text-right tabular-nums">₹{inr(o.month)}<div className="text-[11px] text-slate-400 whitespace-nowrap">Trips ₹{inr(o.tripMonth)} · Errands ₹{inr(o.erMonth)}</div></td>
                 <td className={`text-right tabular-nums ${o.due > 0 ? "text-amber-800 font-medium" : ""}`}>₹{inr(o.due)}{o.unpriced > 0 && <div className="text-[11px] text-slate-400">{o.unpriced} unpriced</div>}</td></tr>); })}</tbody></table></div>
           {!vehicles.length && <p className="text-sm text-slate-400">No vehicles for this project yet. Add the first one below.</p>}
           <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3"><input className="inp !w-44" placeholder="Vehicle (e.g. Auto 1)" aria-label="Vehicle name" value={nv.name} onChange={(e) => setNv({ ...nv, name: e.target.value })} /><input className="inp !w-44" placeholder="Operator (who is paid)" aria-label="Operator" value={nv.operator} onChange={(e) => setNv({ ...nv, operator: e.target.value })} />
@@ -105,6 +170,9 @@ export default function TransportPage() {
 
         </>}
         {tab === "errands" && <>
+        <section className="card space-y-2" data-errand-month><div className="flex flex-wrap items-center gap-x-3 gap-y-2"><h2 className="font-medium">Errands in {monthName}</h2><span className="text-sm text-slate-500 tabular-nums">{tot.erCount} · ₹{inr(tot.errands)}</span><label className="ml-auto text-xs text-slate-500 flex items-center gap-2">Month<input type="month" className="inp !w-40" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} aria-label="Errands month" /></label></div>
+          {rows.some((o) => o.erCount > 0) ? <div className="flex flex-wrap gap-2">{rows.filter((o) => o.erCount > 0).map((o) => <div key={o.v.id} className="rounded-xl border border-slate-200 px-3 py-2 text-sm"><div className="font-medium">{o.v.name}</div><div className="text-xs text-slate-500 tabular-nums">{o.erCount} errand{o.erCount === 1 ? "" : "s"} · ₹{inr(o.erMonth)}</div></div>)}</div> : <p className="text-sm text-slate-400">No errands this month.</p>}
+          {errands.some((x) => x.pending && !x.voided_at && x.work_date.startsWith(month)) && <p className="text-xs text-amber-700">Errands still waiting for an amount count as ₹0 until it is entered.</p>}</section>
         <section className="card space-y-3"><h2 className="font-medium">Errands</h2><p className="text-xs text-slate-400">Extra jobs a vehicle ran that the operator quoted separately. They add to that vehicle's balance.</p>
           <div className="flex flex-wrap gap-2 items-end">
             <select className="inp !w-44" aria-label="Errand vehicle" value={ef.vehicle_id} onChange={(e) => setEf({ ...ef, vehicle_id: e.target.value })}><option value="">Vehicle…</option>{vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
