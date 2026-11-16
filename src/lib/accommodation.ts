@@ -26,7 +26,7 @@ export const isActive = (room: Room, today: string) => !room.vacated_on || room.
 // ── landlords and month adjustments ──
 export type Landlord = { id: string; name: string; phone: string; pan: string; notes: string; agreement_path: string | null; active: boolean };
 /** What was actually charged for one room in one month, when that differs from the full rent: nothing (0), a part month, or any other amount. */
-export type Adjustment = { id: string; room_id: string; for_month: string; amount: number; reason: string };
+export type Adjustment = { id: string; room_id: string; for_month: string; amount: number; reason: string; due_on?: string | null };
 
 export const daysInMonth = (ym: string) => { const [y, m] = ym.split("-").map(Number); return new Date(y, m, 0).getDate(); };
 export const adjustmentFor = (adjs: Adjustment[], roomId: string, ym: string) => adjs.find((a) => a.room_id === roomId && monthOf(a.for_month) === ym);
@@ -37,4 +37,13 @@ export const chargedUpTo = (room: Room, rents: Rent[], adjs: Adjustment[], upto:
 /** Rent for the days from `fromDay` to `toDay` (inclusive) of a month: the full rent × days ÷ days in the month, to the rupee. */
 export const rentByDays = (rent: number, ym: string, fromDay: number, toDay: number) => Math.round((rent * Math.max(0, toDay - fromDay + 1)) / daysInMonth(ym));
 /** Is this month's rent overdue? It is due on the 1st and late after the grace day. */
-export const isOverdueMonth = (ym: string, thisMonth: string, today: string) => ym < thisMonth || (ym === thisMonth && Number(today.slice(8)) > RENT_GRACE_DAY);
+export const lastDay = (ym: string) => `${ym}-${String(daysInMonth(ym)).padStart(2, "0")}`;
+/** When a room's rent for a month is due (2026-11-accommodation-advance.sql). Normally the 1st, late after the grace day.
+ *  A month the landlord agreed to be paid at its end carries a due date (the adjustment's due_on); next month's rent is then paid on that same day, with it. */
+export function dueOf(adjs: Adjustment[], roomId: string, ym: string): { dueOn: string; lateAfter: string; agreed: boolean } {
+  const own = adjustmentFor(adjs, roomId, ym)?.due_on;
+  const prev = adjustmentFor(adjs, roomId, addMonths(ym, -1))?.due_on;
+  const d = own || (prev && prev < `${ym}-01` ? prev : null);
+  return d ? { dueOn: d, lateAfter: d, agreed: true } : { dueOn: `${ym}-01`, lateAfter: `${ym}-${String(RENT_GRACE_DAY).padStart(2, "0")}`, agreed: false };
+}
+export const isOverdueMonth =(ym: string, thisMonth: string, today: string) => ym < thisMonth || (ym === thisMonth && Number(today.slice(8)) > RENT_GRACE_DAY);

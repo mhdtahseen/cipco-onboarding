@@ -3,11 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import PayeeBank from "@/components/PayeeBank";
 import { supabase } from "@/lib/supabase/client";
 import { uploadBill } from "@/lib/billUpload";
-import { ROOM_TYPE, isActive, monthLabel, rentFor, type Landlord, type Room } from "@/lib/accommodation";
-import { inr, type Acc } from "./shared";
+import { ROOM_TYPE, addMonths, daysInMonth, isActive, lastDay, monthLabel, monthOf, rentByDays, rentFor, type Landlord, type Room } from "@/lib/accommodation";
+import { dayLabel, inr, type Acc } from "./shared";
 
 const BLANK_L = { name: "", phone: "", pan: "", notes: "" };
-const BLANK_R = { count: "1", type: "non_ac", rent: "", capacity: "", from: "" };
+const BLANK_R = { count: "1", type: "non_ac", rent: "", capacity: "", from: "", atEnd: false };
+// a room taken mid-month whose landlord agreed to be paid at the month end: the days left, due on the last day, with next month's rent
+const firstMonth = (from: string, rent: number) => { const ym = monthOf(from), day = Number(from.slice(8, 10)), dim = daysInMonth(ym); return { ym, day, dim, days: dim - day + 1, amount: rentByDays(rent, ym, day, dim), due: lastDay(ym), next: addMonths(ym, 1) }; };
 
 // Set up who is paid and what is rented. Each landlord is entered once, with their phone, PAN and bank details; their rooms sit under them.
 // Adding rooms, changing rents and vacating all happen inside the landlord's card.
@@ -37,8 +39,12 @@ export default function LandlordsRooms({ a, focus }: { a: Acc; focus?: string })
     let n = a.rooms.length; const base = a.rooms.reduce((m, r) => Math.max(m, r.sort_order), 0); setBusy(true);
     const rows = Array.from({ length: count }, (_, i) => ({ project_id: a.pid, name: `Room ${++n}`, room_type: nr.type, capacity: parseInt(nr.capacity) || 0, landlord: l?.name ?? "", landlord_id: l?.id ?? null, rented_from: nr.from, sort_order: base + 10 * (i + 1) }));
     const { data, error } = await sb().from("accommodation_rooms").insert(rows).select(); if (error || !data) { a.fail(error?.message ?? "Couldn't add the rooms."); setBusy(false); return; }
-    const { error: e2 } = await sb().from("accommodation_rents").insert((data as Room[]).map((r) => ({ room_id: r.id, rent, effective_from: nr.from }))); setBusy(false); if (e2) { a.fail(e2.message); return; }
-    a.note(`${count} room${count > 1 ? "s" : ""} added${l ? ` under ${l.name}` : ""} ✓`); setAddFor(null); setNr({ ...BLANK_R, from: a.today }); await a.reload();
+    const { error: e2 } = await sb().from("accommodation_rents").insert((data as Room[]).map((r) => ({ room_id: r.id, rent, effective_from: nr.from }))); if (e2) { setBusy(false); a.fail(e2.message); return; }
+    const f = firstMonth(nr.from, rent), atEnd = nr.atEnd && f.day > 1;
+    if (atEnd) { const { error: e3 } = await sb().from("accommodation_adjustments").insert((data as Room[]).map((r) => ({ room_id: r.id, for_month: `${f.ym}-01`, amount: f.amount, reason: `Days ${f.day}–${f.dim}, paid on ${dayLabel(f.due)} with ${monthLabel(f.next)} rent`, due_on: f.due })));
+      if (e3) { setBusy(false); a.fail(`Rooms added, but the month-end payment wasn't saved (${e3.message}). Set it with Adjust on the Rent tab.`); await a.reload(); return; } }
+    setBusy(false);
+    a.note(`${count} room${count > 1 ? "s" : ""} added${l ? ` under ${l.name}` : ""} ✓` + (atEnd ? ` ${monthLabel(f.ym)}: ₹${inr(f.amount)} a room for ${f.days} days, due ${dayLabel(f.due)} with ${monthLabel(f.next)} rent.` : "")); setAddFor(null); setNr({ ...BLANK_R, from: a.today }); await a.reload();
   }
   const patchRoom = (r: Room, patch: Partial<Room>) => a.run(sb().from("accommodation_rooms").update(patch).eq("id", r.id));
   const assign = (r: Room, lid: string) => { const l = a.landlords.find((x) => x.id === lid); return patchRoom(r, { landlord_id: lid || null, landlord: l?.name ?? "" } as Partial<Room>); };
@@ -71,7 +77,11 @@ export default function LandlordsRooms({ a, focus }: { a: Acc; focus?: string })
         <div><label className="lbl">Rent / month (₹)</label><input className="inp !w-32" inputMode="decimal" value={nr.rent} onChange={(e) => setNr({ ...nr, rent: e.target.value })} /></div>
         <div><label className="lbl">Beds each</label><input className="inp !w-24" type="number" min="0" value={nr.capacity} onChange={(e) => setNr({ ...nr, capacity: e.target.value })} placeholder="optional" /></div>
         <div><label className="lbl">Rented from</label><input className="inp !w-40" type="date" value={nr.from} onChange={(e) => setNr({ ...nr, from: e.target.value })} /></div>
-        <button className="btn btn-primary" disabled={busy} onClick={() => addRooms(l)}>Add rooms</button><button className="btn" onClick={() => setAddFor(null)}>Cancel</button></div></div>
+        <button className="btn btn-primary" disabled={busy} onClick={() => addRooms(l)}>Add rooms</button><button className="btn" onClick={() => setAddFor(null)}>Cancel</button></div>
+      {/^\d{4}-\d{2}-\d{2}$/.test(nr.from) && Number(nr.from.slice(8, 10)) > 1 && (() => { const rent = parseFloat(nr.rent) || 0, f = firstMonth(nr.from, rent); return (
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5 h-4 w-4" checked={nr.atEnd} onChange={(e) => setNr({ ...nr, atEnd: e.target.checked })} />
+          <span>Landlord agreed: pay {monthLabel(f.ym)} by days at the month end, with {monthLabel(f.next)} rent
+            <span className="block text-xs text-slate-500">{f.days} of {f.dim} days{rent > 0 ? <> · ₹{inr(f.amount)} + ₹{inr(rent)} = <b>₹{inr(f.amount + rent)}</b> a room</> : ""}, due {dayLabel(f.due)}. Leave unticked for the usual full month in advance.</span></span></label>); })()}</div>
   );
 
   return (

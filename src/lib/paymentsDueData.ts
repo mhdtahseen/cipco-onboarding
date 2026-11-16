@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { MEALS, addDays, istToday, rateFor, tripRate, type MealRate, type TransportRate } from "./attendance";
-import { chargeOf, monthOf, monthsBilled, type Adjustment, type Landlord, type Rent, type Room } from "./accommodation";
+import { addMonths, billedIn, chargeOf, dueOf, monthOf, monthsBilled, type Adjustment, type Landlord, type Rent, type Room } from "./accommodation";
 import { creditWindow, monthName, statDue, statutoryTotals } from "./payroll";
 import type { Bank, NotIncluded, Payee, ProjectDues } from "./pdf/paymentsDue";
 import { bankFor } from "./payee";
@@ -94,8 +94,13 @@ export async function loadPaymentsDue(sb: SupabaseClient): Promise<PaymentsDue> 
     const e = lords.get(k) ?? { pid: r.project_id, name: (lid && landlordName.get(lid)) || r.landlord.trim() || r.name, id: r.id, landlordId: lid, rooms: [] }; e.rooms.push(r); lords.set(k, e); });
   lords.forEach((g, k) => {
     const rid = new Set(g.rooms.map((r) => r.id)); const months = new Set<string>(); g.rooms.forEach((r) => monthsBilled(r, thisMonth).forEach((m) => months.add(m))); rpays.filter((x) => rid.has(x.room_id) && x.for_month).forEach((x) => months.add(monthOf(String(x.for_month))));
-    // rent is charged a month in advance and falls due on the 1st: each month is one amount, with the payments recorded for that month
-    const items: DueItem[] = [...months].sort().map((m) => ({ month: m, label: `Rent ${monthName(m)}`, total: g.rooms.reduce((s, r) => s + chargeOf(r, rents, adjs, m), 0), paid: rpays.filter((x) => rid.has(x.room_id) && x.for_month && monthOf(String(x.for_month)) === m).reduce((s, x) => s + num(x.amount), 0), dueOn: `${m}-01`, state: "billed" as const })).filter((i) => i.total > 0 || i.paid > 0);
+    // next month's rent of a room whose month is paid at its end (2026-11-accommodation-advance.sql) falls due this month, with it
+    const nextM = addMonths(thisMonth, 1); if (g.rooms.some((r) => billedIn(r, nextM) && dueOf(adjs, r.id, nextM).dueOn < `${nextM}-01`)) months.add(nextM);
+    // rent is charged a month in advance and falls due on the 1st: each month is one amount, with the payments recorded for that month.
+    // Rooms whose landlord agreed to be paid at the month end are their own line in that month, due on that day. A later month counts only when it is due now or was paid ahead.
+    const items: DueItem[] = [...months].sort().flatMap((m) => { const byDue = new Map<string, Room[]>(); g.rooms.forEach((r) => { const d = dueOf(adjs, r.id, m); if (m > thisMonth && !d.agreed && !rpays.some((x) => x.room_id === r.id && x.for_month && monthOf(String(x.for_month)) === m)) return; byDue.set(d.dueOn, [...(byDue.get(d.dueOn) ?? []), r]); });
+      return [...byDue.entries()].map(([dueOn, rs]) => { const ids = new Set(rs.map((r) => r.id)); return { month: m, label: `Rent ${monthName(m)}${dueOn.endsWith("-01") ? "" : ` · ${rs.map((r) => r.name).join(", ")}, paid at the month end`}`, total: rs.reduce((s, r) => s + chargeOf(r, rents, adjs, m), 0), paid: rpays.filter((x) => ids.has(x.room_id) && x.for_month && monthOf(String(x.for_month)) === m).reduce((s, x) => s + num(x.amount), 0), dueOn, state: "billed" as const }; }); })
+      .filter((i) => i.total > 0 || i.paid > 0).sort((x, y) => x.dueOn.localeCompare(y.dueOn) || x.month.localeCompare(y.month));
     const paidAll = g.rooms.reduce((s, r) => s + sumBy(rpays, "room_id", r.id), 0), total = items.reduce((s, i) => s + i.total, 0), firstOpen = items.find((i) => i.total - i.paid > 0.004);
     const lines = g.rooms.map((r) => ({ label: `${r.name}`, total: monthsBilled(r, thisMonth).reduce((s, m) => s + chargeOf(r, rents, adjs, m), 0), paid: Math.min(sumBy(rpays, "room_id", r.id), monthsBilled(r, thisMonth).reduce((s, m) => s + chargeOf(r, rents, adjs, m), 0)) }));
     const b = (g.landlordId ? bankOf("landlord", g.landlordId) : null) ?? g.rooms.map((r) => bankOf("room", r.id)).find(Boolean) ?? null; const nMonths = g.rooms.reduce((n, r) => n + monthsBilled(r, thisMonth).length, 0);
