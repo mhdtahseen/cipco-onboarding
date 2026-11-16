@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serverClient } from "@/lib/supabase/server";
 import { blankPccForm, buildKit, fillForm11, fillGratuity, fillJoiningForm, fillPccForm } from "@/lib/pdf/forms";
+import { buildEsicPack } from "@/lib/pdf/esic";
 import { r2Get } from "@/lib/r2";
 import type { Employee } from "@/lib/types";
 
 export const runtime = "nodejs";
-const names: Record<string, string> = { joining: "Joining-Form", form11: "PF-Form-11", gratuity: "Gratuity-Form-F", kit: "Joining-Kit", pcc: "Police-Verification-Form" };
+const names: Record<string, string> = { joining: "Joining-Form", form11: "PF-Form-11", gratuity: "Gratuity-Form-F", kit: "Joining-Kit", pcc: "Police-Verification-Form", esic: "ESIC-Details" };
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ kind: string }> }) {
   const { kind } = await params;
@@ -18,6 +19,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
   const { data: e } = await sb.from("employees").select("*").eq("id", id).single();
   if (!e || !names[kind]) return new NextResponse("Not found", { status: 404 });
   const emp = e as Employee;
+  if (kind === "esic") {   // details page + the Aadhaar, PAN and bank passbook from the Documents tab
+    const want = [{ key: "aadhaar", label: "Aadhaar card" }, { key: "pan", label: "PAN card" }, { key: "bank", label: "Bank passbook / cancelled cheque" }] as const;
+    const { data: docs } = await sb.from("employee_documents").select("doc_type, file_path").eq("employee_id", emp.id).in("doc_type", want.map((w) => w.key));
+    const files = await Promise.all(want.map(async (w) => { const fp = (docs || []).find((d: any) => d.doc_type === w.key)?.file_path; return { ...w, bytes: fp ? await r2Get(fp) : null }; }));
+    const fname = `${names.esic} - ${emp.full_name}.pdf`;
+    return new NextResponse(Buffer.from(await buildEsicPack(emp, files)), { headers: { "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="${encodeURIComponent(fname)}"` } });
+  }
   let photo: Uint8Array | null = null;   // passport photo from the Documents tab, if one has been uploaded
   if (kind === "joining" || kind === "kit" || kind === "pcc") {
     const { data: d } = await sb.from("employee_documents").select("file_path").eq("employee_id", emp.id).eq("doc_type", "photo").maybeSingle();

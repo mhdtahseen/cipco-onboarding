@@ -19,7 +19,9 @@ export default function FormsTab({ emp }: { emp: Employee }) {
     { k: "gratuity", t: "Gratuity nomination – Form F", d: "Nomination, statement and employer certificate (2 pages)" },
     { k: "pcc", t: "Police verification form (Gujarat)", d: "Labor Identification and Verification Form, filled (2 pages)" },
     { k: "kit", t: "Complete joining kit", d: "The first three in one PDF, plus the police verification form when the project needs it" },
+    ...(ho ? [] : [{ k: "esic", t: "ESIC details for the card", d: "Name, phone, joining date, Aadhaar, PAN and bank details as copyable text, then the Aadhaar, PAN and passbook from the Documents tab" }]),
   ];
+  const esicMissing = ho ? [] : (["phone", "join_date", "aadhaar", "pan", "bank_name", "account_no", "ifsc"] as const).filter((k) => !(emp as any)[k]);
   return (
     <div className="card space-y-4">
       {ho && (gp.length ? <label className="text-sm flex flex-wrap items-center gap-2">Gate pass for<select className="inp !w-auto" value={proj} onChange={(e) => setProj(e.target.value)}>{gp.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select><span className="text-xs text-slate-500">the site details on the police verification form come from this project</span></label>
@@ -32,6 +34,7 @@ export default function FormsTab({ emp }: { emp: Employee }) {
             <div className="font-semibold">{i.t}</div><div className="text-sm text-slate-500">{i.d}</div><div className="text-sm text-blue-700 mt-2">Open / download PDF →</div>
           </a>))}
       </div>
+      {esicMissing.length > 0 && <p className="text-xs text-slate-500">ESIC details: {esicMissing.map((m) => m.replace(/_/g, " ")).join(", ")} not filled in yet (shown as "not given" in the PDF).</p>}
       <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={pan} onChange={(e) => setPan(e.target.checked)} /> Police verification form: also print the PAN (attach a copy of the PAN card). Aadhaar is always printed.</label>
       <p className="text-xs text-slate-500">Need it by hand? <a className="text-blue-700 underline" href="/api/forms/pcc-blank" target="_blank">Blank police verification form</a></p>
     </div>
