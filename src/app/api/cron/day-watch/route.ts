@@ -3,6 +3,7 @@ import { timingSafeEqual } from "crypto";
 import { adminClient } from "@/lib/supabase/admin";
 import { sendPush } from "@/lib/push";
 import { disableLeavers } from "@/lib/loginAccess";
+import { jslAutoSend } from "@/lib/jslAuto";
 import { decideNotices, istDate, istMinutes, WATCH_FROM, WATCH_UNTIL, type Snapshot } from "@/lib/reminders";
 
 export const runtime = "nodejs";
@@ -20,7 +21,10 @@ export async function POST(req: NextRequest) {
   const leavers = await disableLeavers(db);
   if (leavers.failed.length) console.error("day-watch: could not disable", leavers.failed);
   await db.rpc("usage_prune").then(() => {}, () => {});   // app activity older than a month is deleted (2026-11-usage-activity.sql)
-  if (minutes < WATCH_FROM || minutes > WATCH_UNTIL) return NextResponse.json({ ok: true, skipped: "outside 08:00 to 23:30 India time", logins_disabled: leavers.disabled });
+  // from 08:30 (not Sundays): bills authorized for the JSL portal and not sent go out one at a time (src/lib/jslAuto.ts; the database checks the time)
+  const jsl = await jslAutoSend(db).catch((e) => ({ error: (e as Error).message }));
+  if ("error" in jsl) console.error("day-watch: JSL automatic send", jsl.error);
+  if (minutes < WATCH_FROM || minutes > WATCH_UNTIL) return NextResponse.json({ ok: true, skipped: "outside 08:00 to 23:30 India time", logins_disabled: leavers.disabled, jsl });
   const { data, error } = await db.rpc("day_watch_snapshot", { p_date: date });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const sent: { project: string; kind: string; devices: number }[] = [];
@@ -32,5 +36,5 @@ export async function POST(req: NextRequest) {
     for (const m of n.messages) { const r = await sendPush(m.to, { title: m.title, body: m.body, url: n.url, tag: `${n.kind}-${n.project_id}` }); devices += Object.values(r.devices).reduce((s, x) => s + x, 0); }
     sent.push({ project: n.project_id, kind: n.kind, devices });
   }
-  return NextResponse.json({ ok: true, date, minutes, sent, logins_disabled: leavers.disabled });
+  return NextResponse.json({ ok: true, date, minutes, sent, logins_disabled: leavers.disabled, jsl });
 }
