@@ -19,7 +19,7 @@ export default function FormsTab({ emp }: { emp: Employee }) {
     { k: "gratuity", t: "Gratuity nomination – Form F", d: "Nomination, statement and employer certificate (2 pages)" },
     { k: "pcc", t: "Police verification form (Gujarat)", d: "Labor Identification and Verification Form, filled (2 pages)" },
     { k: "kit", t: "Complete joining kit", d: "The first three in one PDF, plus the police verification form when the project needs it" },
-    ...(ho ? [] : [{ k: "esic", t: "ESIC details for the card", d: "Name, phone, joining date, Aadhaar, PAN and bank details as copyable text, then the Aadhaar, PAN and passbook from the Documents tab" }]),
+    ...(ho ? [] : [{ k: "esic", t: "ESIC details for the card", d: "Copyable details and the passport photo (tap to download, link works 7 days), then the Aadhaar, PAN and passbook from the Documents tab" }]),
   ];
   const esicMissing = ho ? [] : (["phone", "join_date", "aadhaar", "pan", "bank_name", "account_no", "ifsc"] as const).filter((k) => !(emp as any)[k]);
   return (
