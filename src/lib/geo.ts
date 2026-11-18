@@ -19,6 +19,20 @@ export async function geoPermission(): Promise<"granted" | "denied" | "prompt" |
   try { const p = await navigator.permissions?.query({ name: "geolocation" as PermissionName }); return p ? (p.state as "granted" | "denied" | "prompt") : "prompt"; } catch { return "prompt"; }
 }
 
+// Some phone browsers (seen on a Realme 12x with its built-in browser) answer "denied" when asked about the permission although reading the location works.
+// So "denied" is checked once by actually reading the location: a phone that really blocks it fails at once, without any question on screen, and a phone where it
+// works is treated as allowed. A success is remembered for 10 minutes so the gate and the entries do not start the GPS again and again.
+let verifiedAt = 0;
+const VERIFIED_MS = 10 * 60_000;
+const probe = (): Promise<boolean> => new Promise((resolve) => navigator.geolocation.getCurrentPosition(() => resolve(true), () => resolve(false), { enableHighAccuracy: false, timeout: 8000, maximumAge: 600_000 }));
+/** The permission as it really is: like geoPermission(), but a "denied" that turns out to work counts as granted. */
+export async function geoAllowed(): Promise<"granted" | "denied" | "prompt" | "unsupported"> {
+  const p = await geoPermission(); if (p !== "denied") return p;
+  if (Date.now() - verifiedAt < VERIFIED_MS) return "granted";
+  if (await probe()) { verifiedAt = Date.now(); return "granted"; }
+  return "denied";
+}
+
 const none = (status: GeoStatus): Fix => ({ lat: null, lng: null, acc: null, status, at: new Date().toISOString() });
 let cache: { fix: Fix; at: number } | null = null; let inflight: Promise<Fix> | null = null;
 const read = (): Promise<Fix> => new Promise((resolve) => navigator.geolocation.getCurrentPosition(
@@ -28,7 +42,7 @@ const read = (): Promise<Fix> => new Promise((resolve) => navigator.geolocation.
 
 async function currentFix(): Promise<Fix> {
   if (!geoSupported()) return none("unsupported");
-  const perm = await geoPermission();
+  const perm = await geoAllowed();
   if (perm === "denied") return none("denied");
   if (perm === "prompt") return none("unavailable");   // not asked yet: an entry never brings up the phone's question
   if (cache && cache.fix.status === "ok" && Date.now() - cache.at < 90_000) return cache.fix;

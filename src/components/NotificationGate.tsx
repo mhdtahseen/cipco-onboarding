@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase/client";
 import { resetMe } from "@/lib/me";
 import { swrClear } from "@/lib/swr";
 import { dropPush, enablePush, isIOS, isStandalone, notifPermission, pushSupported, subscribePush } from "@/lib/pushClient";
-import { askLocation, geoPermission, isTagged } from "@/lib/geo";
+import { askLocation, geoAllowed, isTagged } from "@/lib/geo";
 
 type Step = "ok" | "ask" | "blocked" | "failed";
 type State = { checking: boolean; install: boolean; notif: Step; geo: Step };
@@ -20,7 +20,7 @@ export default function NotificationGate({ role }: { role: string | null }) {
     const install = isIOS() && !isStandalone();   // iPhones only allow notifications from the Home Screen icon
     let notif: Step = "ok";
     if (!install && pushSupported()) { const p = notifPermission(); notif = p === "default" ? "ask" : p === "denied" ? "blocked" : (await subscribePush()) ? "ok" : "failed"; }
-    const g = await geoPermission(); const geo: Step = g === "prompt" ? "ask" : g === "denied" ? "blocked" : "ok";   // "unsupported" steps aside
+    const g = await geoAllowed(); const geo: Step = g === "prompt" ? "ask" : g === "denied" ? "blocked" : "ok";   // "unsupported" steps aside; a "denied" that can read the location anyway passes (geo.ts)
     setS({ checking: false, install, notif, geo });
   }, []);
   useEffect(() => {

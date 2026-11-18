@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { askLocation, geoPermission, geoSupported, isTagged } from "@/lib/geo";
+import { askLocation, geoAllowed, geoSupported, isTagged } from "@/lib/geo";
 import { enablePush, isIOS, isStandalone, notifPermission, pushSupported, subscribePush } from "@/lib/pushClient";
 
 type Need = { notif: boolean; geo: boolean; iosHint: boolean };
@@ -28,7 +28,7 @@ export default function PermissionPrompt({ role }: { role: string | null }) {
     if (need!.notif) await enablePush();
     if (need!.geo) await askLocation();
     setBusy(false);
-    const geoNow = need!.geo ? await geoPermission() : "granted";
+    const geoNow = need!.geo ? await geoAllowed() : "granted";   // a "denied" that can read the location anyway passes (geo.ts)
     if ((need!.notif && notifPermission() === "denied") || geoNow === "denied") setBlocked(true); else setNeed(null);
   }
   const what = need.notif && need.geo ? "notifications and location" : need.notif ? "notifications" : need.geo ? "location" : "notifications";
