@@ -12,3 +12,6 @@ jsl-worker/out
 
 # macOS folder settings
 .DS_Store
+
+# TypeScript compiler cache: rewritten on every type-check
+*.tsbuildinfo
