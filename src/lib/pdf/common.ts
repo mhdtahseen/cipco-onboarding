@@ -8,6 +8,7 @@ export const readAsset = (...p: string[]) => fs.readFile(path.join(root, "assets
 export const readPublic = (...p: string[]) => fs.readFile(path.join(root, "public", ...p));
 
 export async function newDoc() {
+  await (await import("../companyServer")).applyCompany();   // the details saved on the Company page, before anything is written
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
   return doc;
@@ -18,9 +19,9 @@ export async function embedFonts(doc: PDFDocument): Promise<Fonts> {
   return { reg: await doc.embedFont(r, { subset: true }), bold: await doc.embedFont(b, { subset: true }), ital: await doc.embedFont(i, { subset: true }) };
 }
 
-/** Company seal + authorised signature (placeholders in /public/branding — replace the PNGs to go live). */
+/** Company seal + authorised signature: the ones uploaded on the Company page, else the built-in images in assets/branding (not public). */
 export async function loadBranding() {
-  const [seal, sign] = await Promise.all([readPublic("branding", "seal.png"), readPublic("branding", "signature.png")]);
+  const { seal, sign } = await (await import("../companyServer")).brandingImages();
   return { seal, sign };
 }
 export type Stamp = { x: number; top: number; signW?: number; signMaxH?: number; sealW?: number; sealDx?: number; sealDy?: number };

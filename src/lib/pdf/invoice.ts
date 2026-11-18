@@ -1,6 +1,6 @@
 import { degrees, rgb, type PDFPage } from "pdf-lib";
 import { drawStamp, embedFonts, newDoc, wrapPlain } from "./common";
-import { BANK, COMPANY, COMPANY_PAN } from "../company";
+import { BANK, COMPANY, companyPan } from "../company";
 import { rupeesWords } from "../salary";
 import { money, qtyText, stateName, type Client, type Invoice, type InvoiceItem, type WorkOrder } from "../invoice";
 
@@ -23,7 +23,7 @@ export async function buildInvoice(d: InvoicePdfInput): Promise<Uint8Array> {
 
   // ── header ──
   text(COMPANY.name, M, 16, f.bold, blue); y -= 14; text(COMPANY.line1.replace("Office Address : ", ""), M, 8, f.reg, mute); y -= 10;
-  text(COMPANY.line2, M, 8, f.reg, mute); y -= 10; text(`GSTIN: ${COMPANY.gstin}  ·  PAN: ${COMPANY_PAN}  ·  Udyam: ${COMPANY.udyam}`, M, 8, f.reg, mute); y -= 8; rule(y); y -= 20;
+  text(COMPANY.line2, M, 8, f.reg, mute); y -= 10; text(`GSTIN: ${COMPANY.gstin}  ·  PAN: ${companyPan()}  ·  Udyam: ${COMPANY.udyam}`, M, 8, f.reg, mute); y -= 8; rule(y); y -= 20;
   text("TAX INVOICE", M, 14, f.bold); text(`Running Account Bill No. ${inv.bill_no}`, W - M, 10, f.bold, blue, true); y -= 8; text("Original for recipient", W - M, 7.5, f.ital, mute, true); y -= 14;
 
   // ── invoice / order details (two columns) and the party billed ──

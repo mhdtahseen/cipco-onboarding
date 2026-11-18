@@ -85,6 +85,7 @@ function Account({ email, name, role }: { email: string; name: string; role: str
       </button>
       {open && <div role="menu" className="pop-in absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50">
         <div className="px-3 py-2 border-b border-slate-100"><div className="text-sm font-medium break-all">{name || email}</div>{name && <div className="text-xs text-slate-500 break-all">{email}</div>}<div className="text-xs text-slate-500">{who}</div></div>
+        {role === "admin" && <Link href="/company" role="menuitem" onClick={() => setOpen(false)} className="w-full flex items-center gap-2 px-3 min-h-11 rounded-lg text-sm hover:bg-slate-100"><Icon name="building" className="h-4 w-4" />Company<span className="ml-auto text-[11px] text-slate-400">details &amp; documents</span></Link>}
         <ThemeSwitch />
         <button type="button" role="menuitem" onClick={signOut} className="w-full flex items-center gap-2 px-3 min-h-11 mt-1 border-t border-slate-100 rounded-lg text-sm text-left hover:bg-slate-100"><Icon name="logout" className="h-4 w-4" />Sign out</button>
       </div>}
@@ -98,7 +99,7 @@ function Shell({ path, children }: { path: string; children: React.ReactNode }) 
   const perms = usePerms(); const items = visibleItemsWith(role, perms.matrix);
   useUsageBeacon(!!role && role !== "none", path);   // the Admin's activity log: when the app is open and on screen, and which page
   const minimal = role ? items.length <= 1 : hint === "min";   // a single-purpose login gets no sidebar or bottom bar
-  const item = itemFor(path); const title = path === "/no-access" ? "No access" : item?.label ?? "CIPCO Operations";
+  const item = itemFor(path); const title = path === "/no-access" ? "No access" : path === "/company" ? "Company" : item?.label ?? "CIPCO Operations";
 
   // the name comes from the Users page; the email shows until one is set
   useEffect(() => { let alive = true; loadMe().then((me) => { if (alive && me) { setEmail(me.email); setName(me.name); setPracticeOn(me.practice); } }).catch(() => { /* the shell still works without a name */ }); return () => { alive = false; }; }, []);

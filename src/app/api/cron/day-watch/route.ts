@@ -4,6 +4,7 @@ import { adminClient } from "@/lib/supabase/admin";
 import { sendPush } from "@/lib/push";
 import { disableLeavers } from "@/lib/loginAccess";
 import { jslAutoSend } from "@/lib/jslAuto";
+import { companyDocReminders } from "@/lib/companyReminders";
 import { decideNotices, istDate, istMinutes, WATCH_FROM, WATCH_UNTIL, type Snapshot } from "@/lib/reminders";
 
 export const runtime = "nodejs";
@@ -25,6 +26,9 @@ export async function POST(req: NextRequest) {
   const jsl = await jslAutoSend(db).catch((e) => ({ error: (e as Error).message }));
   if ("error" in jsl) console.error("day-watch: JSL automatic send", jsl.error);
   if (minutes < WATCH_FROM || minutes > WATCH_UNTIL) return NextResponse.json({ ok: true, skipped: "outside 08:00 to 23:30 India time", logins_disabled: leavers.disabled, jsl });
+  // company documents about to expire: a push to the Admins 30 days before, 7 days before and on the day (src/lib/companyReminders.ts)
+  const docs = await companyDocReminders(db).catch((e) => ({ error: (e as Error).message }));
+  if ("error" in docs) console.error("day-watch: company document reminders", docs.error);
   const { data, error } = await db.rpc("day_watch_snapshot", { p_date: date });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const sent: { project: string; kind: string; devices: number }[] = [];
@@ -36,5 +40,5 @@ export async function POST(req: NextRequest) {
     for (const m of n.messages) { const r = await sendPush(m.to, { title: m.title, body: m.body, url: n.url, tag: `${n.kind}-${n.project_id}` }); devices += Object.values(r.devices).reduce((s, x) => s + x, 0); }
     sent.push({ project: n.project_id, kind: n.kind, devices });
   }
-  return NextResponse.json({ ok: true, date, minutes, sent, logins_disabled: leavers.disabled, jsl });
+  return NextResponse.json({ ok: true, date, minutes, sent, logins_disabled: leavers.disabled, jsl, company_docs: docs });
 }

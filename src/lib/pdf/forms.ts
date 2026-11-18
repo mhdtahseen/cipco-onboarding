@@ -8,6 +8,7 @@ const groups = (s?: string | null, n = 4) => (s || "").replace(/\s+/g, "").repla
 const centered = (page: any, f: any, text: string, cx: number, base: number, size = 9) => text && put(page, f, text, cx - f.widthOfTextAtSize(text, size) / 2, base, size);
 
 async function load(name: string) {
+  await (await import("../companyServer")).applyCompany();   // the details saved on the Company page
   const doc = await PDFDocument.load(await readAsset("templates", name));
   doc.registerFontkit((await import("@pdf-lib/fontkit")).default);
   const f = await embedFonts(doc);

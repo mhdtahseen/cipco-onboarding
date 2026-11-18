@@ -1,4 +1,5 @@
 import { COMPANY } from "@/lib/company";
+import { useCompany } from "@/lib/useCompany";
 import { inr, rupeesWords } from "@/lib/salary";
 
 export type SlipData = {
@@ -14,6 +15,7 @@ const paidBy = (sn: Record<string, any>) => (sn.pay_mode === "upi" ? `UPI · ${s
 
 /** On-screen salary slip with the same sections as the printed PDF (lib/pdf/payslip.ts): keep the two in step. */
 export default function SalarySlip({ projectName, payMonth, line, draft }: { projectName: string; payMonth: string; line: SlipData; draft?: boolean }) {
+  useCompany();   // the details saved on the Company page
   const sn = line.snapshot ?? {}; const c = (sn.counts ?? {}) as Record<string, number>;
   const earn = line.items.filter((i) => i.kind === "earning"), ded = line.items.filter((i) => i.kind === "deduction");
   const info: [string, string][] = [["Employee", sn.name ?? ""], ["Employee no.", sn.emp_no ?? "—"], ["Designation", sn.designation ?? "—"], ["Department", sn.department ?? "—"], ["Project", projectName], ["Date of joining", dmy(sn.join_date)], ["PAN", sn.pan ?? "—"], ["UAN", sn.uan ?? "—"], ["Paid by", paidBy(sn)], ["Pay month", monthLabel(payMonth)]];

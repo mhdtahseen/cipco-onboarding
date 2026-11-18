@@ -1,7 +1,7 @@
 import { PDFFont, PDFPage, rgb } from "pdf-lib";
 import { embedFonts, newDoc, readAsset, wrapPlain } from "./common";
 import { fmtDateLong, numToWordsIN } from "../format";
-import { COMPANY, COMPANY_PAN } from "../company";
+import { COMPANY, companyPan } from "../company";
 import { itemLabel, qtyText, type ToolItem, type Transfer } from "../tools";
 
 export type Party = { name: string; address: string[] };
@@ -80,7 +80,7 @@ export async function buildToolChallan(tr: Transfer, to: Party, item: (itemId: s
   y += fh + 4;
   const s0 = y, sh = 150, sx = COL.qty;
   hl(L, R, s0, LINE); vl(L, s0, s0 + sh, LINE); vl(R, s0, s0 + sh, LINE); vl(sx, s0, s0 + sh); hl(L, R, s0 + sh, LINE);
-  t("PAN", L + 30, s0 + 11, 8.5); t(COMPANY_PAN, L + 92, s0 + 11, 8.5); hl(L, sx, s0 + 15); t("GST", L + 30, s0 + 26, 8.5); t(COMPANY.gstin, L + 92, s0 + 26, 8.5); hl(L, sx, s0 + 30); vl(L + 88, s0, s0 + 30);
+  t("PAN", L + 30, s0 + 11, 8.5); t(companyPan(), L + 92, s0 + 11, 8.5); hl(L, sx, s0 + 15); t("GST", L + 30, s0 + 26, 8.5); t(COMPANY.gstin, L + 92, s0 + 26, 8.5); hl(L, sx, s0 + 30); vl(L + 88, s0, s0 + 30);
   ct("Received Signature with Rubber Stamp", L, sx, s0 + 44, 8.5);
   ct("For Chandrika Industrial Projects", sx, R, s0 + 30, 9.5, f.bold); ct("Company", sx, R, s0 + 43, 9.5, f.bold); ct("Authorised Signature", sx, R, s0 + sh - 8, 9);
   if (attach) await attachedList(doc, f, logo, tr, item);

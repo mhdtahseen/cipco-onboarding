@@ -4,6 +4,7 @@ import { verifyLetter } from "@/lib/docLink";
 import { issuedLetterPdf } from "@/lib/letterPdf";
 import { LETTER_LABEL } from "@/lib/offboarding";
 import { COMPANY } from "@/lib/company";
+import { applyCompany } from "@/lib/companyServer";
 import type { LetterRow } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -12,6 +13,7 @@ export const dynamic = "force-dynamic";
 // An issued letter opened from the private link sent to the person. No login: the signed, expiring token in the address is the only proof, and it is checked here.
 // The PDF is rebuilt from the issued snapshot, with the seal and signature, so it is always exactly what was issued.
 export async function GET(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
+  await applyCompany();   // the details saved on the Company page
   const { token } = await ctx.params; const t = verifyLetter(token);
   const gone = (m: string, s: number) => new NextResponse(m, { status: s, headers: { "cache-control": "no-store" } });
   if (!t) return gone("This link is not valid or has expired. Please ask the office to send it again.", 410);

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { BANK } from "@/lib/company";
+import { loadCompanyInfo, useCompany } from "@/lib/useCompany";
 
 export type BankRow = { id: string; name: string; left: number; account: string; ifsc: string; bank: string };
 const KEY = "cipco_bank_letter";
@@ -10,6 +11,11 @@ const MODES = [["NEFT", "NEFT"], ["RTGS", "RTGS (₹2 lakh and above)"], ["IMPS"
 // Pay tab: the letter to the bank asking it to credit this month's salaries, on the company letterhead, to be signed by hand and submitted with the account details.
 // Lists the people still to be paid by bank transfer; anyone without an account number or IFSC is shown but left out. The bank, branch and company account number are remembered on this device.
 export default function BankLetter({ runId, ym, rows }: { runId: string; ym: string; rows: BankRow[] }) {
+  useCompany();   // the details saved on the Company page
+  useEffect(() => {   // the account saved on the Company page arrives after the form opened: use it, unless the bank fields were already typed in
+    const before = { bank: BANK.bank, branch: BANK.branch, account: BANK.accountNo };
+    void loadCompanyInfo().then(() => setF((x) => (x.bank === before.bank && x.branch === before.branch && x.account === before.account ? { ...x, bank: BANK.bank, branch: BANK.branch, account: BANK.accountNo } : x)));
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
   const [f, setF] = useState({ bank: BANK.bank, branch: BANK.branch, account: BANK.accountNo, mode: "NEFT", value: "", ref: `CIPCO/SAL/${ym}` }); const [off, setOff] = useState<Set<string>>(new Set()); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   useEffect(() => { try { const s = JSON.parse(localStorage.getItem(KEY) || "{}"); setF((x) => ({ ...x, bank: s.bank || x.bank, branch: s.branch || x.branch, account: s.account || x.account, mode: s.mode ?? "NEFT" })); } catch { /* storage unavailable */ } }, []);
   useEffect(() => { setF((x) => ({ ...x, ref: `CIPCO/SAL/${ym}` })); }, [ym]);

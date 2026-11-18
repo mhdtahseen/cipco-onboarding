@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { istToday } from "@/lib/attendance";
 import { BANK } from "@/lib/company";
+import { useCompany } from "@/lib/useCompany";
 import { addDays, calcInvoice, checkLine, lineAmount, money, outstandingOf, qtyText, r2, receivedOf, retentionHeld, settledOf, STATE_OPTIONS, stateName, taxKind, tdsOf, type Client, type Invoice, type Receipt, type WoItem, type WorkOrder } from "@/lib/invoice";
 import { fmtD } from "@/lib/invoiceData";
 import { swrDrop } from "@/lib/swr";
@@ -20,6 +21,7 @@ const BADGE = { draft: "bg-amber-50 text-amber-800", issued: "bg-green-50 text-g
 // One running bill. A draft is editable (quantities done to date, deductions, dates); issuing gives it its number and freezes it.
 // After that only receipts can be added, or the invoice cancelled with a reason.
 export default function InvoiceView({ id }: { id: string }) {
+  useCompany();   // the details saved on the Company page
   const router = useRouter(); const today = istToday();
   const [inv, setInv] = useState<Invoice | null>(null); const [client, setClient] = useState<Client | null>(null); const [wo, setWo] = useState<WorkOrder | null>(null); const [project, setProject] = useState(""); const [projState, setProjState] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]); const [orderQty, setOrderQty] = useState<Record<string, number>>({}); const [receipts, setReceipts] = useState<Receipt[]>([]); const [lastIssued, setLastIssued] = useState<string | null>(null);

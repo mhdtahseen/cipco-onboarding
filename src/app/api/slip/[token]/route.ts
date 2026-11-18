@@ -3,6 +3,7 @@ import { adminClient } from "@/lib/supabase/admin";
 import { buildPayslips } from "@/lib/pdf/payslip";
 import { verifySlip } from "@/lib/slipLink";
 import { COMPANY } from "@/lib/company";
+import { applyCompany } from "@/lib/companyServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 // A salary slip opened from the private link sent on WhatsApp. No login: the signed, expiring token in the address is the only proof, and it is checked here.
 // Works only for an approved payroll. The slip is built fresh from the saved payroll line, so it is never a copy that can drift.
 export async function GET(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
+  await applyCompany();   // the details saved on the Company page
   const { token } = await ctx.params; const t = verifySlip(token);
   const gone = (m: string, s: number) => new NextResponse(m, { status: s, headers: { "cache-control": "no-store" } });
   if (!t) return gone("This salary slip link is not valid or has expired. Please ask the office to send it again.", 410);

@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { REMEMBER_COOKIE, withLifetime } from "./session";
 export async function serverClient() {
+  await (await import("../companyServer")).applyCompany().catch(() => {});   // the details saved on the Company page, for whatever this request prints or sends (remembered for a minute)
   const store = await cookies();
   return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     cookies: {
