@@ -28,7 +28,7 @@ const TABS = [
 type Slug = (typeof TABS)[number]["slug"];
 
 // "← Employees" goes back to the list exactly as it was left (pile, stage, project, search, sort).
-function useBackHref() { const [h, setH] = useState("/"); useEffect(() => { try { const q = sessionStorage.getItem(LIST_QS_KEY); if (q) setH(`/?${q}`); } catch { /* storage unavailable */ } }, []); return h; }
+function useBackHref() { const [h, setH] = useState("/employees"); useEffect(() => { try { const q = sessionStorage.getItem(LIST_QS_KEY); if (q) setH(`/employees?${q}`); } catch { /* storage unavailable */ } }, []); return h; }
 
 export default function EmployeePage() { return <Suspense fallback={<Skeleton />}><EmployeeScreen /></Suspense>; }
 

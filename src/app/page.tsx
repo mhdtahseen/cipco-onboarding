@@ -1,7 +1,5 @@
-import { Suspense } from "react";
-import EmployeeList from "@/components/employees/EmployeeList";
+import { redirect } from "next/navigation";
 
-// The list reads its filters from the address bar, which Next requires to sit inside a Suspense boundary.
-export default function Dashboard() {
-  return <Suspense fallback={<div className="space-y-3"><div className="skeleton h-8 w-48" /><div className="skeleton h-10 w-full" /><div className="skeleton h-64 w-full" /></div>}><EmployeeList /></Suspense>;
-}
+// The plain address (and the home-screen icon) is a doorway, not a page: the route guard (middleware) sends each person to their role's landing page
+// (nav.ts LANDING, Attendance for everyone today). This only answers if the guard has not already done so.
+export default function Home() { redirect("/attendance"); }

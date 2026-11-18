@@ -24,9 +24,9 @@ const CONSUMABLES_ROLES: NavRole[] = SITE_ROLES_GET_CONSUMABLES ? ["admin", "sta
 const CONSUMABLES_BAR: NavRole[] = SITE_ROLES_GET_CONSUMABLES ? ["site_engineer", "supervisor", "attendance"] : [];
 
 export const NAV: NavItem[] = [
-  { href: "/", label: "Employees", icon: "users", section: "People", module: "employees", roles: ["admin", "staff", "viewer"], paths: ["/", "/employees"], bar: true },
-  { href: "/payroll", label: "Payroll", icon: "wallet", section: "People", module: "payroll", roles: ["admin", "viewer"], paths: ["/payroll"] },
   { href: "/attendance", label: "Attendance", icon: "user-check", section: "People", module: "attendance", roles: ["admin", "staff", "site_engineer", "supervisor", "attendance", "viewer"], paths: ["/attendance"], bar: true },
+  { href: "/employees", label: "Employees", icon: "users", section: "People", module: "employees", roles: ["admin", "staff", "viewer"], paths: ["/employees"], bar: true },
+  { href: "/payroll", label: "Payroll", icon: "wallet", section: "People", module: "payroll", roles: ["admin", "viewer"], paths: ["/payroll"] },
   { href: "/projects", label: "Projects", icon: "crane", section: "Operations", module: "projects", roles: ["admin", "staff", "viewer"], paths: ["/projects"], bar: true },
   { href: "/sites", label: "Sites today", icon: "hard-hat", section: "Operations", module: "sites", roles: ["admin", "viewer"], paths: ["/sites"], bar: ["viewer"] },
   { href: "/transport", label: "Transport", icon: "truck", section: "Operations", module: "transport", roles: ["admin", "viewer"], paths: ["/transport"] },
@@ -71,7 +71,18 @@ export function roleFromClaims(claims: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
-export const homeFor = (role: string) => (role === "attendance" || role === "supervisor" || role === "site_engineer" ? "/attendance" : role === "viewer" ? "/sites" : role === "none" ? "/no-access" : "/");
+// Where each role lands after signing in, from the plain address and from the home-screen icon. Change a role's page here.
+// If a role cannot open its landing page (the Permissions page took it away), it lands on the first page of its menu instead (landingFor).
+export const LANDING: Record<string, string> = {
+  admin: "/attendance", staff: "/attendance", supervisor: "/attendance", attendance: "/attendance", site_engineer: "/attendance", viewer: "/attendance",
+};
+export const homeFor = (role: string) => (role === "none" ? "/no-access" : LANDING[role] ?? "/attendance");
+/** The landing page for this role under the permission matrix: its own (LANDING), else the first menu page it can open, else the no-access page. */
+export function landingFor(role: string, m: Matrix | null): string {
+  if (role === "none") return "/no-access";
+  const home = homeFor(role); if (canAccessWith(role, home, "GET", m)) return home;
+  return visibleItemsWith(role, m)[0]?.href ?? "/no-access";
+}
 
 /** May this role open this address? Used by the route guard (middleware). Addresses that are not menu pages (data routes) are for staff and admin only. */
 // The Company page (profile menu → Company) and its routes are Admin only, whatever the permission matrix says. The letterhead details (/api/company/info)
