@@ -3,7 +3,7 @@
 // Pure data + helpers (no React), so the server-side route guard can import it too.
 import { apiModuleOf, levelRank, levelIn, openLevel, type Matrix } from "./permissions";
 export type NavRole = "admin" | "staff" | "site_engineer" | "supervisor" | "attendance" | "viewer";   // "attendance" = the old name for Supervisor, kept so the app still works before the migration renames it
-export type IconName = "users" | "user-check" | "crane" | "calculator" | "book" | "mail" | "quote" | "gear" | "user-cog" | "building" | "truck" | "utensils" | "bed" | "wallet" | "pin" | "wheelbarrow" | "box" | "rupee-down" | "receipt" | "clipboard-list" | "hard-hat" | "wrench" | "key";
+export type IconName = "chart" | "users" | "user-check" | "crane" | "calculator" | "book" | "mail" | "quote" | "gear" | "user-cog" | "building" | "truck" | "utensils" | "bed" | "wallet" | "pin" | "wheelbarrow" | "box" | "rupee-down" | "receipt" | "clipboard-list" | "hard-hat" | "wrench" | "key";
 export type NavItem = {
   href: string;            // where the link goes
   label: string;
@@ -45,6 +45,7 @@ export const NAV: NavItem[] = [
   { href: "/quote-library", label: "Quotation wording", icon: "quote", section: "Templates", module: "quote_library", roles: ["admin", "staff", "viewer"], paths: ["/quote-library"] },
   { href: "/settings", label: "Settings", icon: "gear", section: "Admin", module: "settings", roles: ["admin", "staff", "viewer"], paths: ["/settings"] },
   { href: "/locations", label: "Locations", icon: "pin", section: "Admin", module: "locations", roles: ["admin", "viewer"], paths: ["/locations"] },
+  { href: "/", label: "Dashboard", icon: "chart", section: "Admin", roles: ["admin"], paths: ["/"] },   // Admin only: everyone else is sent from "/" to their landing page (middleware)
   { href: "/users", label: "Users", icon: "user-cog", section: "Admin", roles: ["admin"], paths: ["/users"] },
   { href: "/permissions", label: "Permissions", icon: "key", section: "Admin", roles: ["admin"], paths: ["/permissions"] },
   // Coming: People → Payroll · Sales → Invoices, Clients · Operations → Stock, Suppliers  (see to-do.md)
@@ -87,9 +88,11 @@ export function landingFor(role: string, m: Matrix | null): string {
 /** May this role open this address? Used by the route guard (middleware). Addresses that are not menu pages (data routes) are for staff and admin only. */
 // The Company page (profile menu → Company) and its routes are Admin only, whatever the permission matrix says. The letterhead details (/api/company/info)
 // are read by every signed-in screen that prints them. Admin is let through before this is asked; null = not a company path.
-function companyRule(path: string): boolean | null {
+function companyRule(path: string, role: string): boolean | null {
   if (path === "/api/company/info") return true;
+  if (path === "/api/time") return role === "staff";   // the server clock in the profile menu: Admin and Operations only
   if (path === "/company" || path.startsWith("/company/") || path.startsWith("/api/company/") || path === "/api/company") return false;
+  if (path === "/api/dashboard") return false;   // the Dashboard (the plain address) is Admin only too
   return null;
 }
 export function canAccess(role: string, path: string, method = "GET"): boolean {
@@ -97,7 +100,7 @@ export function canAccess(role: string, path: string, method = "GET"): boolean {
   if (path === "/no-access") return true;
   if (role === "none") return false;
   if (path === "/api/usage/beat" || path === "/api/usage/event") return true;   // the app's own activity signal, sent by everyone signed in (2026-11-usage-activity.sql)
-  const co = companyRule(path); if (co !== null) return co;
+  const co = companyRule(path, role); if (co !== null) return co;
   const item = itemFor(path);
   // a Viewer reads only: the menu pages above, and data routes (documents, PDFs, exports) when they are asked for with GET. Every route that saves or sends something is POST and is refused.
   if (role === "viewer" && !item) return method === "GET" || method === "HEAD";
@@ -110,7 +113,7 @@ export function canAccessWith(role: string, path: string, method: string, m: Mat
   if (role === "admin" || path === "/no-access") return true;
   if (role === "none") return false;
   if (path === "/api/usage/beat" || path === "/api/usage/event") return true;   // the app's own activity signal, sent by everyone signed in
-  const co = companyRule(path); if (co !== null) return co;
+  const co = companyRule(path, role); if (co !== null) return co;
   const write = !(method === "GET" || method === "HEAD");
   const item = itemFor(path);
   if (item?.module) return levelRank(openLevel(role, m, item.module)) >= (write ? 2 : 1);

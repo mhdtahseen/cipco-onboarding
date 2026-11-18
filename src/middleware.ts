@@ -83,7 +83,8 @@ export async function middleware(req: NextRequest) {
   // Planned downtime: set APP_MAINTENANCE=1 in the hosting settings; everyone except Admin sees the no-access page until it is removed.
   if (process.env.APP_MAINTENANCE === "1" && role !== "admin") return isApi ? NextResponse.json({ error: "The app is down for maintenance. Please try again later." }, { status: 503 }) : path === "/no-access" ? res : NextResponse.redirect(new URL("/no-access?why=maintenance", req.url));
   if (isLogin) return NextResponse.redirect(new URL(home, req.url));
-  if (path === "/") return NextResponse.redirect(new URL(home, req.url));   // the plain address and the home-screen icon: straight to the landing page
+  // "/start" is the doorway (after signing in, and the home-screen icon): on to the landing page. "/" is the Dashboard, Admin only: everyone else goes to their landing page too.
+  if (path === "/start" || (path === "/" && role !== "admin")) return NextResponse.redirect(new URL(home, req.url));
   if (!canAccessWith(role, path, req.method, matrix)) return isApi ? NextResponse.json({ error: "Not allowed" }, { status: 403 }) : NextResponse.redirect(new URL(role === "none" ? "/no-access?why=norole" : `/no-access?why=denied&from=${encodeURIComponent(path)}`, req.url));
   return res;
 }

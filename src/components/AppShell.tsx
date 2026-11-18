@@ -65,6 +65,24 @@ function NavList({ items, path, showLabels, collapsed, onNavigate }: { items: Na
   );
 }
 
+// The server's clock in India time, in the profile menu: the app's rules (reminders, the 08:30 JSL send, which day an entry belongs to) run on it, not on the
+// phone's clock. Asked once when the menu opens, then it ticks here; a phone whose own clock is more than a minute off is told so.
+function ServerTime() {
+  const [off, setOff] = useState<number | null>(null); const [, tick] = useState(0);
+  useEffect(() => {
+    let live = true; const t0 = Date.now();
+    fetch("/api/time").then((r) => (r.ok ? r.json() : null)).then((j) => { if (live && j?.now) setOff(j.now + (Date.now() - t0) / 2 - Date.now()); }).catch(() => {});
+    const id = window.setInterval(() => tick((n) => n + 1), 1000); return () => { live = false; window.clearInterval(id); };
+  }, []);
+  if (off === null) return <div className="px-3 py-2 text-xs text-slate-400 border-b border-slate-100">Server time…</div>;
+  const now = new Date(Date.now() + off), drift = Math.round(Math.abs(off) / 60000);
+  return (
+    <div className="px-3 py-2 border-b border-slate-100 text-xs text-slate-500" title="The app's reminders and dates run on this clock (India time)">
+      <div className="flex items-baseline gap-2"><span className="flex-1">Server time</span><span className="font-medium text-slate-700 tabular-nums">{now.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })} IST</span></div>
+      <div className="flex items-baseline gap-2"><span className="flex-1">{now.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short", year: "numeric" })}</span>{drift >= 1 && <span className="text-amber-700">this device's clock is {drift} min {off > 0 ? "behind" : "ahead"}</span>}</div>
+    </div>);
+}
+
 function Account({ email, name, role }: { email: string; name: string; role: string | null }) {
   const [open, setOpen] = useState(false); const ref = useRef<HTMLDivElement>(null); const router = useRouter();
   useEffect(() => {
@@ -85,6 +103,7 @@ function Account({ email, name, role }: { email: string; name: string; role: str
       </button>
       {open && <div role="menu" className="pop-in absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50">
         <div className="px-3 py-2 border-b border-slate-100"><div className="text-sm font-medium break-all">{name || email}</div>{name && <div className="text-xs text-slate-500 break-all">{email}</div>}<div className="text-xs text-slate-500">{who}</div></div>
+        {(role === "admin" || role === "staff") && <ServerTime />}
         {role === "admin" && <Link href="/company" role="menuitem" onClick={() => setOpen(false)} className="w-full flex items-center gap-2 px-3 min-h-11 rounded-lg text-sm hover:bg-slate-100"><Icon name="building" className="h-4 w-4" />Company<span className="ml-auto text-[11px] text-slate-400">details &amp; documents</span></Link>}
         <ThemeSwitch />
         <button type="button" role="menuitem" onClick={signOut} className="w-full flex items-center gap-2 px-3 min-h-11 mt-1 border-t border-slate-100 rounded-lg text-sm text-left hover:bg-slate-100"><Icon name="logout" className="h-4 w-4" />Sign out</button>

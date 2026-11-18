@@ -16,7 +16,7 @@ export default function Login() {
     const { error } = await supabase().auth.signInWithPassword({ email: email.trim(), password: pw });
     if (error) { setErr(friendly(error.message)); setBusy(false); return; }
     void usageEvent("sign_in");   // the Admin's activity log
-    router.push("/"); router.refresh();
+    router.push("/start"); router.refresh();   // the doorway: the guard sends each role to its landing page
   }
   return (
     <div className="min-h-screen grid lg:grid-cols-[1.05fr_1fr]">
