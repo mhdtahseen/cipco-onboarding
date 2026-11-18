@@ -29,10 +29,13 @@ export default function PermissionsPage() {
   useEffect(() => { if (loaded) setDraft({ ...inForce(role) }); }, [loaded, role, saved]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const base = inForce(role);
+  // a tab follows its module ("Same") unless it starts at No access (startsNone, e.g. Expenses → Bills): then it has its own level and no "Same" choice
+  const startsNone = (key: string) => { const [m, t] = key.split("."); return !!t && !!MODULES.find((x) => x.key === m)?.tabs?.find((x) => x.key === t)?.startsNone; };
+  const dflt = (key: string): Val => (key.includes(".") && !startsNone(key) ? "inherit" : "none");
   const keys = useMemo(() => { const k = new Set([...Object.keys(base), ...Object.keys(draft)]); return [...k]; }, [base, draft]);
-  const changes = keys.filter((k) => (draft[k] ?? (k.includes(".") ? "inherit" : "none")) !== (base[k] ?? (k.includes(".") ? "inherit" : "none")));
+  const changes = keys.filter((k) => (draft[k] ?? dflt(k)) !== (base[k] ?? dflt(k)));
   const dirty = changes.length > 0;
-  const get = (key: string): Val => draft[key] ?? (key.includes(".") ? "inherit" : "none");
+  const get = (key: string): Val => draft[key] ?? dflt(key);
   const put = (key: string, v: Val) => setDraft((d) => { const n = { ...d }; if (v === "inherit") delete n[key]; else n[key] = v; return n; });
   const isViewer = role === "viewer";
   const menu = visibleItemsWith(role, draft);
@@ -41,7 +44,7 @@ export default function PermissionsPage() {
   async function save() {
     setBusy(true); setMsg(""); setErr("");
     // every key is sent, so a role that had nothing saved gets all of its defaults written explicitly (a role with no rows at all means "never configured")
-    const rows = [...MODULES.flatMap((m) => [m.key, ...(m.tabs ?? []).map((t) => tabKey(m.key, t.key))])].map((k) => ({ module: k, level: draft[k] ?? (k.includes(".") ? "inherit" : "none") }));
+    const rows = [...MODULES.flatMap((m) => [m.key, ...(m.tabs ?? []).map((t) => tabKey(m.key, t.key))])].map((k) => ({ module: k, level: draft[k] ?? dflt(k) }));
     const { error } = await supabase().rpc("admin_set_role_permissions", { p_role: role, p_rows: rows });
     setBusy(false); if (error) { setErr(error.message); return; }
     resetPerms(); setMsg(`Saved ${CONTROLLED_ROLES.find((r) => r.key === role)!.label}. Changes reach their open pages within a minute.`); await load();
@@ -52,7 +55,7 @@ export default function PermissionsPage() {
     const v = get(key); const levels = isViewer ? (["none", "view"] as Level[]) : [...LEVELS];
     return (
       <div role="radiogroup" aria-label={`${label} level`} className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs shrink-0 max-w-full overflow-x-auto">
-        {tab && <button type="button" role="radio" aria-checked={v === "inherit"} disabled={missing} onClick={() => put(key, "inherit")} className={`px-2.5 min-h-8 rounded-md ${v === "inherit" ? "bg-slate-200 font-semibold text-slate-800" : "text-slate-500"}`} title="Takes the module's level">Same</button>}
+        {tab && !startsNone(key) && <button type="button" role="radio" aria-checked={v === "inherit"} disabled={missing} onClick={() => put(key, "inherit")} className={`px-2.5 min-h-8 rounded-md ${v === "inherit" ? "bg-slate-200 font-semibold text-slate-800" : "text-slate-500"}`} title="Takes the module's level">Same</button>}
         {levels.map((l) => <button key={l} type="button" role="radio" aria-checked={v === l} disabled={missing} title={`${LEVEL_INFO[l].label}: ${LEVEL_INFO[l].help}`} onClick={() => put(key, l)}
           className={`px-2.5 min-h-8 rounded-md ${v === l ? (l === "none" ? "bg-slate-200 text-slate-800" : l === "view" ? "bg-sky-100 text-sky-900" : l === "full" ? "bg-emerald-100 text-emerald-900" : "bg-blue-100 text-blue-900") + " font-semibold" : "text-slate-500 hover:bg-slate-50"}`}>{SHORT[l]}</button>)}
       </div>);

@@ -3,6 +3,7 @@ import { COMPANY } from "../company";
 import { fmtDateDMY, todayISO } from "../format";
 import type { Employee } from "../types";
 import { drawPhotoBox, embedFonts, newDoc, readAsset, type Fonts } from "./common";
+import { A4, appendFile, fileKind as imgKind } from "./attach";
 
 // ESIC pack: what the person who makes ESIC cards needs, in one PDF.
 // Page 1: the details as real text in boxes (select and copy straight into the ESIC portal), the passport photo (tap it to download the original through a private
@@ -14,10 +15,8 @@ export type EsicFile = { key: "aadhaar" | "pan" | "bank"; label: string; bytes: 
 export type EsicPhoto = { bytes: Uint8Array | null; url: string | null; days: number };
 type Placed = { label: string; from: number; to: number; ok: boolean; note?: string };
 
-const A4: [number, number] = [595.28, 841.89];
 const INK = rgb(0.1, 0.12, 0.16), GREY = rgb(0.42, 0.45, 0.5), LINE = rgb(0.85, 0.87, 0.9), BRAND = rgb(0.12, 0.31, 0.64), LINK = rgb(0.1, 0.33, 0.75);
 const FIELD = rgb(0.965, 0.972, 0.984), WARN = rgb(0.85, 0.55, 0.1), OK = rgb(0.1, 0.5, 0.28), BAD = rgb(0.75, 0.2, 0.15);
-const imgKind = (b: Uint8Array) => (b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46 ? "pdf" : b[0] === 0x89 && b[1] === 0x50 ? "png" : b[0] === 0xff && b[1] === 0xd8 ? "jpg" : "other");
 const fit = (font: PDFFont, t: string, size: number, maxW: number, min = 8) => { let s = size; while (s > min && font.widthOfTextAtSize(t, s) > maxW) s -= 0.25; return s; };
 
 async function detailsPage(doc: PDFDocument, f: Fonts, e: Employee, photo: EsicPhoto, placed: Placed[]) {
@@ -97,39 +96,14 @@ function link(doc: PDFDocument, p: PDFPage, url: string, rect: number[]) {
   const annots = p.node.Annots(); if (annots) annots.push(annot); else p.node.set(PDFName.of("Annots"), doc.context.obj([annot]));
 }
 
-function notePage(doc: PDFDocument, f: Fonts, title: string, note: string) {
-  const p = doc.addPage(A4);
-  p.drawText(title, { x: 56, y: A4[1] - 64, size: 16, font: f.bold, color: INK });
-  p.drawText(note, { x: 56, y: A4[1] - 92, size: 11, font: f.ital, color: GREY });
-}
-
-async function imagePage(doc: PDFDocument, f: Fonts, title: string, bytes: Uint8Array, png: boolean) {
-  const img = png ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-  const p: PDFPage = doc.addPage(A4), M = 36, top = A4[1] - 40;
-  p.drawText(title, { x: M, y: top, size: 11, font: f.bold, color: GREY });
-  const boxW = A4[0] - 2 * M, boxH = top - 16 - M, k = Math.min(boxW / img.width, boxH / img.height), w = img.width * k, h = img.height * k;
-  p.drawImage(img, { x: (A4[0] - w) / 2, y: top - 16 - h, width: w, height: h });
-}
-
 export async function buildEsicPack(e: Employee, files: EsicFile[], photo: EsicPhoto): Promise<Uint8Array> {
   const doc = await newDoc(); const f = await embedFonts(doc);
   doc.setTitle(`ESIC details - ${e.full_name}`);
   // the documents first, so page 1 (inserted at the front afterwards) can list their page numbers
   const placed: Placed[] = [];
   for (const file of files) {
-    const from = doc.getPageCount() + 2; let ok = false, note: string | undefined = "Not uploaded";
-    if (!file.bytes) notePage(doc, f, file.label, "Not uploaded in the Documents tab.");
-    else {
-      const t = imgKind(file.bytes);
-      try {
-        if (t === "pdf") {
-          const src = await PDFDocument.load(file.bytes, { ignoreEncryption: true });
-          if (src.isEncrypted) { notePage(doc, f, file.label, "The uploaded PDF is password-protected (e-Aadhaar?). Upload a scan or photo instead."); note = "Password-protected"; }
-          else { (await doc.copyPages(src, src.getPageIndices())).forEach((pg) => doc.addPage(pg)); ok = true; }
-        } else if (t === "png" || t === "jpg") { await imagePage(doc, f, file.label, file.bytes, t === "png"); ok = true; }
-        else { notePage(doc, f, file.label, "The uploaded file is not a PDF, JPEG or PNG. Upload it again as one of these."); note = "Unreadable format"; }
-      } catch { notePage(doc, f, file.label, "The uploaded file could not be read. Upload it again."); note = "Could not be read"; }
-    }
+    const from = doc.getPageCount() + 2;
+    const r = await appendFile(doc, f, file.label, file.bytes); const ok = r.ok, note = r.note;
     placed.push({ label: file.label, from, to: doc.getPageCount() + 1, ok, note: ok ? undefined : note });
   }
   await detailsPage(doc, f, e, photo, placed);

@@ -96,6 +96,6 @@ export function canAccessWith(role: string, path: string, method: string, m: Mat
   if (item?.module) return levelRank(openLevel(role, m, item.module)) >= (write ? 2 : 1);
   if (item) return item.roles.includes(role as NavRole);
   const api = apiModuleOf(path);
-  if (api) { const have = api[2] ? levelIn(role, m, api[1], api[2]) : openLevel(role, m, api[1]); return levelRank(have) >= (write ? 2 : 1); }
+  if (api) { const have = api[2] ? levelIn(role, m, api[1], api[2]) : openLevel(role, m, api[1]); return levelRank(have) >= (write && !api[3] ? 2 : 1); }
   return canAccess(role, path, method);
 }

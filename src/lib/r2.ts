@@ -12,8 +12,10 @@ export async function r2Put(key: string, body: ArrayBuffer, contentType: string)
   if (!r.ok) throw new Error(`R2 upload failed: ${r.status} ${await r.text()}`);
 }
 
-export async function r2SignedGetUrl(key: string, seconds = 120) {
+/** A short-lived link to one stored file. With downloadAs, the browser saves it under that name instead of showing it. */
+export async function r2SignedGetUrl(key: string, seconds = 120, downloadAs?: string) {
   const u = new URL(objectUrl(key)); u.searchParams.set("X-Amz-Expires", String(seconds));
+  if (downloadAs) u.searchParams.set("response-content-disposition", `attachment; filename="${downloadAs.replace(/[^\x20-\x7e]/g, "").replace(/"/g, "")}"; filename*=UTF-8''${encodeURIComponent(downloadAs)}`);
   const s = await client().sign(u.toString(), { method: "GET", aws: { signQuery: true } });
   return s.url;
 }
