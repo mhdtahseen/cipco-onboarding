@@ -137,6 +137,8 @@ begin
   else p_jsl := null; end if;
   for it in select * from jsonb_array_elements(p_items) loop
     if btrim(coalesce(it ->> 'name', '')) = '' or coalesce((it ->> 'qty')::numeric, 0) <= 0 then raise exception 'Every item needs a name and a quantity.'; end if;
+    -- the JSL portal's units (inventory_bill_items_unit_portal), so the Inventory entry can always be made
+    if coalesce(nullif(btrim(it ->> 'unit'), ''), 'No') not in ('FT', 'Inch', 'Kg', 'Meter', 'mm', 'MT', 'No', 'Pcs') then raise exception 'Choose the unit from the list (No, Pcs, Meter, FT, Kg...): "%" is not one the JSL portal knows.', it ->> 'unit'; end if;
   end loop;
 
   insert into public.rentals (project_id, vendor_id, delivered_on, delivery_vehicle, delivery_note_no, delivery_doc_path, note, entered_by, entered_role)

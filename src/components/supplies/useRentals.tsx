@@ -7,7 +7,7 @@ import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
 import { depositState, daysUsed, nextBill, perDay, rentFor, type Rates, type Rental, type RentalItem, type RentalTerms } from "@/lib/rentals";
 import type { SupplyProject } from "./useGas";
 import type { Computed } from "@/components/SiteBills";
-import { ID_TYPES, JSL_LABEL, type JslStatus } from "@/lib/inventory";
+import { ID_TYPES, JSL_LABEL, UNITS, type JslStatus } from "@/lib/inventory";
 
 // Rented items on a project (Site supplies → Equipment → Rented; 2026-11-rentals.sql, rent worked out in src/lib/rentals.ts).
 //  Admin and Operations only (Supervisors, Site Engineers and Viewers do not see the tab, and the database refuses them).
@@ -230,7 +230,7 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
         {form.lines.map((l, i) => <div key={i} className="flex flex-wrap items-center gap-2">
           <input className="inp !w-48" placeholder="e.g. Scaffolding frame" value={l.name} onChange={(e) => setForm({ ...form, lines: form.lines.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
           <input className="inp !w-20" inputMode="decimal" placeholder="Qty" value={l.qty} onChange={(e) => setForm({ ...form, lines: form.lines.map((x, j) => (j === i ? { ...x, qty: num(e.target.value) } : x)) })} />
-          <input className="inp !w-20" placeholder="Unit" value={l.unit} onChange={(e) => setForm({ ...form, lines: form.lines.map((x, j) => (j === i ? { ...x, unit: e.target.value } : x)) })} />
+          <select className="inp !w-24" aria-label="Unit" value={l.unit} onChange={(e) => setForm({ ...form, lines: form.lines.map((x, j) => (j === i ? { ...x, unit: e.target.value } : x)) })}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select>
           {money && <input className="inp !w-28" inputMode="decimal" placeholder="₹ per day each" value={l.rate} onChange={(e) => setForm({ ...form, lines: form.lines.map((x, j) => (j === i ? { ...x, rate: num(e.target.value) } : x)) })} />}
           {form.lines.length > 1 && <button type="button" className="text-xs text-rose-700 hover:underline" onClick={() => setForm({ ...form, lines: form.lines.filter((_, j) => j !== i) })}>Remove</button>}
         </div>)}
