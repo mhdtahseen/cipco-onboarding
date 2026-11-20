@@ -6,11 +6,12 @@ import { useRole } from "@/lib/roles";
 import type { SupplyProject } from "./useGas";
 import { chargeFor, dayCharge, hoursText, minutesOf, rateOn, type EqLog, type EqRate } from "@/lib/equipment";
 import PayeeBank from "@/components/PayeeBank";
-import type { Computed } from "@/components/SiteBills";
+import type { Computed, Stretch } from "@/components/SiteBills";
+import { paidByBill } from "@/lib/siteBillsPaid";
 
 type Vendor = { id: string; name: string; contact: string; phone: string; gstin: string; active: boolean; kind?: string };
 type Item = { id: string; vendor_id: string; name: string; type: string; identifier: string; active: boolean };
-type Log = EqLog & { id: string; project_id: string; vendor_id: string; breakdown: boolean; note: string; entered_by: string | null; entered_role: string | null; verified_by: string | null; created_at: string };
+type Log = EqLog & { id: string; project_id: string; vendor_id: string; site_bill_id?: string | null; breakdown: boolean; note: string; entered_by: string | null; entered_role: string | null; verified_by: string | null; created_at: string };
 const TYPE: Record<string, string> = { crane: "Crane", manlift: "Manlift", truck: "Truck", other: "Other" };
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const dmy = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
@@ -41,8 +42,15 @@ export function useEquipment(project: SupplyProject | undefined) {
     setErr(""); setLoading(false);
   }
   useEffect(() => { load(); }, [role]);
+  // Operations / Admin: the equipment bills and payments, to show which bill each stretch is on and whether it is paid
+  type SB = { id: string; vendor_id: string; bill_no: string; no_bill?: boolean; bill_date: string; status: string; approved_amount: number | null; voided_at: string | null };
+  const [sbills, setSbills] = useState<SB[]>([]); const [spaid, setSpaid] = useState<Map<string, number>>(new Map());
   async function loadLogs() {
     if (!pid) return; const sb = supabase(); const all: Log[] = [];
+    if (money && !viewer) void (async () => {
+      const [b, p] = await Promise.all([sb.from("site_bills").select("id, vendor_id, bill_no, no_bill, bill_date, status, approved_amount, voided_at").eq("project_id", pid).eq("kind", "equipment"), sb.from("site_payments").select("vendor_id, site_bill_id, amount, voided_at").eq("project_id", pid).eq("kind", "equipment")]);
+      if (b.error || p.error) return; const bl = (b.data || []) as SB[]; setSbills(bl); setSpaid(paidByBill(bl, (p.data || []) as { vendor_id: string; site_bill_id?: string | null; amount: number; voided_at: string | null }[]));
+    })();
     for (let from = 0; from < 5000; from += 1000) { const { data, error } = await sb.from("equipment_logs").select("*").eq("project_id", pid).order("start_at", { ascending: false }).range(from, from + 999); if (error) { setErr(error.message); return; } all.push(...((data || []) as Log[])); if (!data || data.length < 1000) break; }
     setLogs(all);
   }
@@ -61,11 +69,22 @@ export function useEquipment(project: SupplyProject | undefined) {
   async function voidLog(l: Log) { if (!confirm(`Void this entry for ${iLabel(l.item_id)} (${tm(l.start_at)}${l.end_at ? `–${tm(l.end_at)}` : ""})? It stays in the list, marked void.`)) return; const { error } = await supabase().from("equipment_logs").update({ voided_at: new Date().toISOString() }).eq("id", l.id); if (error) { setErr(error.message); return; } note("Voided ✓"); loadLogs(); }
 
   // a stretch entered afterwards, or a correction of one
-  const [mf, setMf] = useState<{ id: string | null; item_id: string; date: string; from: string; to: string; breakdown: boolean; note: string } | null>(null);
-  const openManual = (l?: Log) => { setErr(""); setMf(l ? { id: l.id, item_id: l.item_id, date: l.work_date, from: hhmm(l.start_at), to: l.end_at ? hhmm(l.end_at) : "", breakdown: l.breakdown, note: l.note } : { id: null, item_id: projItems[0]?.id ?? "", date: today, from: "09:00", to: "12:00", breakdown: false, note: "" }); };
+  // two ways to enter it: start and stop times, or the start and the total time (the stop is worked out). vendorAsk is only for comparing, never saved.
+  const [mf, setMf] = useState<{ id: string | null; item_id: string; date: string; from: string; to: string; breakdown: boolean; note: string; mode: "times" | "total"; h: string; m: string; vendorAsk: string } | null>(null);
+  const openManual = (l?: Log) => { setErr(""); setMf(l ? { id: l.id, item_id: l.item_id, date: l.work_date, from: hhmm(l.start_at), to: l.end_at ? hhmm(l.end_at) : "", breakdown: l.breakdown, note: l.note, mode: "times", h: "", m: "", vendorAsk: "" } : { id: null, item_id: projItems[0]?.id ?? "", date: today, from: "09:00", to: "12:00", breakdown: false, note: "", mode: "times", h: "", m: "", vendorAsk: "" }); };
+  /** The form's stretch as start and end instants, from either way of entering it; null while incomplete. */
+  const mfSpan = (f: NonNullable<typeof mf>): { start_at: string; end_at: string } | null => {
+    if (!f.from) return null; const start_at = at(f.date, f.from);
+    if (f.mode === "times") { if (!f.to) return null; return { start_at, end_at: at(f.date, f.to) }; }
+    const mins = (parseInt(f.h || "0", 10) || 0) * 60 + (parseInt(f.m || "0", 10) || 0); if (mins <= 0) return null;
+    return { start_at, end_at: new Date(Date.parse(start_at) + mins * 60000).toISOString() };
+  };
   async function saveManual() {
-    if (!mf) return; if (!mf.item_id || !mf.from || !mf.to) { setErr("Choose the machine and enter the start and end times."); return; }
-    let start_at = at(mf.date, mf.from), end_at = at(mf.date, mf.to); if (end_at <= start_at) { setErr("The end time must be after the start time (to cover midnight, enter two entries)."); return; } setBusy(true); setErr("");
+    if (!mf) return; const span = mfSpan(mf);
+    if (!mf.item_id || !span) { setErr(mf.mode === "total" ? "Choose the machine, the start time and the total time." : "Choose the machine and enter the start and end times."); return; }
+    const { start_at, end_at } = span; if (end_at <= start_at) { setErr("The end time must be after the start time (to cover midnight, enter the total time instead)."); return; }
+    if (Date.parse(end_at) - Date.parse(start_at) > 24 * 3600000) { setErr("One entry cannot be longer than 24 hours."); return; }
+    if (Date.parse(end_at) > Date.now() + 5 * 60000) { setErr(`That would end at ${tm(end_at)}${istDate(end_at) !== mf.date ? ` on ${dmy(istDate(end_at))}` : ""}, which is still to come.`); return; } setBusy(true); setErr("");
     const sb = supabase(); const { error } = mf.id ? await sb.from("equipment_logs").update({ start_at, end_at, breakdown: mf.breakdown, note: mf.note.trim() }).eq("id", mf.id) : await sb.from("equipment_logs").insert({ project_id: pid, item_id: mf.item_id, start_at, end_at, breakdown: mf.breakdown, note: mf.note.trim() });
     setBusy(false); if (error) { setErr(error.message); return; } setMf(null); note(mf.id ? "Entry corrected (verification cleared) ✓" : "Entry saved ✓"); loadLogs();
   }
@@ -89,18 +108,55 @@ export function useEquipment(project: SupplyProject | undefined) {
     return { amount: Math.round((t.amount + t.gst) * 100) / 100, lines, warn };
   };
 
+  // what each stretch costs, with GST: the day's charge for that machine (minimum hours, rounding and overtime apply to the whole day), shared over that
+  // day's stretches by their minutes. null: running, void, or no rate for that day.
+  const cost = useMemo(() => {
+    const m = new Map<string, number | null>(); if (!money) return m; const day = new Map<string, Log[]>();
+    logs.forEach((l) => { if (l.voided_at || !l.end_at) return; const k = `${l.item_id}|${l.work_date}`; day.set(k, [...(day.get(k) ?? []), l]); });
+    day.forEach((ls, k) => { const [itemId, d] = k.split("|"); const r = rateOn(rates, itemId, d); const mins = ls.map((l) => minutesOf(l)); const tot = mins.reduce((s, x) => s + x, 0);
+      ls.forEach((l, i) => m.set(l.id, !r || tot === 0 ? null : Math.round(dayCharge(r, tot).amount * (mins[i] / tot) * (1 + r.gst_pct / 100) * 100) / 100)); });
+    return m;
+  }, [logs, rates, money]);
+  const stretches: Stretch[] = logs.filter((l) => !l.voided_at && l.end_at).map((l) => ({ id: l.id, vendor_id: l.vendor_id, date: l.work_date, label: `${iLabel(l.item_id)} · ${tm(l.start_at)}–${tm(l.end_at!)} (${hoursText(minutesOf(l))})`, amount: cost.get(l.id) ?? null, bill_id: l.site_bill_id ?? null }));
+  const billBadge = (l: Log) => { if (!money || viewer || l.voided_at || !l.end_at) return null; const b = l.site_bill_id ? sbills.find((x) => x.id === l.site_bill_id && !x.voided_at) : null;
+    if (!b) return <span className="rounded-full bg-amber-50 text-amber-800 px-2 py-0.5">not billed</span>;
+    const name = b.no_bill ? "statement" : b.bill_no ? `bill ${b.bill_no}` : "bill"; const paid = (spaid.get(b.id) ?? 0) >= (b.approved_amount ?? 0) - 0.5;
+    return <span className={`rounded-full px-2 py-0.5 ${b.status !== "approved" ? "bg-blue-50 text-blue-800" : paid ? "bg-green-50 text-green-800" : "bg-blue-50 text-blue-800"}`}>{b.status !== "approved" ? `on ${name}, to approve` : paid ? `paid · ${name}` : `on ${name}, to pay`}</span>; };
   const proj = project;
     const entry = (l: Log) => { const min = minutesOf(l, now); const own = l.entered_by === userId; const may = canVerify || (own && role === "supervisor"); return (
     <div className={`py-2.5 space-y-1 ${l.voided_at ? "opacity-60" : ""}`}>
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5"><span className={`font-medium ${l.voided_at ? "line-through" : ""}`}>{iLabel(l.item_id)}</span><span className="text-sm tabular-nums">{tm(l.start_at)} – {l.end_at ? tm(l.end_at) : <b className="text-green-700">running</b>}</span><span className="text-sm tabular-nums text-slate-500">{hoursText(min)}</span></div>
-      <div className="flex flex-wrap items-center gap-1.5 text-xs">{l.breakdown && <span className="rounded-full bg-rose-50 text-rose-800 px-2 py-0.5">breakdown</span>}{l.voided_at ? <span className="rounded-full bg-slate-100 text-slate-600 px-2 py-0.5">void</span> : l.verified_at ? <span className="rounded-full bg-green-50 text-green-800 px-2 py-0.5">verified by {who(l.verified_by)}</span> : l.end_at ? <span className="rounded-full bg-amber-50 text-amber-800 px-2 py-0.5">not verified</span> : null}<span className="text-slate-400">by {who(l.entered_by)}{l.note ? ` · ${l.note}` : ""}</span></div>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5"><span className={`font-medium ${l.voided_at ? "line-through" : ""}`}>{iLabel(l.item_id)}</span><span className="text-sm tabular-nums">{tm(l.start_at)} – {l.end_at ? tm(l.end_at) : <b className="text-green-700">running</b>}</span><span className="text-sm tabular-nums text-slate-500">{hoursText(min)}</span>{money && !viewer && cost.get(l.id) != null && !l.voided_at && <b className="text-sm tabular-nums">₹{inr(cost.get(l.id)!)}</b>}{money && !viewer && !l.voided_at && l.end_at && cost.get(l.id) === null && <span className="text-xs text-amber-700">no rate</span>}</div>
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">{l.breakdown && <span className="rounded-full bg-rose-50 text-rose-800 px-2 py-0.5">breakdown</span>}{billBadge(l)}{l.voided_at ? <span className="rounded-full bg-slate-100 text-slate-600 px-2 py-0.5">void</span> : l.verified_at ? <span className="rounded-full bg-green-50 text-green-800 px-2 py-0.5">verified by {who(l.verified_by)}</span> : l.end_at ? <span className="rounded-full bg-amber-50 text-amber-800 px-2 py-0.5">not verified</span> : null}<span className="text-slate-400">by {who(l.entered_by)}{l.note ? ` · ${l.note}` : ""}</span></div>
       {!l.voided_at && (may || (l.end_at && canVerify)) && <div className="flex flex-wrap gap-2 pt-0.5">{l.end_at && !l.verified_at && canVerify && <button className="tlink" onClick={() => verify(l)}>Verify</button>}{l.end_at && may && <button className="tlink" onClick={() => openManual(l)}>Correct</button>}{may && <button className="tlink tlink-danger" onClick={() => voidLog(l)}>Void</button>}</div>}
     </div>); };
 
-  const manualForm = !mf ? null : <div className="card !p-3 space-y-3"><div className="font-medium">{mf.id ? "Correct an entry" : "Add a stretch of work"}</div>
+  // what the stretch comes to as per the rate (Operations / Admin): what it adds to that machine's day, so the minimum hours and overtime are right
+  const mfCalc = (() => {
+    if (!mf || !money || viewer) return null; const span = mfSpan(mf); if (!span || span.end_at <= span.start_at) return null;
+    const r = rateOn(rates, mf.item_id, mf.date); const mins = Math.round((Date.parse(span.end_at) - Date.parse(span.start_at)) / 60000);
+    if (!r) return { mins, rate: null as null, adds: 0, day: 0, others: 0, billable: 0 };
+    const others = logs.filter((l) => l.item_id === mf.item_id && l.work_date === mf.date && !l.voided_at && l.end_at && l.id !== mf.id).reduce((t, l) => t + minutesOf(l), 0);
+    const g = 1 + r.gst_pct / 100; const withIt = dayCharge(r, others + mins), without = dayCharge(r, others);
+    return { mins, rate: r, adds: Math.round((withIt.amount - without.amount) * g * 100) / 100, day: Math.round(withIt.amount * g * 100) / 100, others, billable: withIt.hours };
+  })();
+  const manualForm = !mf ? null : <div className="card !p-3 space-y-3"><div className="flex flex-wrap items-center gap-2"><div className="font-medium sm:mr-auto">{mf.id ? "Correct an entry" : "Add a stretch of work"}</div>
+        <div role="group" aria-label="Enter as" className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">{([["times", "Start and stop"], ["total", "Total time"]] as ["times" | "total", string][]).map(([k, l]) => <button key={k} type="button" aria-pressed={mf.mode === k} className={`px-3 py-1 text-sm rounded-md ${mf.mode === k ? "bg-blue-50 text-blue-800 font-semibold" : "text-slate-600 hover:bg-slate-50"}`}
+          onClick={() => { if (k === mf.mode) return; if (k === "total") { const sp = mfSpan(mf); const mins = sp && sp.end_at > sp.start_at ? Math.round((Date.parse(sp.end_at) - Date.parse(sp.start_at)) / 60000) : 0; setMf({ ...mf, mode: k, h: mins ? String(Math.floor(mins / 60)) : "", m: mins ? String(mins % 60) : "" }); } else { const sp = mfSpan(mf); setMf({ ...mf, mode: k, to: sp && istDate(sp.end_at) === mf.date ? hhmm(sp.end_at) : mf.to }); } }}>{l}</button>)}</div></div>
         <div className="flex flex-wrap items-end gap-2"><div><label className="lbl">Machine</label><select className="inp !w-56" value={mf.item_id} disabled={!!mf.id} onChange={(e) => setMf({ ...mf, item_id: e.target.value })}>{projItems.map((i) => <option key={i.id} value={i.id}>{iLabel(i.id)}</option>)}</select></div>
           <div><label className="lbl">Date</label><input type="date" className="inp" max={today} value={mf.date} disabled={!!mf.id} onChange={(e) => setMf({ ...mf, date: e.target.value })} /></div>
-          <div><label className="lbl">Started</label><input type="time" className="inp" value={mf.from} onChange={(e) => setMf({ ...mf, from: e.target.value })} /></div><div><label className="lbl">Stopped</label><input type="time" className="inp" value={mf.to} onChange={(e) => setMf({ ...mf, to: e.target.value })} /></div></div>
+          <div><label className="lbl">Started</label><input type="time" className="inp" value={mf.from} onChange={(e) => setMf({ ...mf, from: e.target.value })} /></div>
+          {mf.mode === "times" ? <div><label className="lbl">Stopped</label><input type="time" className="inp" value={mf.to} onChange={(e) => setMf({ ...mf, to: e.target.value })} /></div>
+            : <><div><label className="lbl">Hours</label><input className="inp !w-20" inputMode="numeric" placeholder="0" value={mf.h} onChange={(e) => setMf({ ...mf, h: e.target.value.replace(/\D/g, "").slice(0, 2) })} /></div>
+              <div><label className="lbl">Minutes</label><input className="inp !w-20" inputMode="numeric" placeholder="0" value={mf.m} onChange={(e) => setMf({ ...mf, m: e.target.value.replace(/\D/g, "").slice(0, 3) })} /></div>
+              {(() => { const sp = mfSpan(mf); return sp ? <p className="text-xs text-slate-500 self-center">Stops at <b>{tm(sp.end_at)}</b>{istDate(sp.end_at) !== mf.date ? ` on ${dmy(istDate(sp.end_at))}` : ""}</p> : null; })()}</>}</div>
+        {mfCalc && <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 space-y-1.5 text-sm">
+          {mfCalc.rate === null ? <p className="text-amber-700">No rate is set for this machine on {dmy(mf.date)}. Add one under Machines & rates to see the amount.</p> : <>
+            <p><b>{hoursText(mfCalc.mins)}</b> as per the rate (₹{inr(mfCalc.rate.rate)}/{mfCalc.rate.unit}{mfCalc.rate.min_hours > 0 ? `, min ${mfCalc.rate.min_hours} h a day` : ""}{mfCalc.rate.gst_pct ? `, + ${mfCalc.rate.gst_pct}% GST` : ""}) → <b className="tabular-nums">₹{inr(mfCalc.adds)}</b></p>
+            {mfCalc.others > 0 && <p className="text-xs text-slate-500">With the {hoursText(mfCalc.others)} already logged that day, the day comes to ₹{inr(mfCalc.day)} ({mfCalc.billable.toFixed(2)} billable hours).</p>}
+            <div className="flex flex-wrap items-center gap-2"><label className="text-xs text-slate-500">Vendor asks (₹)</label><input className="inp !w-32 !py-1" inputMode="decimal" value={mf.vendorAsk} onChange={(e) => setMf({ ...mf, vendorAsk: e.target.value.replace(/[^\d.]/g, "") })} placeholder="to compare" />
+              {mf.vendorAsk !== "" && (() => { const v = parseFloat(mf.vendorAsk) || 0, d = Math.round((v - mfCalc.adds) * 100) / 100; return <span className={`text-sm font-medium ${Math.abs(d) < 1 ? "text-green-700" : "text-amber-700"}`}>{Math.abs(d) < 1 ? "Matches the rate" : `₹${inr(Math.abs(d))} ${d > 0 ? "more" : "less"} than the rate${mfCalc.rate.unit === "hour" && mfCalc.rate.rate > 0 ? ` (about ${hoursText(Math.round(Math.abs(d) / (1 + mfCalc.rate.gst_pct / 100) / mfCalc.rate.rate * 60))} ${d > 0 ? "extra" : "fewer"})` : ""}`}</span>; })()}</div>
+            <p className="text-xs text-slate-400">The vendor's amount is only for comparing here; it is not saved. Record their bill under Bills & payments.</p></>}
+        </div>}
         <div className="flex flex-wrap items-end gap-3"><div className="min-w-56 flex-1"><label className="lbl">Note (optional)</label><input className="inp" value={mf.note} onChange={(e) => setMf({ ...mf, note: e.target.value })} placeholder="e.g. lifting the boiler section" /></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={mf.breakdown} onChange={(e) => setMf({ ...mf, breakdown: e.target.checked })} />Machine broke down</label></div>
         <div className="flex gap-2 form-actions"><button className="btn btn-primary" disabled={busy} onClick={saveManual}>{busy ? "Saving…" : "Save"}</button><button className="btn" onClick={() => setMf(null)}>Cancel</button></div></div>;
   const todayNode = !pid ? null : <section className="space-y-3"><h2 className="font-semibold">Hired equipment</h2>
@@ -134,5 +190,6 @@ export function useEquipment(project: SupplyProject | undefined) {
   const dayNote = (d: string) => !money ? "" : [...new Set(logs.filter((l) => l.work_date === d && !l.voided_at && l.end_at).map((l) => l.item_id))].map((id) => { const r = rateOn(rates, id, d); return r ? `₹${inr(dayCharge(r, dayMinutes(id, d)).amount)} before GST` : ""; }).filter(Boolean).join(" · ");
   const toVerify = (ym: string) => logs.filter((l) => l.work_date.startsWith(ym) && !l.voided_at && l.end_at && !l.verified_at).length;
   const hoursIn = (ym: string) => logs.filter((l) => l.work_date.startsWith(ym) && !l.voided_at).reduce((s, l) => s + minutesOf(l, now), 0);
-  return { err, msg, loading, money, todayNode, manualForm, setupNode, logItems, compute, billVendors: linkedVendors, allVendors: vendors.filter((v) => v.active), dayNote, toVerify, hoursIn, hasMachines: projItems.length > 0, canAdd: !viewer && !closed && projItems.length > 0, addStretch: () => openManual(), hoursText };
+  const costIn = (ym: string) => Math.round(stretches.filter((s) => s.date.startsWith(ym)).reduce((t, s) => t + (s.amount ?? 0), 0) * 100) / 100;
+  return { stretches, costIn, reload: loadLogs, err, msg, loading, money, todayNode, manualForm, setupNode, logItems, compute, billVendors: linkedVendors, allVendors: vendors.filter((v) => v.active), dayNote, toVerify, hoursIn, hasMachines: projItems.length > 0, canAdd: !viewer && !closed && projItems.length > 0, addStretch: () => openManual(), hoursText };
 }

@@ -68,12 +68,12 @@ export default function SiteSupplies() {
         {eTab === "today" && <div className="space-y-4">{eq.todayNode}{entries(eqToday, "Nothing logged today.")}</div>}
         {eTab === "log" && <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2"><label className="text-xs text-slate-500 flex items-center gap-2">Month<input type="month" className="inp !w-40" value={logMonth} onChange={(e) => e.target.value && setLogMonth(e.target.value)} /></label>
-            <span className="text-xs text-slate-500">{eq.hoursText(eq.hoursIn(logMonth))} logged · {eq.toVerify(logMonth)} to verify</span>{eq.canAdd && <button className="btn btn-sm sm:ml-auto" onClick={eq.addStretch}>Add a stretch of work</button>}</div>
+            <span className="text-xs text-slate-500">{eq.hoursText(eq.hoursIn(logMonth))} logged{money && eq.costIn(logMonth) > 0 ? <> · <b className="text-slate-700">₹{eq.costIn(logMonth).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</b> with GST</> : null} · {eq.toVerify(logMonth)} to verify</span>{eq.canAdd && <button className="btn btn-sm sm:ml-auto" onClick={eq.addStretch}>Add a stretch of work</button>}</div>
           {eq.manualForm}
           {!eqLog.length && <p className="text-sm text-slate-500">Nothing logged this month.</p>}
           {byDate(eqLog).map(({ d, items }) => <section key={d} className="card !p-3"><div className="text-sm font-medium mb-1">{dayLabel(d)}{eq.dayNote(d) && <span className="ml-2 text-xs font-normal text-slate-500">{eq.dayNote(d)}</span>}</div><div className="divide-y divide-slate-100">{items.map((x) => <div key={x.key}>{x.node}</div>)}</div></section>)}</div>}
         {eTab === "rented" && staff && rent.node}
-        {eTab === "bills" && money && <SiteBills projectId={pid} sources={[{ kind: "equipment", label: "Equipment", vendors: eq.billVendors, compute: (v, f, t) => { const a = eq.compute(v, f, t), b = rent.compute(v, f, t); return { amount: Math.round((a.amount + b.amount) * 100) / 100, lines: [...a.lines, ...b.lines], warn: [a.warn, b.warn].filter(Boolean).join(" · ") }; } }]} />}
+        {eTab === "bills" && money && <SiteBills projectId={pid} onChange={eq.reload} sources={[{ kind: "equipment", label: "Equipment", vendors: eq.billVendors, stretches: eq.stretches, compute: (v, f, t) => (eq.stretches.some((s) => s.vendor_id === v) ? rent.compute(v, f, t) : (() => { const a = eq.compute(v, f, t), b = rent.compute(v, f, t); return { amount: Math.round((a.amount + b.amount) * 100) / 100, lines: [...a.lines, ...b.lines], warn: [a.warn, b.warn].filter(Boolean).join(" · ") }; })()) }]} />}
         {eTab === "setup" && money && eq.setupNode}
       </>}
     </div>
