@@ -3,7 +3,7 @@
 // Pure data + helpers (no React), so the server-side route guard can import it too.
 import { apiModuleOf, levelRank, levelIn, openLevel, type Matrix } from "./permissions";
 export type NavRole = "admin" | "staff" | "site_engineer" | "supervisor" | "attendance" | "viewer";   // "attendance" = the old name for Supervisor, kept so the app still works before the migration renames it
-export type IconName = "chart" | "users" | "user-check" | "crane" | "calculator" | "book" | "mail" | "quote" | "gear" | "user-cog" | "building" | "truck" | "utensils" | "bed" | "wallet" | "pin" | "wheelbarrow" | "box" | "rupee-down" | "receipt" | "clipboard-list" | "hard-hat" | "wrench" | "key";
+export type IconName = "chart" | "users" | "user-check" | "crane" | "calculator" | "book" | "mail" | "quote" | "gear" | "user-cog" | "building" | "truck" | "utensils" | "bed" | "wallet" | "pin" | "wheelbarrow" | "box" | "rupee-down" | "receipt" | "clipboard-list" | "hard-hat" | "wrench" | "key" | "file";
 export type NavItem = {
   href: string;            // where the link goes
   label: string;
@@ -44,6 +44,7 @@ export const NAV: NavItem[] = [
   { href: "/mail-templates", label: "Mail templates", icon: "mail", section: "Templates", module: "mail_templates", roles: ["admin", "staff", "viewer"], paths: ["/mail-templates"] },
   { href: "/quote-library", label: "Quotation wording", icon: "quote", section: "Templates", module: "quote_library", roles: ["admin", "staff", "viewer"], paths: ["/quote-library"] },
   { href: "/settings", label: "Settings", icon: "gear", section: "Admin", module: "settings", roles: ["admin", "staff", "viewer"], paths: ["/settings"] },
+  { href: "/pdf", label: "PDF & scan", icon: "file", section: "Admin", roles: ["admin"], paths: ["/pdf"] },   // Admin only for now: merge, split, sign, ID card on one page… all on the device
   { href: "/locations", label: "Locations", icon: "pin", section: "Admin", module: "locations", roles: ["admin", "viewer"], paths: ["/locations"] },
   { href: "/", label: "Dashboard", icon: "chart", section: "Admin", roles: ["admin"], paths: ["/"] },   // Admin only: everyone else is sent from "/" to their landing page (middleware)
   { href: "/users", label: "Users", icon: "user-cog", section: "Admin", roles: ["admin"], paths: ["/users"] },

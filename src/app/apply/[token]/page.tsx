@@ -149,7 +149,7 @@ export default function ApplyPage() {
           <div className="flex-1 min-w-0 basis-40"><div className="text-sm font-medium">{t(`u.${u.key}`)}</div>{u.hint && <div className="text-xs text-slate-400">{t(`u.${u.key}.h`)}</div>}</div>
           {files[u.key] && <span className="text-xs text-green-700 truncate max-w-[10rem] order-last w-full sm:order-none sm:w-auto" title={nice(files[u.key])}>✓ {nice(files[u.key])}</span>}
           <label className="btn cursor-pointer">{busy === u.key ? t("d.uploading") : files[u.key] ? t("d.replace") : t("d.upload")}
-            <input type="file" className="hidden" accept="image/*,.pdf" disabled={!!busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(u.key, f); }} /></label>
+            <input type="file" className="hidden" accept="image/*,.pdf" disabled={!!busy} data-scan={u.key === "aadhaar" ? "id" : u.key === "photo" ? "photo" : undefined} data-scan-name={`${t(`u.${u.key}`)}${v.full_name ? ` - ${v.full_name}` : ""}`} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(u.key, f); }} /></label>
         </div>))}</div>
     </div>
     <label style={{ scrollMarginBottom: 180 }} className={`flex items-start gap-3 text-sm text-slate-600 rounded-xl p-2 -mx-2 -mt-2 transition-colors ${nudge ? "bg-amber-50 ring-2 ring-amber-400" : ""}`}><input ref={confirmRef} type="checkbox" className="mt-0.5" checked={ok} onChange={(e) => { setOk(e.target.checked); if (e.target.checked) setErr(""); }} />{t("consent")}</label>

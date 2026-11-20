@@ -12,6 +12,7 @@ import PermissionPrompt from "./PermissionPrompt";
 import NotificationGate from "./NotificationGate";
 import { swrClear } from "@/lib/swr";
 import { NAV_SECTIONS, itemFor, visibleItemsWith, type NavItem, type NavRole } from "@/lib/nav";
+import { searchNav } from "@/lib/navSearch";
 import { clearPerms, resetPerms, setShellLevel, usePerms } from "@/lib/perms";
 import { Icon } from "./NavIcons";
 import ThemeSwitch from "./ThemeSwitch";
@@ -47,8 +48,26 @@ function NavList({ items, path, showLabels, collapsed, onNavigate }: { items: Na
     </Link>); };
   const divider = <div className={`mx-3 my-2 border-t border-slate-100 ${showLabels === "always" ? "" : collapsed ? "" : "xl:hidden"}`} />;
   const groups = NAV_SECTIONS.map((s) => ({ s, list: items.filter((i) => i.section === s) })).filter((g) => g.list.length);
+  // a long menu (Admin) gets a search box: forgiving of typos and related words (lib/navSearch.ts). "/" jumps to it, Enter opens the first match.
+  const router = useRouter(); const [q, setQ] = useState(""); const box = useRef<HTMLInputElement>(null); const searchable = items.length > 10 && !(showLabels === "wide" && collapsed);
+  const extra: NavItem[] = items.some((i) => i.href === "/users") ? [{ href: "/company", label: "Company", icon: "building", section: "Admin", roles: ["admin"], paths: ["/company"] }] : [];
+  const hits = q.trim() ? searchNav([...items, ...extra], q) : null;
+  useEffect(() => {
+    if (!searchable) return;
+    const key = (e: KeyboardEvent) => { const el = e.target as HTMLElement; if (e.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(el.tagName) && !el.isContentEditable && box.current?.offsetParent) { e.preventDefault(); box.current.focus(); } };
+    window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
+  }, [searchable]);
+  const search = searchable && (
+    <div className={`sticky z-10 bg-white px-1 pb-2 ${showLabels === "always" ? "-top-3 -mt-3 pt-3" : "-top-2 -mt-2 pt-2 hidden xl:block"}`}>   {/* stays at the top while the menu scrolls, covering the panel's padding */}
+      <input ref={box} type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the menu  ( / )" aria-label="Search the menu" className="inp !min-h-9 !py-1.5 !text-sm"
+        onKeyDown={(e) => { if (e.key === "Enter" && hits?.[0]) { router.push(hits[0].href); setQ(""); onNavigate?.(); } if (e.key === "Escape") { setQ(""); (e.target as HTMLInputElement).blur(); } }} />
+    </div>);
+  if (hits) return (
+    <nav aria-label="Main" className="space-y-0.5">{search}
+      {hits.length ? hits.map((i) => <div key={i.href} onClick={() => setQ("")}>{row(i)}</div>) : <p className="px-3 py-2 text-sm text-slate-400">Nothing matches “{q.trim()}”.</p>}
+    </nav>);
   return (
-    <nav aria-label="Main" className="space-y-0.5">
+    <nav aria-label="Main" className="space-y-0.5">{search}
       {groups.map(({ s, list }, n) => {
         const few = items.length <= 6; const open = few || opened.includes(s) || current?.section === s; const folded = showLabels === "always" ? !open : !open && !collapsed;
         return (
