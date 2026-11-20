@@ -122,6 +122,21 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
   }
 
   // ---------- return, undo, void ----------
+  // ---------- edit a delivery: date, vehicle, note number, note and the items (rental_update; its Inventory entry follows) ----------
+  const [ef, setEf] = useState<{ rid: string; delivered_on: string; vehicle: string; note_no: string; note: string; lines: (Line & { id: string | null })[] } | null>(null);
+  const openEdit = (r: Row) => { setErr(""); setRf(null); setTf(null); setEf({ rid: r.id, delivered_on: r.delivered_on, vehicle: r.delivery_vehicle, note_no: r.delivery_note_no, note: r.note,
+    lines: itemsOf(r.id).map((i) => ({ id: i.id, name: i.name, qty: String(i.qty), unit: i.unit, rate: rates[i.id] !== undefined ? String(rates[i.id]) : "" })) }); };
+  async function saveEdit() {
+    if (!ef) return; const lines = ef.lines.filter((l) => l.name.trim() || l.qty);
+    if (!lines.length || lines.some((l) => !l.name.trim() || !(parseFloat(l.qty) > 0))) { setErr("Every item needs a name and a quantity."); return; }
+    const b = rentals.find((r) => r.id === ef.rid)?.inventory_bill_id; const st = b ? bills[b]?.jsl_status : undefined;
+    if (st === "authorized" && !confirm("This delivery is authorized for the JSL portal. Saving withdraws that, so an Admin authorizes it again. Save?")) return;
+    setBusy("edit"); setErr("");
+    const { error } = await supabase().rpc("rental_update", { p_rental: ef.rid, p_delivered_on: ef.delivered_on, p_vehicle: ef.vehicle, p_note_no: ef.note_no, p_note: ef.note,
+      p_items: lines.map((l) => ({ id: l.id, name: l.name.trim(), qty: parseFloat(l.qty), unit: l.unit || "No", rate: l.rate === "" ? null : parseFloat(l.rate) })) });
+    setBusy(""); if (error) { setErr(/rental_update|schema cache|does not exist/i.test(error.message) ? "Editing a delivery needs the 2026-11-rentals-edit.sql migration to be run first." : error.message); return; }
+    setEf(null); note(b ? "Delivery updated ✓ Its Inventory entry has the same items." : "Delivery updated ✓"); await load();
+  }
   const [rf, setRf] = useState<{ rid: string; on: string; vehicle: string; note: string; file: File | null; missing: Record<string, string> } | null>(null);
   async function saveReturn() {
     if (!rf) return; setBusy("return"); setErr("");
@@ -169,7 +184,8 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
         </div>}
         {(r.note || r.return_note || r.void_reason) && <p className="text-xs text-slate-500">{[r.note, r.return_note && `Return: ${r.return_note}`, r.voided_at && r.void_reason && `Void: ${r.void_reason}`].filter(Boolean).join(" · ")}</p>}
         <div className="flex flex-wrap gap-2">
-          {!r.voided_at && !r.returned_on && canAdd && <button className="btn btn-sm btn-primary" onClick={() => { setErr(""); setRf({ rid: r.id, on: today, vehicle: "", note: "", file: null, missing: {} }); }}>Items returned</button>}
+          {!r.voided_at && !r.returned_on && staff && !(r.inventory_bill_id && bills[r.inventory_bill_id] && !["none", "authorized", "failed"].includes(bills[r.inventory_bill_id].jsl_status)) && <button className="btn btn-sm" onClick={() => openEdit(r)}>Edit delivery</button>}
+          {!r.voided_at && !r.returned_on && canAdd && <button className="btn btn-sm btn-primary" onClick={() => { setErr(""); setEf(null); setRf({ rid: r.id, on: today, vehicle: "", note: "", file: null, missing: {} }); }}>Items returned</button>}
           {money && !r.voided_at && <button className="btn btn-sm" onClick={() => openTerms(r)}>{t && pd !== null ? "Terms & rates" : "Set terms & rates"}</button>}
           {money && !r.voided_at && dep.paid > 0 && r.returned_on && <button className="btn btn-sm" onClick={() => openDeposit(r)}>{t?.refund_on ? "Deposit details" : "Deposit back"}</button>}
           {staff && r.returned_on && !r.voided_at && <button className="btn btn-sm" onClick={() => undoReturn(r)}>Undo return</button>}
@@ -178,6 +194,26 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
           {r.inventory_bill_id && <a className="btn btn-sm" href={`/inventory?bill=${r.inventory_bill_id}`}>{bills[r.inventory_bill_id]?.jsl_wanted ? "JSL portal entry" : "Inventory entry"}</a>}
           {mayVoid(r) && <button className="btn btn-sm btn-danger" onClick={() => voidRental(r)}>Void</button>}
         </div>
+        {ef?.rid === r.id && <div className="rounded-xl border border-slate-200 p-3 space-y-2">
+          <div className="font-medium text-sm">Edit the delivery</div>
+          <div className="flex flex-wrap items-end gap-2">
+            <div><label className="lbl">Delivered on</label><input type="date" className="inp" max={today} value={ef.delivered_on} onChange={(e) => setEf({ ...ef, delivered_on: e.target.value })} /></div>
+            <div><label className="lbl">Vehicle</label><input className="inp !w-40 uppercase" value={ef.vehicle} onChange={(e) => setEf({ ...ef, vehicle: e.target.value })} placeholder="GJ 01 AB 1234" /></div>
+            <div><label className="lbl">Delivery note no.</label><input className="inp !w-32" value={ef.note_no} onChange={(e) => setEf({ ...ef, note_no: e.target.value })} /></div></div>
+          <div className="space-y-1.5"><div className="lbl">Items</div>
+            {ef.lines.map((l, i) => { const set = (p: Partial<typeof l>) => setEf({ ...ef, lines: ef.lines.map((x, j) => (j === i ? { ...x, ...p } : x)) });
+              return <div key={l.id ?? `n${i}`} className="flex flex-wrap items-center gap-2">
+                <input className="inp !w-48" placeholder="e.g. Scaffolding frame" value={l.name} onChange={(e) => set({ name: e.target.value })} />
+                <input className="inp !w-20" inputMode="decimal" placeholder="Qty" value={l.qty} onChange={(e) => set({ qty: num(e.target.value) })} />
+                <select className="inp !w-24" aria-label="Unit" value={l.unit} onChange={(e) => set({ unit: e.target.value })}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select>
+                <input className="inp !w-28" inputMode="decimal" placeholder="₹ per day each" value={l.rate} onChange={(e) => set({ rate: num(e.target.value) })} />
+                {ef.lines.length > 1 && <button type="button" className="text-xs text-rose-700 hover:underline" onClick={() => setEf({ ...ef, lines: ef.lines.filter((_, j) => j !== i) })}>Remove</button>}
+              </div>; })}
+            <button type="button" className="btn btn-sm" onClick={() => setEf({ ...ef, lines: [...ef.lines, { ...blankLine(), id: null }] })}>+ Add item</button></div>
+          <div><label className="lbl">Note (optional)</label><input className="inp" value={ef.note} onChange={(e) => setEf({ ...ef, note: e.target.value })} /></div>
+          <div className="flex gap-2"><button className="btn btn-primary" disabled={busy === "edit"} onClick={saveEdit}>{busy === "edit" ? "Saving…" : "Save changes"}</button><button className="btn" onClick={() => setEf(null)}>Cancel</button></div>
+          <p className="text-xs text-slate-400">{r.inventory_bill_id ? "Its Inventory entry gets the same date, note number and items (and the vehicle, when it goes by vehicle). Once the entry is on the JSL portal, the delivery can no longer be changed." : "Rates can also be changed later under Terms & rates."}</p>
+        </div>}
         {rf?.rid === r.id && <div className="rounded-xl border border-slate-200 p-3 space-y-2">
           <div className="font-medium text-sm">Items returned to {vName(r.vendor_id)}</div>
           <div className="flex flex-wrap items-end gap-2"><div><label className="lbl">Returned on</label><input type="date" className="inp" min={r.delivered_on} max={today} value={rf.on} onChange={(e) => setRf({ ...rf, on: e.target.value })} /></div>
