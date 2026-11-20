@@ -134,5 +134,5 @@ export function useEquipment(project: SupplyProject | undefined) {
   const dayNote = (d: string) => !money ? "" : [...new Set(logs.filter((l) => l.work_date === d && !l.voided_at && l.end_at).map((l) => l.item_id))].map((id) => { const r = rateOn(rates, id, d); return r ? `₹${inr(dayCharge(r, dayMinutes(id, d)).amount)} before GST` : ""; }).filter(Boolean).join(" · ");
   const toVerify = (ym: string) => logs.filter((l) => l.work_date.startsWith(ym) && !l.voided_at && l.end_at && !l.verified_at).length;
   const hoursIn = (ym: string) => logs.filter((l) => l.work_date.startsWith(ym) && !l.voided_at).reduce((s, l) => s + minutesOf(l, now), 0);
-  return { err, msg, loading, money, todayNode, manualForm, setupNode, logItems, compute, billVendors: linkedVendors, dayNote, toVerify, hoursIn, hasMachines: projItems.length > 0, canAdd: !viewer && !closed && projItems.length > 0, addStretch: () => openManual(), hoursText };
+  return { err, msg, loading, money, todayNode, manualForm, setupNode, logItems, compute, billVendors: linkedVendors, allVendors: vendors.filter((v) => v.active), dayNote, toVerify, hoursIn, hasMachines: projItems.length > 0, canAdd: !viewer && !closed && projItems.length > 0, addStretch: () => openManual(), hoursText };
 }

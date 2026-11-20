@@ -15,3 +15,6 @@ jsl-worker/out
 
 # TypeScript compiler cache: rewritten on every type-check
 *.tsbuildinfo
+
+# seed holding a driver's name and licence number (repository is public)
+supabase/seed/2026-11-keshar-rental-csl.sql

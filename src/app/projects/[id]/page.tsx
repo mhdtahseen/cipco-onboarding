@@ -35,7 +35,7 @@ export default function ProjectPage() {
   // Edit, Close and Reopen need Edit on Projects (Permissions page)
   const { admin } = useRole(); const mayEdit = usePerms().can("projects", "edit"); const showForecast = admin && p?.status === "active"; const [fc, setFc] = useState<ForecastInput | null>(null); const [fcErr, setFcErr] = useState("");
   useEffect(() => { if (!showForecast) { setFc(null); return; } let live = true; (async () => { const res = await fetch(`/api/forecast?project=${id}`); if (!live) return; if (!res.ok) { setFcErr(await res.text()); return; } const list = (await res.json()) as ForecastInput[]; if (live) { setFc(list[0] ?? null); setFcErr(""); } })(); return () => { live = false; }; }, [showForecast, id, exps.length]);   // fresh after an expense is added or removed
-  const [tab, setTab] = useState<Tab>("overview"); const [edit, setEdit] = useState(false); const [ed, setEd] = useState({ name: "", location: "", description: "", client_id: "", state_code: "", ...PCC_BLANK }); const [clients, setClients] = useState<Client[]>([]);
+  const [tab, setTab] = useState<Tab>("overview"); const [edit, setEdit] = useState(false); const [ed, setEd] = useState({ name: "", location: "", description: "", client_id: "", state_code: "", jsl_portal: false, ...PCC_BLANK }); const [clients, setClients] = useState<Client[]>([]);
   useEffect(() => { supabase().from("clients").select("*").eq("active", true).order("name").then(({ data }) => setClients((data || []) as Client[])); }, []);
   const [docOpen, setDocOpen] = useState(0); const [msg, setMsg] = useState("");
   // head-office people linked to this project (2026-11-stationed-at.sql): shown under the onsite team, never part of it
@@ -45,10 +45,11 @@ export default function ProjectPage() {
   if (d.loading) return <PageLoader />;
   if (d.err || !p) return <p className="warn">{d.err || "Project not found"}</p>;
 
-  const hasPcc = "police_verification" in p;   // the PCC fields appear once 2026-11-pcc-form.sql has added the columns
+  const hasPcc = "police_verification" in p;
+  const hasJsl = "jsl_portal" in p;   // appears once 2026-11-rentals.sql has added the column   // the PCC fields appear once 2026-11-pcc-form.sql has added the columns
   async function save() {
     const name = ed.name.trim(); if (!name) { setMsg("Enter a project name."); return; }
-    const { error } = await supabase().from("projects").update({ name, location: ed.location.trim(), description: ed.description.trim(), client_id: ed.client_id || null, state_code: ed.state_code || guessState(ed.location) || null, ...(hasPcc ? { police_verification: ed.police_verification, unit_name: ed.unit_name.trim() || null, unit_location: ed.unit_location.trim() || null, unit_border_distance: ed.unit_border_distance.trim() || null, unit_sensitive: ed.unit_sensitive || null, contract_until: ed.contract_until || null, site_incharge_phone: ed.site_incharge_phone.trim() || null } : {}) }).eq("id", p!.id);
+    const { error } = await supabase().from("projects").update({ name, location: ed.location.trim(), description: ed.description.trim(), client_id: ed.client_id || null, state_code: ed.state_code || guessState(ed.location) || null, ...(hasPcc ? { police_verification: ed.police_verification, unit_name: ed.unit_name.trim() || null, unit_location: ed.unit_location.trim() || null, unit_border_distance: ed.unit_border_distance.trim() || null, unit_sensitive: ed.unit_sensitive || null, contract_until: ed.contract_until || null, site_incharge_phone: ed.site_incharge_phone.trim() || null } : {}), ...(hasJsl ? { jsl_portal: ed.jsl_portal } : {}) }).eq("id", p!.id);
     if (error) { setMsg(/duplicate|unique/i.test(error.message) ? "A project with that name already exists." : error.message); return; }
     if (name !== p!.name) await supabase().from("employees").update({ project: name }).eq("project_id", p!.id);   // keep people's project text in step with a rename
     swrDrop("projects", "clients", "invoices", "workorders"); setEdit(false); setMsg(""); d.loadProject();
@@ -70,7 +71,7 @@ export default function ProjectPage() {
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold">{p.name}</h1>
         <span className={`text-xs rounded-full px-2 py-0.5 ${p.status === "active" ? "bg-green-50 text-green-800" : "bg-slate-100 text-slate-600"}`}>{p.status === "active" ? "Active" : `Closed ${fmtD(p.closed_on)}`}</span>
-        <div className="flex gap-2 sm:ml-auto"><Link className="btn btn-primary" href={`/projects/${id}/report`}>Report</Link>{mayEdit && <button className="btn" onClick={() => { setEd({ name: p.name, location: p.location, description: p.description, client_id: p.client_id ?? "", state_code: p.state_code ?? "", police_verification: !!p.police_verification, unit_name: p.unit_name ?? "", unit_location: p.unit_location ?? "", unit_border_distance: p.unit_border_distance ?? "", unit_sensitive: p.unit_sensitive ?? "", contract_until: p.contract_until ?? "", site_incharge_phone: p.site_incharge_phone ?? "" }); setEdit(!edit); }}>Edit</button>}
+        <div className="flex gap-2 sm:ml-auto"><Link className="btn btn-primary" href={`/projects/${id}/report`}>Report</Link>{mayEdit && <button className="btn" onClick={() => { setEd({ name: p.name, location: p.location, description: p.description, client_id: p.client_id ?? "", state_code: p.state_code ?? "", police_verification: !!p.police_verification, unit_name: p.unit_name ?? "", unit_location: p.unit_location ?? "", unit_border_distance: p.unit_border_distance ?? "", unit_sensitive: p.unit_sensitive ?? "", contract_until: p.contract_until ?? "", site_incharge_phone: p.site_incharge_phone ?? "", jsl_portal: !!(p as { jsl_portal?: boolean }).jsl_portal }); setEdit(!edit); }}>Edit</button>}
           {mayEdit && (p.status === "active" ? <button className="btn" onClick={() => setStatus("closed")}>Close project</button> : <button className="btn" onClick={() => setStatus("active")}>Reopen</button>)}</div>
       </div>
       {edit ? (
@@ -88,6 +89,7 @@ export default function ProjectPage() {
               <div><label className="lbl">Contract until <span className="font-normal text-slate-400">(also the tentative leaving date)</span></label><input className="inp" type="date" value={ed.contract_until} onChange={(e) => setEd({ ...ed, contract_until: e.target.value })} /></div>
               <div><label className="lbl">Site in-charge's mobile</label><input className="inp" inputMode="tel" value={ed.site_incharge_phone} onChange={(e) => setEd({ ...ed, site_incharge_phone: e.target.value })} /></div>
             </div></details>}
+          {hasJsl && <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={ed.jsl_portal} onChange={(e) => setEd({ ...ed, jsl_portal: e.target.checked })} /> Uses the JSL portal <span className="text-slate-400">(material gate pass / MRR entries for the client's portal)</span></label>}
           <p className="text-xs text-slate-400">Renaming updates the project name on its employees. Changing the location does not change employees already assigned.</p>
           <div className="flex items-center gap-2"><button className="btn btn-primary" onClick={save}>Save</button><button className="btn" onClick={() => { setEdit(false); setMsg(""); }}>Cancel</button>{msg && <span className="text-sm text-red-700">{msg}</span>}</div></div>
       ) : <p className="text-sm text-slate-500">{p.location || "No location set"}{p.description ? ` · ${p.description}` : ""}</p>}

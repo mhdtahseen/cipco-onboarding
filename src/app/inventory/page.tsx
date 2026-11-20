@@ -86,15 +86,15 @@ function InventoryScreen() {
       <span className="truncate">{top.map((i, k) => <span key={i.id}>{k > 0 && <span className="text-slate-300"> · </span>}<span className={hit(i) ? "text-slate-900 font-medium" : "text-slate-700"}>{i.name}</span> <span className="tabular-nums whitespace-nowrap">{Number(i.qty).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {i.unit}</span></span>)}</span>
       {more > 0 && <span className="shrink-0 whitespace-nowrap text-slate-400 ml-1">+{more} more</span>}</div>;
   };
-  const recorded = useMemo(() => new Set(live.filter((b) => b.status === "recorded" && b.kind !== "gas").map((b) => b.id)), [live]);   // gas deliveries are counted from the cylinders held, below
+  const recorded = useMemo(() => new Set(live.filter((b) => b.status === "recorded" && b.kind !== "gas" && b.kind !== "rental").map((b) => b.id)), [live]);   // gas deliveries are counted from the cylinders held, below; rented items go back to the vendor, so they are not stock
   const stock = useMemo(() => stockFrom(items, recorded).filter((s) => !q.trim() || s.name.toLowerCase().includes(q.trim().toLowerCase())), [items, recorded, q]);
   const openBill = openId && openId !== "new" ? bills.find((b) => b.id === openId) ?? null : null;
-  const titleOf = (b: InvBill) => (b.kind === "gas" ? `Gas delivery · ${b.vendor_name}` : b.kind === "no_bill" ? (b.vendor_name ? `No bill · ${b.vendor_name}` : "Entry without a bill") : b.vendor_name);
-  const subOf = (b: InvBill) => (b.kind === "gas" ? (b.bill_no ? `challan ${b.bill_no}` : "no challan number") : b.kind === "no_bill" ? (b.note.length > 48 ? `${b.note.slice(0, 48)}…` : b.note) : `bill ${b.bill_no}`);
+  const titleOf = (b: InvBill) => (b.kind === "gas" ? `Gas delivery · ${b.vendor_name}` : b.kind === "rental" ? `Rented · ${b.vendor_name}` : b.kind === "no_bill" ? (b.vendor_name ? `No bill · ${b.vendor_name}` : "Entry without a bill") : b.vendor_name);
+  const subOf = (b: InvBill) => (b.kind === "gas" ? (b.bill_no ? `challan ${b.bill_no}` : "no challan number") : b.kind === "rental" ? (b.bill_no ? `delivery note ${b.bill_no}` : "returns to the vendor") : b.kind === "no_bill" ? (b.note.length > 48 ? `${b.note.slice(0, 48)}…` : b.note) : `bill ${b.bill_no}`);
   const amountOf = (b: InvBill) => (b.kind !== "bill" && !(Number(b.bill_total) > 0) ? "—" : `₹${inr(Number(b.bill_total))}`);
   const pillsOf = (b: InvBill) => {
     const sg = stageOf(b); const j = JSL_LABEL[b.jsl_status]; const recd = b.status === "recorded" && !b.voided_at;
-    return <><span className={`${pill} ${sg.cls}`}>{sg.text}</span>{b.kind === "gas" && <span className={`${pill} bg-cyan-50 text-cyan-800`}>Gas</span>}{recd && b.jsl_wanted && <span className={`${pill} ${b.jsl_status === "none" ? "bg-blue-50 text-blue-800" : j.cls}`}>{b.jsl_status === "none" ? "For the JSL portal" : j.text}</span>}</>;
+    return <><span className={`${pill} ${sg.cls}`}>{sg.text}</span>{b.kind === "gas" && <span className={`${pill} bg-cyan-50 text-cyan-800`}>Gas</span>}{b.kind === "rental" && <span className={`${pill} bg-violet-50 text-violet-800`}>Rented</span>}{recd && b.jsl_wanted && <span className={`${pill} ${b.jsl_status === "none" ? "bg-blue-50 text-blue-800" : j.cls}`}>{b.jsl_status === "none" ? "For the JSL portal" : j.text}</span>}</>;
   };
   const inExp = live.filter((b) => b.status === "recorded"); const spent = inExp.reduce((t, b) => t + Number(b.bill_total), 0);
   const waiting = live.filter((b) => b.status === "submitted").length; const open = live.filter((b) => b.status === "draft" || b.status === "returned").length;
