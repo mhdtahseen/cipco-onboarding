@@ -9,10 +9,11 @@ import type { PaymentsDue } from "@/lib/paymentsDueData";
 import DueView from "@/components/DueView";
 import SpentView from "@/components/SpentView";
 import BillsView from "@/components/BillsView";
+import DepositsView from "@/components/DepositsView";
 import { PageLoader } from "@/components/Loader";
 
-type Tab = "due" | "spent" | "bills";
-const TABS: readonly (readonly [Tab, string])[] = [["due", "Due"], ["spent", "Spent"], ["bills", "Bills"]];
+type Tab = "due" | "spent" | "bills" | "deposits";
+const TABS: readonly (readonly [Tab, string])[] = [["due", "Due"], ["spent", "Spent"], ["bills", "Bills"], ["deposits", "Deposits"]];
 const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 const addMonth = (ym: string, n: number) => { const [y, m] = ym.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
 const monthWord = (ym: string) => new Date(ym + "-01T00:00:00").toLocaleDateString("en-IN", { month: "short", year: "numeric" });
@@ -22,12 +23,12 @@ const monthWord = (ym: string) => new Date(ym + "-01T00:00:00").toLocaleDateStri
 export default function ExpensesPage() {
   const { role } = useRole(); const today = istToday(); const cur = today.slice(0, 7);
   const [tab, setTab] = useState<Tab>("due"); const [project, setProject] = useState(""); const [add, setAdd] = useState(false); const [ready, setReady] = useState(false);
-  const { tabs: shownTabs } = useAllowedTabs("expenses", TABS, tab, setTab); const see = shownTabs.some(([k]) => k === "due"), mayList = shownTabs.some(([k]) => k === "spent"), mayBills = shownTabs.some(([k]) => k === "bills"); const mayAdd = usePerms().can("expenses", "create", "spent");
+  const { tabs: shownTabs } = useAllowedTabs("expenses", TABS, tab, setTab); const see = shownTabs.some(([k]) => k === "due"), mayList = shownTabs.some(([k]) => k === "spent"), mayBills = shownTabs.some(([k]) => k === "bills"), mayDeposits = shownTabs.some(([k]) => k === "deposits") && (role === "admin" || role === "staff"); const mayAdd = usePerms().can("expenses", "create", "spent");
   const data = useExpenseData();
   const [due, setDue] = useState<PaymentsDue | null>(null); const [dueErr, setDueErr] = useState("");
 
   // ?tab=spent&project=<id>&add=1 : links from the project page
-  useEffect(() => { const q = new URLSearchParams(window.location.search); if (q.get("tab") === "spent") setTab("spent"); if (q.get("tab") === "bills") setTab("bills"); const p = q.get("project"); if (p) setProject(p); if (q.get("add") === "1") { setTab("spent"); setAdd(true); } setReady(true); }, []);
+  useEffect(() => { const q = new URLSearchParams(window.location.search); if (q.get("tab") === "spent") setTab("spent"); if (q.get("tab") === "bills") setTab("bills"); if (q.get("tab") === "deposits") setTab("deposits"); const p = q.get("project"); if (p) setProject(p); if (q.get("add") === "1") { setTab("spent"); setAdd(true); } setReady(true); }, []);
   useEffect(() => { if (!ready) return; const q = new URLSearchParams(); q.set("tab", tab); if (project) q.set("project", project); window.history.replaceState(null, "", `/expenses?${q}`); }, [tab, project, ready]);
   useEffect(() => { if (!see) return; (async () => { const r = await fetch("/api/payments-due"); if (!r.ok) { setDueErr(await r.text()); return; } setDue(await r.json()); })(); }, [see]);
 
@@ -50,7 +51,7 @@ export default function ExpensesPage() {
   const scope = project ? data.projects.find((p) => p.id === project)?.name ?? "this project" : "all projects";
 
   if (!role) return <PageLoader />;
-  if (!see && !mayList && !mayBills) return <p className="text-slate-500">You do not have access to expenses.</p>;
+  if (!see && !mayList && !mayBills && !mayDeposits) return <p className="text-slate-500">You do not have access to expenses.</p>;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
@@ -74,10 +75,12 @@ export default function ExpensesPage() {
       <div role="tablist" aria-label="Expenses" className="flex border-b border-slate-200">
         {see && <button role="tab" aria-selected={tab === "due"} className={`tab ${tab === "due" ? "tab-on" : ""}`} onClick={() => setTab("due")}>Due{strip.overdue > 0 && <span className="ml-1.5 rounded-full bg-rose-50 text-rose-700 px-1.5 text-[11px]">overdue</span>}</button>}
         {mayList && <button role="tab" aria-selected={tab === "spent"} className={`tab ${tab === "spent" ? "tab-on" : ""}`} onClick={() => setTab("spent")}>Spent</button>}
+        {mayDeposits && <button role="tab" aria-selected={tab === "deposits"} className={`tab ${tab === "deposits" ? "tab-on" : ""}`} onClick={() => setTab("deposits")}>Deposits</button>}
         {mayBills && <button role="tab" aria-selected={tab === "bills"} className={`tab ${tab === "bills" ? "tab-on" : ""}`} onClick={() => setTab("bills")}>Bills</button>}
       </div>
 
       {tab === "bills" && mayBills && <BillsView project={project} />}
+      {tab === "deposits" && mayDeposits && <DepositsView projects={data.projects} project={project} onChanged={data.reload} />}
       {tab === "due" && see && <DueView d={due} err={dueErr} project={project} />}
       {tab === "spent" && (data.err ? <p className="warn">{data.err}</p> : data.loading ? <PageLoader /> :
         <SpentView projects={data.projects} cats={data.cats} setCats={data.setCats} exps={data.exps} reload={data.reload} project={project} setProject={setProject} openAdd={add} onAddClosed={() => setAdd(false)} />)}

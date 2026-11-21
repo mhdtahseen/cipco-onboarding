@@ -9,7 +9,7 @@ export type SourceKind = "typed" | "payment" | "bill";
 export const SOURCE_LABEL: Record<SourceKind, string> = { typed: "Typed in", payment: "From payment", bill: "From bill" };
 /** Where an expense came from: typed by a person, posted from a payment (meals, transport, rent, gas, equipment), or posted from an Inventory bill. Only typed ones can be edited here. */
 export const sourceKind = (e: Pick<ProjectExpense, "source">): SourceKind => (!e.source ? "typed" : e.source === "inventory_bill" ? "bill" : "payment");
-export const sourceHref = (e: Pick<ProjectExpense, "source">) => (e.source === "inventory_bill" ? "/inventory" : e.source === "vendor_payment" ? "/meals" : e.source === "room_payment" ? "/accommodation" : "/transport");
+export const sourceHref = (e: Pick<ProjectExpense, "source">) => (e.source === "deposit" ? "/expenses?tab=deposits" : e.source === "rental_deposit" ? "/site-supplies" : e.source === "inventory_bill" ? "/inventory" : e.source === "vendor_payment" ? "/meals" : e.source === "room_payment" ? "/accommodation" : "/transport");
 
 export function useExpenseData() {
   const [projects, setProjects] = useState<ExpProject[]>([]); const [cats, setCats] = useState<ExpenseCategory[]>([]); const [exps, setExps] = useState<ProjectExpense[]>([]);

@@ -45,7 +45,7 @@ export const MODULES: Module[] = [
   { key: "site_supplies", label: "Site supplies", section: "Operations", note: "Gas cylinders and hired equipment." },
   { key: "inventory", label: "Inventory", section: "Operations", note: "Sending a bill to the JSL portal stays Admin-only." },
   { key: "tools", label: "Tools & equipment", section: "Operations", note: "What the company owns and where it is. Changes need Admin or Operations whatever is set here." },
-  { key: "expenses", label: "Expenses", section: "Operations", tabs: [{ key: "due", label: "Due" }, { key: "spent", label: "Spent" }, { key: "bills", label: "Bills", startsNone: true }], note: "Bills: every bill and receipt in one place. Admin only until it is turned on here." },
+  { key: "expenses", label: "Expenses", section: "Operations", tabs: [{ key: "due", label: "Due" }, { key: "spent", label: "Spent" }, { key: "bills", label: "Bills", startsNone: true }, { key: "deposits", label: "Deposits" }], note: "Bills: every bill and receipt in one place. Admin only until it is turned on here. Deposits: money handed over to be returned (Operations and Admin)." },
   { key: "quotations", label: "Quotations", section: "Sales" },
   { key: "invoices", label: "Invoices", section: "Sales" },
   { key: "work_orders", label: "Work orders", section: "Sales" },
