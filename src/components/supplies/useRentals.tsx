@@ -39,8 +39,19 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
   const note = (m: string) => { setMsg(m); setTimeout(() => setMsg(""), 5000); };
   // the JSL portal is only for projects marked "Uses the JSL portal" (today CSL); elsewhere a delivery makes no Inventory entry
   const [portal, setPortal] = useState(false); const [people, setPeople] = useState<{ id: string; name: string; last4: string | null }[]>([]);
-  const [bills, setBills] = useState<Record<string, { jsl_wanted: boolean; jsl_status: JslStatus }>>({});
+  const [bills, setBills] = useState<Record<string, { jsl_wanted: boolean; jsl_status: JslStatus; bill_date: string }>>({});
+  const [billItems, setBillItems] = useState<Record<string, { name: string; qty: number; unit: string }[]>>({});   // what the Inventory entry (and so the JSL portal) holds
   const vName = (id: string) => allVendors.find((v) => v.id === id)?.name ?? vendors.find((v) => v.id === id)?.name ?? "Vendor";
+
+  /** How the Inventory entry (what the JSL portal holds) differs from the delivery: the date and the items. Empty when they agree. */
+  const portalDiff = (r: Row, its: RentalItem[]): string[] => {
+    const b = r.inventory_bill_id ? bills[r.inventory_bill_id] : undefined; if (!b || !b.jsl_wanted || ["none", "authorized", "failed"].includes(b.jsl_status)) return [];
+    const out: string[] = []; if (b.bill_date !== r.delivered_on) out.push(`Date: portal ${dmy(b.bill_date)}, delivery ${dmy(r.delivered_on)}`);
+    const have = billItems[r.inventory_bill_id!] ?? [], key = (n: string) => n.trim().toLowerCase();
+    its.forEach((i) => { const h = have.find((x) => key(x.name) === key(i.name)); if (!h) out.push(`${i.name}: ${i.qty} ${i.unit} on the delivery, not on the portal`); else if (h.qty !== i.qty || h.unit !== i.unit) out.push(`${i.name}: portal ${h.qty} ${h.unit}, delivery ${i.qty} ${i.unit}`); });
+    have.forEach((h) => { if (!its.some((i) => key(i.name) === key(h.name))) out.push(`${h.name}: ${h.qty} ${h.unit} on the portal, not on the delivery`); });
+    return out;
+  };
 
   async function load() {
     if (!pid || !staff) return; const sb = supabase();
@@ -56,7 +67,10 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
     setMissing(false); const list = (rs || []) as Row[]; setRentals(list);
     const ids = list.map((r) => r.id); if (!ids.length) { setItems([]); setTerms({}); setRates({}); setBills({}); return; }
     const billIds = list.map((r) => r.inventory_bill_id).filter(Boolean) as string[];
-    if (billIds.length) { const { data: bs } = await sb.from("inventory_bills").select("id, jsl_wanted, jsl_status").in("id", billIds); setBills(Object.fromEntries(((bs || []) as { id: string; jsl_wanted: boolean; jsl_status: JslStatus }[]).map((b) => [b.id, b]))); } else setBills({});
+    if (billIds.length) { const { data: bs } = await sb.from("inventory_bills").select("id, jsl_wanted, jsl_status, bill_date").in("id", billIds); setBills(Object.fromEntries(((bs || []) as { id: string; jsl_wanted: boolean; jsl_status: JslStatus; bill_date: string }[]).map((b) => [b.id, b])));
+      const { data: bi } = await sb.from("inventory_bill_items").select("bill_id, name, qty, unit").in("bill_id", billIds).order("line_no"); const byBill: Record<string, { name: string; qty: number; unit: string }[]> = {};
+      ((bi || []) as { bill_id: string; name: string; qty: number; unit: string }[]).forEach((x) => { (byBill[x.bill_id] ??= []).push({ name: x.name, qty: Number(x.qty), unit: x.unit }); }); setBillItems(byBill);
+    } else { setBills({}); setBillItems({}); }
     const { data: it } = await sb.from("rental_items").select("*").in("rental_id", ids).order("line_no"); const its = ((it || []) as RentalItem[]).map((x) => ({ ...x, qty: Number(x.qty), missing_qty: Number(x.missing_qty) })); setItems(its);
     if (money) {
       const [{ data: tm }, { data: rt }] = await Promise.all([sb.from("rental_terms").select("*").in("rental_id", ids), sb.from("rental_item_rates").select("item_id, rate").in("item_id", its.map((x) => x.id))]);
@@ -131,11 +145,12 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
     if (!lines.length || lines.some((l) => !l.name.trim() || !(parseFloat(l.qty) > 0))) { setErr("Every item needs a name and a quantity."); return; }
     const b = rentals.find((r) => r.id === ef.rid)?.inventory_bill_id; const st = b ? bills[b]?.jsl_status : undefined;
     if (st === "authorized" && !confirm("This delivery is authorized for the JSL portal. Saving withdraws that, so an Admin authorizes it again. Save?")) return;
+    if (b && st && !["none", "authorized", "failed"].includes(st) && !confirm("This delivery is already on the JSL portal. Saving changes the rent here, but the portal entry stays as it was submitted, so correct it on the portal too. Save?")) return;
     setBusy("edit"); setErr("");
     const { error } = await supabase().rpc("rental_update", { p_rental: ef.rid, p_delivered_on: ef.delivered_on, p_vehicle: ef.vehicle, p_note_no: ef.note_no, p_note: ef.note,
       p_items: lines.map((l) => ({ id: l.id, name: l.name.trim(), qty: parseFloat(l.qty), unit: l.unit || "No", rate: l.rate === "" ? null : parseFloat(l.rate) })) });
     setBusy(""); if (error) { setErr(/rental_update|schema cache|does not exist/i.test(error.message) ? "Editing a delivery needs the 2026-11-rentals-edit.sql migration to be run first." : error.message); return; }
-    setEf(null); note(b ? "Delivery updated ✓ Its Inventory entry has the same items." : "Delivery updated ✓"); await load();
+    setEf(null); note(b && st && !["none", "authorized", "failed"].includes(st) ? "Delivery updated ✓ Rent follows it. The portal entry is unchanged: correct it on the portal." : b ? "Delivery updated ✓ Its Inventory entry has the same items." : "Delivery updated ✓"); await load();
   }
   const [rf, setRf] = useState<{ rid: string; on: string; vehicle: string; note: string; file: File | null; missing: Record<string, string> } | null>(null);
   async function saveReturn() {
@@ -175,6 +190,7 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
             : <span className="text-[11px] rounded-full bg-slate-100 text-slate-600 px-2 py-0.5">No JSL entry</span>)}
           <span className="text-xs text-slate-500 sm:ml-auto">Delivered {dmy(r.delivered_on)}{r.delivery_vehicle ? ` · ${r.delivery_vehicle}` : ""}{r.delivery_note_no ? ` · note ${r.delivery_note_no}` : ""}</span>
         </div>
+        {(() => { const d = r.voided_at ? [] : portalDiff(r, its); return d.length ? <div className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 space-y-0.5"><div className="font-medium">The JSL portal entry differs from this delivery. Rent follows the delivery below; correct the portal entry too.</div>{d.map((x) => <div key={x}>{x}</div>)}</div> : null; })()}
         <div className="flex flex-wrap gap-1.5">{its.map((i) => <span key={i.id} className="text-xs rounded-lg bg-slate-100 px-2 py-1">{i.name} · {i.qty} {i.unit}{money && rates[i.id] !== undefined ? ` · ${inr(rates[i.id])}/day` : ""}{i.missing_qty > 0 && <b className="text-rose-700"> · {i.missing_qty} not returned</b>}</span>)}</div>
         {money && !r.voided_at && <div className="grid gap-2 sm:grid-cols-4 text-sm">
           <div><div className="text-xs text-slate-400">Rent per day</div><b className="tabular-nums">{pd === null ? <span className="text-amber-700">rates missing</span> : inr(pd)}</b>{t?.gst_pct ? <span className="text-xs text-slate-400"> + {t.gst_pct}% GST</span> : null}</div>
@@ -184,7 +200,7 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
         </div>}
         {(r.note || r.return_note || r.void_reason) && <p className="text-xs text-slate-500">{[r.note, r.return_note && `Return: ${r.return_note}`, r.voided_at && r.void_reason && `Void: ${r.void_reason}`].filter(Boolean).join(" · ")}</p>}
         <div className="flex flex-wrap gap-2">
-          {!r.voided_at && !r.returned_on && staff && !(r.inventory_bill_id && bills[r.inventory_bill_id] && !["none", "authorized", "failed"].includes(bills[r.inventory_bill_id].jsl_status)) && <button className="btn btn-sm" onClick={() => openEdit(r)}>Edit delivery</button>}
+          {!r.voided_at && !r.returned_on && staff && <button className="btn btn-sm" onClick={() => openEdit(r)}>Edit delivery</button>}
           {!r.voided_at && !r.returned_on && canAdd && <button className="btn btn-sm btn-primary" onClick={() => { setErr(""); setEf(null); setRf({ rid: r.id, on: today, vehicle: "", note: "", file: null, missing: {} }); }}>Items returned</button>}
           {money && !r.voided_at && <button className="btn btn-sm" onClick={() => openTerms(r)}>{t && pd !== null ? "Terms & rates" : "Set terms & rates"}</button>}
           {money && !r.voided_at && dep.paid > 0 && r.returned_on && <button className="btn btn-sm" onClick={() => openDeposit(r)}>{t?.refund_on ? "Deposit details" : "Deposit back"}</button>}
@@ -212,7 +228,7 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
             <button type="button" className="btn btn-sm" onClick={() => setEf({ ...ef, lines: [...ef.lines, { ...blankLine(), id: null }] })}>+ Add item</button></div>
           <div><label className="lbl">Note (optional)</label><input className="inp" value={ef.note} onChange={(e) => setEf({ ...ef, note: e.target.value })} /></div>
           <div className="flex gap-2"><button className="btn btn-primary" disabled={busy === "edit"} onClick={saveEdit}>{busy === "edit" ? "Saving…" : "Save changes"}</button><button className="btn" onClick={() => setEf(null)}>Cancel</button></div>
-          <p className="text-xs text-slate-400">{r.inventory_bill_id ? "Its Inventory entry gets the same date, note number and items (and the vehicle, when it goes by vehicle). Once the entry is on the JSL portal, the delivery can no longer be changed." : "Rates can also be changed later under Terms & rates."}</p>
+          <p className="text-xs text-slate-400">{r.inventory_bill_id ? "Its Inventory entry gets the same date, note number and items (and the vehicle, when it goes by vehicle). Once the entry is on the JSL portal, a change here fixes the rent only: the portal entry stays as submitted, and you are told where it differs." : "Rates can also be changed later under Terms & rates."}</p>
         </div>}
         {rf?.rid === r.id && <div className="rounded-xl border border-slate-200 p-3 space-y-2">
           <div className="font-medium text-sm">Items returned to {vName(r.vendor_id)}</div>
