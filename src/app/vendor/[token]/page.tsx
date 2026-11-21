@@ -49,7 +49,7 @@ export default function VendorPage() {
   const monthOnly = (m: string) => new Date(m + "-01T00:00:00").toLocaleDateString(loc, { month: "long" });
   const fmtD = (x: string) => new Date(x + "T00:00:00").toLocaleDateString(loc, { day: "numeric", month: "short" });
   const fmtDay = (x: string) => new Date(x + "T00:00:00").toLocaleDateString(loc, { weekday: "short", day: "numeric", month: "short" });
-  const [state, setState] = useState<"loading" | "gone" | "pin" | "ready">("loading"); const [d, setD] = useState<Data | null>(null);
+  const [state, setState] = useState<"loading" | "gone" | "pin" | "setpin" | "ready">("loading"); const [d, setD] = useState<Data | null>(null);
   const [pin, setPin] = useState(""); const [showPin, setShowPin] = useState(false); const [pinErr, setPinErr] = useState(""); const [pinWhy, setPinWhy] = useState<"" | "pin.again" | "pin.againErrand">("");
   const [busy, setBusy] = useState(false); const [refreshing, setRefreshing] = useState(false); const [note, setNote] = useState(""); const [pageErr, setPageErr] = useState("");
   const [month, setMonth] = useState(""); const [adding, setAdding] = useState(false); const [showTrips, setShowTrips] = useState(false);
@@ -84,9 +84,35 @@ export default function VendorPage() {
     setBusy(true); setPinErr(""); const { data, error } = await db().rpc("vendor_login", { p_token: token, p_pin: pin }); setBusy(false);
     if (error) { setPinErr(t("net.pin")); return; }
     if (!data?.ok) { if (data?.gone) { setState("gone"); return; } setPinErr(pinMessage(data?.error || "", t) || t("pin.wrong", { n: 0 })); setPin(""); return; }
-    writeSession(token, data.session); setPin(""); setPinWhy(""); setState("loading"); load();
+    writeSession(token, data.session); setPin(""); setPinWhy(""); if (data.must_set) { setSetWhy(data.why === "expired" ? "expired" : "temp"); setState("setpin"); return; } setState("loading"); load();
   }
   async function signOut() { const s = readSession(token); writeSession(token, ""); setD(null); setPinWhy(""); setState("pin"); if (s) await db().rpc("vendor_logout", { p_token: token, p_session: s }); }
+
+  // choosing their own PIN: right after a temporary one (state "setpin"), or later from "Change my PIN" (needs the current PIN)
+  const [np, setNp] = useState({ cur: "", a: "", b: "" }); const [npErr, setNpErr] = useState<Partial<Record<"cur" | "a" | "b", string>>>({}); const [changing, setChanging] = useState(false); const [setWhy, setSetWhy] = useState<"temp" | "expired">("temp");
+  async function saveOwnPin(e: React.FormEvent, withCurrent: boolean) {
+    e.preventDefault(); const errs: typeof npErr = {};
+    if (withCurrent && !/^\d{4,6}$/.test(np.cur)) errs.cur = t("set.curWrong");
+    if (!/^\d{4,6}$/.test(np.a)) errs.a = t("pin.bad"); else if (weakPin(np.a)) errs.a = t("set.weak");
+    if (!errs.a && np.b !== np.a) errs.b = t("set.mismatch");
+    setNpErr(errs); if (Object.keys(errs).length) { document.getElementById(`np-${Object.keys(errs)[0]}`)?.focus(); return; }
+    setBusy(true); const { data, error } = await db().rpc("vendor_set_pin", { p_token: token, p_session: readSession(token), p_new: np.a, p_current: withCurrent ? np.cur : null }); setBusy(false);
+    if (error) { setNpErr({ a: t("net.send") }); return; }
+    if (!data?.ok) { if (data?.pin) { toPin("pin.again"); return; }
+      const code = data?.code as string | undefined; if (code === "current") setNpErr({ cur: t("set.curWrong") }); else setNpErr({ a: code === "weak" ? t("set.weak") : code === "same" ? t("set.same") : code === "format" ? t("pin.bad") : data?.error || t("net.send") }); return; }
+    setNp({ cur: "", a: "", b: "" }); setNpErr({}); setChanging(false); setNote(t("set.saved")); setTimeout(() => setNote(""), 8000);
+    if (state === "setpin") { setState("loading"); load(); } else window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  const pinForm = (withCurrent: boolean) => <form className="card space-y-4 !p-6" onSubmit={(e) => saveOwnPin(e, withCurrent)} noValidate aria-labelledby="np-t">
+    {!withCurrent && <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-700"><I d={IC.lock} /></div>}
+    <div className="space-y-1"><h1 id="np-t" className="text-xl font-semibold">{t(withCurrent ? "set.changeT" : setWhy === "expired" ? "set.tExpired" : "set.t")}</h1><p className="text-[15px] text-slate-600">{t(withCurrent ? "set.changeD" : setWhy === "expired" ? "set.dExpired" : "set.d")}</p></div>
+    {withCurrent && <Field id="np-cur" label={t("set.cur")} err={npErr.cur}><PinBox id="np-cur" value={np.cur} onChange={(v) => setNp({ ...np, cur: v })} err={npErr.cur} /></Field>}
+    <Field id="np-a" label={t("set.new")} hint={t("pin.hint")} err={npErr.a}><PinBox id="np-a" value={np.a} onChange={(v) => setNp({ ...np, a: v })} err={npErr.a} hint autoFocus={!withCurrent} /></Field>
+    <Field id="np-b" label={t("set.again")} err={npErr.b}><PinBox id="np-b" value={np.b} onChange={(v) => setNp({ ...np, b: v })} err={npErr.b} /></Field>
+    <div className="flex flex-col-reverse gap-2 min-[400px]:flex-row">{withCurrent && <button type="button" className="btn justify-center !h-12 min-[400px]:flex-1" onClick={() => { setChanging(false); setNp({ cur: "", a: "", b: "" }); setNpErr({}); }}>{t("cancel")}</button>}
+      <button className="btn btn-primary justify-center !h-12 !text-base min-[400px]:flex-[2]" disabled={busy}>{busy ? t("set.saving") : t("set.save")}</button></div>
+    {withCurrent && <p className="text-sm text-slate-500">{t("set.forgot")}</p>}
+  </form>;
 
   const openForm = () => { setFe({}); setNote(""); setAdding(true); };
   const closeForm = () => { setAdding(false); setFe({}); setTimeout(() => addBtn.current?.focus(), 0); };
@@ -142,6 +168,7 @@ export default function VendorPage() {
   if (state === "gone") return shell(
     <section className="card space-y-2 text-center !py-8"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500"><I d={IC.lock} /></div>
       <h1 className="text-lg font-semibold">{t("gone.t")}</h1><p className="text-[15px] text-slate-600">{t("gone.d")}</p></section>);
+  if (state === "setpin") return shell(pinForm(false));
   if (state === "pin" || !d || !sum) return shell(
     <form className="card space-y-4 !p-6" onSubmit={signIn} noValidate>
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-700"><I d={IC.lock} /></div>
@@ -254,6 +281,7 @@ export default function VendorPage() {
         <span className="shrink-0 text-[15px] font-semibold tabular-nums">₹{inr(p.amount)}</span></li>)}</ul> : <p className="text-[15px] text-slate-600">{t("pay.none")}</p>}
     </section>
 
+    {changing ? pinForm(true) : <div className="text-center"><button type="button" className="inline-flex h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-blue-700 hover:bg-blue-50" onClick={() => { setChanging(true); setNpErr({}); }}><I d={IC.lock} className="h-4 w-4" />{t("set.change")}</button></div>}
     <p className="text-center text-sm text-slate-600"><I d={IC.phone} className="mr-1.5 inline h-4 w-4 align-[-3px]" />{t("foot")}</p>
   </>, true);
 }
@@ -265,3 +293,10 @@ function Field({ id, label, hint, err, children }: { id: string; label: string; 
 }
 const aria = (id: string, err?: string, hint = false) => ({ "aria-invalid": !!err || undefined, "aria-describedby": err ? `${id}-err` : hint ? `${id}-hint` : undefined });
 
+
+// the same "easy to guess" rule as the database: 1111, 1234, 4321 and the like
+const weakPin = (p: string) => /^(\d)\1+$/.test(p) || "0123456789012345".includes(p) || "9876543210987654".includes(p);
+function PinBox({ id, value, onChange, err, hint, autoFocus }: { id: string; value: string; onChange: (v: string) => void; err?: string; hint?: boolean; autoFocus?: boolean }) {
+  return <input id={id} className="inp !h-14 text-center !text-2xl font-mono tracking-[0.5em]" type="password" inputMode="numeric" pattern="[0-9]*" autoComplete="off" maxLength={6}
+    value={value} onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))} autoFocus={autoFocus} {...aria(id, err, hint)} />;
+}

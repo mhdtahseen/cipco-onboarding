@@ -9,12 +9,17 @@ export type VLang = (typeof VENDOR_LANGS)[number]["code"];
 export const isVLang = (c: unknown): c is VLang => VENDOR_LANGS.some((l) => l.code === c);
 
 const en = {
+  "set.t": "Choose your own PIN", "set.d": "The office gave you a temporary PIN. Now choose your own 4 to 6 digit PIN. Only you will know it.",
+  "set.tExpired": "Time for a new PIN", "set.dExpired": "Your PIN is 30 days old. Choose a new 4 to 6 digit PIN, different from the old one.", "set.new": "New PIN", "set.again": "New PIN again", "set.cur": "Current PIN", "set.save": "Save my PIN", "set.saving": "Saving…", "set.saved": "Your PIN is saved. Use it next time. It lasts 30 days, then you choose a new one.",
+  "set.mismatch": "The two PINs are not the same.", "set.weak": "That PIN is too easy to guess. Avoid 1111 or 1234.", "set.same": "Choose a PIN different from the one you have now.",
+  "set.curWrong": "Your current PIN is not right.", "set.change": "Change my PIN", "set.changeT": "Change your PIN",
+  "set.changeD": "Enter your current PIN, then your new one. Your other phones will need the new PIN.", "set.forgot": "Forgot your PIN? Ask the CIPCO office for a temporary one.",
   "f.from": "From", "f.to": "To", "f.fromPh": "e.g. Yard", "f.toPh": "e.g. Mundra port",
   "e.from": "Say where the trip started.", "e.to": "Say where the trip ended.",
   "lang": "Language", "hdr.account": "Vehicle account", "refresh": "Refresh", "refreshing": "Refreshing", "signOut": "Sign out", "loading": "Loading your account…",
   "gone.t": "This link is not active any more", "gone.d": "Ask the CIPCO office to send you a new link.",
-  "pin.t": "Enter your PIN", "pin.d": "The CIPCO office gave you a PIN with this link.", "pin.label": "PIN", "pin.hint": "4 to 6 digits.", "pin.show": "Show", "pin.hide": "Hide",
-  "pin.open": "Open my account", "pin.checking": "Checking…", "pin.forgot": "Forgot the PIN? Ask the CIPCO office for a new one.",
+  "pin.t": "Enter your PIN", "pin.d": "Enter your PIN. The first time, use the temporary PIN the CIPCO office gave you.", "pin.label": "PIN", "pin.hint": "4 to 6 digits.", "pin.show": "Show", "pin.hide": "Hide",
+  "pin.open": "Open my account", "pin.checking": "Checking…", "pin.forgot": "Forgot your PIN? Ask the CIPCO office for a temporary one.",
   "pin.again": "For your safety, please enter your PIN again.", "pin.againErrand": "For your safety, please enter your PIN again. Your trip was not sent.",
   "pin.bad": "Enter the 4 to 6 digit PIN.", "pin.wrong": "That PIN is not right. {n} tries left.", "pin.wrong.1": "That PIN is not right. 1 try left.",
   "pin.locked15": "Too many wrong PINs. Try again in 15 minutes.", "pin.lockedAt": "Too many wrong PINs. Try again after {time}.",
@@ -47,12 +52,17 @@ export type VKey = keyof typeof en;
 type Dict = Partial<Record<VKey, string>> & Record<Exclude<VKey, `${string}.1`>, string>;
 
 const hi: Dict = {
+  "set.t": "अपना PIN खुद चुनें", "set.d": "ऑफिस ने आपको एक अस्थायी PIN दिया है। अब 4 से 6 अंकों का अपना PIN चुनें। यह सिर्फ़ आपको पता होगा।",
+  "set.tExpired": "नया PIN रखने का समय", "set.dExpired": "आपका PIN 30 दिन पुराना हो गया है। 4 से 6 अंकों का नया PIN चुनें, जो पुराने से अलग हो।", "set.new": "नया PIN", "set.again": "नया PIN फिर से", "set.cur": "अभी का PIN", "set.save": "मेरा PIN सेव करें", "set.saving": "सेव हो रहा है…", "set.saved": "आपका PIN सेव हो गया। अगली बार यही PIN डालें। यह 30 दिन चलेगा, फिर आप नया PIN चुनेंगे।",
+  "set.mismatch": "दोनों PIN एक जैसे नहीं हैं।", "set.weak": "यह PIN आसानी से अंदाज़ा लगाया जा सकता है। 1111 या 1234 जैसा PIN न रखें।", "set.same": "अभी वाले PIN से अलग PIN चुनें।",
+  "set.curWrong": "आपका अभी का PIN सही नहीं है।", "set.change": "मेरा PIN बदलें", "set.changeT": "अपना PIN बदलें",
+  "set.changeD": "पहले अपना अभी का PIN डालें, फिर नया PIN। आपके दूसरे फ़ोन पर नया PIN डालना होगा।", "set.forgot": "PIN भूल गए? CIPCO ऑफिस से अस्थायी PIN माँगें।",
   "f.from": "कहाँ से", "f.to": "कहाँ तक", "f.fromPh": "जैसे: यार्ड", "f.toPh": "जैसे: मुंद्रा पोर्ट",
   "e.from": "बताइए ट्रिप कहाँ से शुरू हुई।", "e.to": "बताइए ट्रिप कहाँ खत्म हुई।",
   "lang": "भाषा", "hdr.account": "वाहन खाता", "refresh": "ताज़ा करें", "refreshing": "ताज़ा हो रहा है", "signOut": "बाहर निकलें", "loading": "आपका खाता खुल रहा है…",
   "gone.t": "यह लिंक अब चालू नहीं है", "gone.d": "नया लिंक भेजने के लिए CIPCO ऑफिस से कहें।",
-  "pin.t": "अपना PIN डालें", "pin.d": "CIPCO ऑफिस ने इस लिंक के साथ आपको एक PIN दिया है।", "pin.label": "PIN", "pin.hint": "4 से 6 अंक।", "pin.show": "दिखाएँ", "pin.hide": "छिपाएँ",
-  "pin.open": "मेरा खाता खोलें", "pin.checking": "जाँच हो रही है…", "pin.forgot": "PIN भूल गए? CIPCO ऑफिस से नया PIN माँगें।",
+  "pin.t": "अपना PIN डालें", "pin.d": "अपना PIN डालें। पहली बार, CIPCO ऑफिस का दिया अस्थायी PIN डालें।", "pin.label": "PIN", "pin.hint": "4 से 6 अंक।", "pin.show": "दिखाएँ", "pin.hide": "छिपाएँ",
+  "pin.open": "मेरा खाता खोलें", "pin.checking": "जाँच हो रही है…", "pin.forgot": "PIN भूल गए? CIPCO ऑफिस से अस्थायी PIN माँगें।",
   "pin.again": "आपकी सुरक्षा के लिए, कृपया अपना PIN फिर से डालें।", "pin.againErrand": "आपकी सुरक्षा के लिए, कृपया अपना PIN फिर से डालें। आपकी ट्रिप नहीं भेजी गई।",
   "pin.bad": "4 से 6 अंकों का PIN डालें।", "pin.wrong": "यह PIN सही नहीं है। आप {n} बार और कोशिश कर सकते हैं।", "pin.wrong.1": "यह PIN सही नहीं है। आप 1 बार और कोशिश कर सकते हैं।",
   "pin.locked15": "बहुत बार गलत PIN डाला गया। 15 मिनट बाद फिर कोशिश करें।", "pin.lockedAt": "बहुत बार गलत PIN डाला गया। {time} के बाद फिर कोशिश करें।",
@@ -83,12 +93,17 @@ const hi: Dict = {
 };
 
 const gu: Dict = {
+  "set.t": "તમારો પોતાનો PIN પસંદ કરો", "set.d": "ઑફિસે તમને કામચલાઉ PIN આપ્યો છે. હવે 4 થી 6 અંકનો તમારો પોતાનો PIN પસંદ કરો. તે ફક્ત તમને જ ખબર હશે.",
+  "set.tExpired": "નવો PIN રાખવાનો સમય", "set.dExpired": "તમારો PIN 30 દિવસ જૂનો થઈ ગયો છે. 4 થી 6 અંકનો નવો PIN પસંદ કરો, જે જૂના કરતાં અલગ હોય.", "set.new": "નવો PIN", "set.again": "નવો PIN ફરીથી", "set.cur": "હાલનો PIN", "set.save": "મારો PIN સેવ કરો", "set.saving": "સેવ થઈ રહ્યું છે…", "set.saved": "તમારો PIN સેવ થઈ ગયો. આગલી વખતે આ જ PIN નાખો. તે 30 દિવસ ચાલશે, પછી તમે નવો PIN પસંદ કરશો.",
+  "set.mismatch": "બંને PIN સરખા નથી.", "set.weak": "આ PIN સહેલાઈથી ધારી શકાય છે. 1111 કે 1234 જેવો PIN ન રાખો.", "set.same": "હાલના PIN કરતાં અલગ PIN પસંદ કરો.",
+  "set.curWrong": "તમારો હાલનો PIN સાચો નથી.", "set.change": "મારો PIN બદલો", "set.changeT": "તમારો PIN બદલો",
+  "set.changeD": "પહેલાં તમારો હાલનો PIN નાખો, પછી નવો PIN. તમારા બીજા ફોન પર નવો PIN નાખવો પડશે.", "set.forgot": "PIN ભૂલી ગયા? CIPCO ઑફિસ પાસેથી કામચલાઉ PIN માગો.",
   "f.from": "ક્યાંથી", "f.to": "ક્યાં સુધી", "f.fromPh": "દા.ત. યાર્ડ", "f.toPh": "દા.ત. મુંદ્રા પોર્ટ",
   "e.from": "ટ્રિપ ક્યાંથી શરૂ થઈ તે લખો.", "e.to": "ટ્રિપ ક્યાં પૂરી થઈ તે લખો.",
   "lang": "ભાષા", "hdr.account": "વાહન ખાતું", "refresh": "તાજું કરો", "refreshing": "તાજું થઈ રહ્યું છે", "signOut": "બહાર નીકળો", "loading": "તમારું ખાતું ખુલી રહ્યું છે…",
   "gone.t": "આ લિંક હવે ચાલુ નથી", "gone.d": "નવી લિંક મોકલવા CIPCO ઑફિસને કહો.",
-  "pin.t": "તમારો PIN નાખો", "pin.d": "CIPCO ઑફિસે આ લિંક સાથે તમને PIN આપ્યો છે.", "pin.label": "PIN", "pin.hint": "4 થી 6 અંક.", "pin.show": "બતાવો", "pin.hide": "છુપાવો",
-  "pin.open": "મારું ખાતું ખોલો", "pin.checking": "તપાસ થઈ રહી છે…", "pin.forgot": "PIN ભૂલી ગયા? CIPCO ઑફિસ પાસેથી નવો PIN માગો.",
+  "pin.t": "તમારો PIN નાખો", "pin.d": "તમારો PIN નાખો. પહેલી વાર, CIPCO ઑફિસે આપેલો કામચલાઉ PIN નાખો.", "pin.label": "PIN", "pin.hint": "4 થી 6 અંક.", "pin.show": "બતાવો", "pin.hide": "છુપાવો",
+  "pin.open": "મારું ખાતું ખોલો", "pin.checking": "તપાસ થઈ રહી છે…", "pin.forgot": "PIN ભૂલી ગયા? CIPCO ઑફિસ પાસેથી કામચલાઉ PIN માગો.",
   "pin.again": "તમારી સલામતી માટે, કૃપા કરીને તમારો PIN ફરી નાખો.", "pin.againErrand": "તમારી સલામતી માટે, કૃપા કરીને તમારો PIN ફરી નાખો. તમારી ટ્રિપ મોકલાઈ નથી.",
   "pin.bad": "4 થી 6 અંકનો PIN નાખો.", "pin.wrong": "આ PIN સાચો નથી. તમે હજી {n} વખત પ્રયાસ કરી શકો છો.", "pin.wrong.1": "આ PIN સાચો નથી. તમે હજી 1 વખત પ્રયાસ કરી શકો છો.",
   "pin.locked15": "ઘણી વાર ખોટો PIN નખાયો. 15 મિનિટ પછી ફરી પ્રયાસ કરો.", "pin.lockedAt": "ઘણી વાર ખોટો PIN નખાયો. {time} પછી ફરી પ્રયાસ કરો.",

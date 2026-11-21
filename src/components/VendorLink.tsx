@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabase/client";
 import type { Vehicle } from "@/lib/attendance";
 
-export type LiveLink = { vehicle_id: string; token: string; created_at: string; last_used_at: string | null; locked_until: string | null; devices: number };
+export type LiveLink = { vehicle_id: string; token: string; created_at: string; last_used_at: string | null; locked_until: string | null; devices: number; pin_temp?: boolean; pin_set_at?: string | null; pin_expires?: string | null };
 const when = (t: string) => new Date(t).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 function ago(t: string) {
   const m = Math.round((Date.now() - new Date(t).getTime()) / 60000);
@@ -23,8 +23,8 @@ type Mode = "view" | "pin" | "replace" | "off";
 export default function VendorLink({ vehicle, link, onChange }: { vehicle: Vehicle; link: LiveLink | null | undefined; onChange: () => void }) {
   const [open, setOpen] = useState(false);
   const locked = !!link?.locked_until;
-  const status = link === undefined ? "needs migration" : link === null ? "not made" : locked ? "locked" : link.last_used_at ? `used ${ago(link.last_used_at)}` : "not opened yet";
-  const dot = link === undefined || link === null ? "bg-slate-300" : locked ? "bg-rose-500" : link.last_used_at ? "bg-emerald-500" : "bg-amber-400";
+  const status = link === undefined ? "needs migration" : link === null ? "not made" : locked ? "locked" : link.pin_temp ? "temporary PIN" : link.last_used_at ? `used ${ago(link.last_used_at)}` : "not opened yet";
+  const dot = link === undefined || link === null ? "bg-slate-300" : locked ? "bg-rose-500" : link.pin_temp ? "bg-amber-400" : link.last_used_at ? "bg-emerald-500" : "bg-amber-400";
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-2 py-0.5 text-[11px] text-slate-600 hover:bg-slate-50" aria-haspopup="dialog">
@@ -37,7 +37,7 @@ export default function VendorLink({ vehicle, link, onChange }: { vehicle: Vehic
 
 export function Panel({ vehicle, link, onChange, onClose }: { vehicle: Vehicle; link: LiveLink | null | undefined; onChange: () => void; onClose: () => void }) {
   const [mode, setMode] = useState<Mode>("view"); const [pin, setPin] = useState(() => newPin());
-  const [shown, setShown] = useState<{ pin: string; fresh: boolean } | null>(null);   // the PIN just set, shown once; fresh = a new link to send
+  const [shown, setShown] = useState<{ pin: string; fresh: boolean } | null>(null);   // the temporary PIN just set, shown once; fresh = a new link to send
   const [msg, setMsg] = useState(""); const [busy, setBusy] = useState(false); const [copied, setCopied] = useState("");
   const who = vehicle.operator || "the operator";
   const url = link ? `${window.location.origin}/vendor/${link.token}` : "";
@@ -60,7 +60,7 @@ export function Panel({ vehicle, link, onChange, onClose }: { vehicle: Vehicle; 
   async function copy(text: string, what: string) {
     try { await navigator.clipboard.writeText(text); setCopied(what); setTimeout(() => setCopied(""), 2000); } catch { setMsg("Copy did not work: select the text and copy it."); }
   }
-  const wa = `https://wa.me/?text=${encodeURIComponent(`CIPCO: your page for ${vehicle.name}. Enter the errands you run for us and see your trips and payments here:\n${url}\n\nThe CIPCO office will tell you the PIN on a call.`)}`;
+  const wa = `https://wa.me/?text=${encodeURIComponent(`CIPCO: your page for ${vehicle.name}. Enter the errands you run for us and see your trips and payments here:\n${url}\n\nThe CIPCO office will tell you a temporary PIN on a call; then you choose your own.`)}`;
 
   const pinField = (label: string, action: string, onGo: () => void, danger = false) => (
     <div className="space-y-2">
@@ -69,7 +69,7 @@ export function Panel({ vehicle, link, onChange, onClose }: { vehicle: Vehicle; 
         <input id="vl-pin" className="inp !w-32 font-mono text-lg tracking-[0.3em] text-center" inputMode="numeric" maxLength={6} value={pin} autoComplete="off" onChange={(e) => { setPin(e.target.value.replace(/\D/g, "")); setMsg(""); }} />
         <button type="button" className="btn btn-sm" onClick={() => setPin(newPin())}>New number</button>
       </div>
-      <p className="text-xs text-slate-500">4 to 6 digits. Pick one you can say on the phone.</p>
+      <p className="text-xs text-slate-500">4 to 6 digits, to say on the phone. It works once: then {who} chooses their own PIN.</p>
       <div className="flex flex-wrap gap-2 pt-1">
         <button type="button" className={`btn ${danger ? "btn-danger" : "btn-primary"}`} disabled={busy || !okPin(pin)} onClick={onGo}>{busy ? "Saving…" : action}</button>
         {link && <button type="button" className="btn" disabled={busy} onClick={() => go("view")}>Cancel</button>}
@@ -102,16 +102,17 @@ export function Panel({ vehicle, link, onChange, onClose }: { vehicle: Vehicle; 
               </ul>
               <p className="text-xs text-slate-500">Nothing else in the app. Only approved errands count towards the payment.</p>
             </div>
-            {pinField("PIN for the link", "Make link", create)}
+            {pinField("Temporary PIN for the link", "Make link", create)}
           </>
 
           : <>
             {shown && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2 text-amber-950">
-              <p className="font-medium">{shown.fresh ? "Link made. Two steps:" : "PIN changed. Every phone signs out and enters the new PIN."}</p>
-              {shown.fresh && <p><b>1.</b> Send the link below on WhatsApp.<br /><b>2.</b> Call {who} and tell them the PIN. Don&apos;t put it in the same message.</p>}
-              <div className="flex items-center gap-3"><span className="text-xs uppercase tracking-wide text-amber-800">PIN</span><b className="font-mono text-2xl tracking-[0.3em]">{shown.pin}</b>
+              <p className="font-medium">{shown.fresh ? "Link made. Two steps:" : "Temporary PIN set. Every phone is signed out."}</p>
+              <p>{shown.fresh ? <><b>1.</b> Send the link below on WhatsApp.<br /><b>2.</b> Call {who} and tell them the temporary PIN. Don&apos;t put it in the same message.</> : <>Call {who} and tell them this temporary PIN.</>}</p>
+              <p>When they sign in with it, they choose their own PIN. Only they will know it.</p>
+              <div className="flex items-center gap-3"><span className="text-xs uppercase tracking-wide text-amber-800">Temporary PIN</span><b className="font-mono text-2xl tracking-[0.3em]">{shown.pin}</b>
                 <button type="button" className="btn btn-sm ml-auto" onClick={() => copy(shown.pin, "pin")}>{copied === "pin" ? "Copied ✓" : "Copy"}</button></div>
-              <p className="text-xs text-amber-800">This PIN is not shown again. If it is forgotten, set a new one here.</p>
+              <p className="text-xs text-amber-800">Shown only now. If they lose it before signing in, reset it again.</p>
             </div>}
 
             <div className="space-y-2">
@@ -126,19 +127,21 @@ export function Panel({ vehicle, link, onChange, onClose }: { vehicle: Vehicle; 
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs">
               <dt className="text-slate-500">Made</dt><dd>{when(link.created_at)}</dd>
               <dt className="text-slate-500">Last used</dt><dd>{link.last_used_at ? ago(link.last_used_at) : "not opened yet"}</dd>
+              <dt className="text-slate-500">PIN</dt><dd>{link.pin_temp ? <span className="text-amber-800">temporary: {who} has not chosen their own yet</span>
+                : link.pin_expires ? <>{link.pin_set_at ? `chosen by ${who}` : "set by the office"}{link.pin_expires && <>, {new Date(link.pin_expires) < new Date() ? <span className="text-amber-800">expired: they choose a new one at sign-in</span> : `renews ${new Date(link.pin_expires).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`}</>}</> : "—"}</dd>
               <dt className="text-slate-500">Signed in</dt><dd>{link.devices ? `${link.devices} phone${link.devices === 1 ? "" : "s"}` : "no phone"}</dd>
               {link.locked_until && <><dt className="text-rose-700">Locked</dt><dd className="text-rose-700">too many wrong PINs, until {when(link.locked_until)}. Setting a new PIN unlocks it.</dd></>}
             </dl>
 
             {mode === "view" && <div className="space-y-1 border-t border-slate-100 pt-3">
-              <Row title="Change PIN" text="Signs every phone out. The link stays the same." onClick={() => go("pin")} />
+              <Row title="Reset to a temporary PIN" text="For a forgotten PIN. Signs every phone out; they choose their own again. The link stays the same." onClick={() => go("pin")} />
               <Row title="Replace the link" text="For a lost or shared link. The old one stops working." onClick={() => go("replace")} />
               <Row title="Turn off" text="The page stops working at once. Errands already entered stay." onClick={() => go("off")} danger />
             </div>}
-            {mode === "pin" && <div className="border-t border-slate-100 pt-3">{pinField("New PIN", "Change PIN", changePin)}</div>}
+            {mode === "pin" && <div className="border-t border-slate-100 pt-3">{pinField("Temporary PIN", "Reset PIN", changePin)}</div>}
             {mode === "replace" && <div className="space-y-2 border-t border-slate-100 pt-3">
               <p className="text-slate-600">A new link and PIN. The old link stops working and every phone signs out; send {who} the new link.</p>
-              {pinField("PIN for the new link", "Replace link", create)}
+              {pinField("Temporary PIN for the new link", "Replace link", create)}
             </div>}
             {mode === "off" && <div className="space-y-3 border-t border-slate-100 pt-3">
               <p>Turn off {vehicle.name}&apos;s link? It stops working at once and every phone signs out. You can make a new link later.</p>
