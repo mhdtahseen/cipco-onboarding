@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { openViewer } from "@/lib/viewer";
 import { BANK } from "@/lib/company";
 import { loadCompanyInfo, useCompany } from "@/lib/useCompany";
 
@@ -24,10 +25,10 @@ export default function BankLetter({ runId, ym, rows }: { runId: string; ym: str
   const small = f.mode === "RTGS" ? chosen.filter((r) => r.left < 200000).length : 0;
   async function make() {
     if (!f.bank.trim() || !f.account.trim()) { setErr("Enter the bank name and your account number with it: the letter is addressed to that branch."); return; } if (!chosen.length) { setErr("Choose at least one person."); return; }
-    setErr(""); setBusy(true); const tab = window.open("", "_blank");   // opened now, on the tap, so the browser does not block it after the wait
+    setErr(""); setBusy(true);
     const q = new URLSearchParams({ run: runId, lines: chosen.map((r) => r.id).join(","), bank: f.bank.trim(), branch: f.branch.trim(), account: f.account.trim(), mode: f.mode, ref: f.ref.trim() }); if (f.value) q.set("value", f.value);
-    try { const r = await fetch(`/api/payroll-bank-letter?${q}`); if (!r.ok) throw new Error((await r.text()) || `Error ${r.status}`); const url = URL.createObjectURL(await r.blob()); if (tab) tab.location.href = url; else window.open(url, "_blank"); setTimeout(() => URL.revokeObjectURL(url), 60000); }
-    catch (e: any) { tab?.close(); setErr(e?.message || "Couldn't make the letter."); } setBusy(false);
+    try { const r = await fetch(`/api/payroll-bank-letter?${q}`); if (!r.ok) throw new Error((await r.text()) || `Error ${r.status}`); const url = URL.createObjectURL(await r.blob()); openViewer({ src: url, kind: "pdf", name: `Salary bank letter ${f.bank.trim()}.pdf` }); }   // shown in the in-app viewer: Download and Share are there
+    catch (e: any) { setErr(e?.message || "Couldn't make the letter."); } setBusy(false);
   }
   const inp = (k: keyof typeof f, l: string, w = "!w-full", ph = "", type = "text") => <div><label className="lbl">{l}</label><input type={type} className={`inp ${w}`} value={f[k]} placeholder={ph} onChange={(e) => set(k, e.target.value)} autoComplete="off" /></div>;
   return (

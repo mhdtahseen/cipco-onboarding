@@ -155,7 +155,7 @@ export default function ExitTab({ emp, onChange }: { emp: Employee; onChange: (e
             <span className="ml-auto"><ShareDoc kind="slip" id={s.line_id} view={`/api/payslips/${s.line_id}`} title={`Salary slip for ${monthName(s.pay_month)}`} phone={emp.phone} email={emp.email} name={emp.full_name} /></span></li>)}</ul>
             : <p className="text-sm text-slate-500">{missing ? "Shown once the migration is run." : "No approved salary slips yet."}</p>}</section>
         <section><h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Files on record</h4>
-          {docs.length ? <ul className="flex flex-wrap gap-2">{docs.map((d) => <li key={d.doc_type}><a className="chip" href={`/api/docs/view?path=${encodeURIComponent(d.file_path!)}`} target="_blank" rel="noreferrer">{DOC_TYPES.find((t) => t.key === d.doc_type)?.label ?? d.doc_type}</a></li>)}</ul>
+          {docs.length ? <ul className="flex flex-wrap gap-2">{docs.map((d) => <li key={d.doc_type}><a className="chip" href={`/api/docs/view?path=${encodeURIComponent(d.file_path!)}`} target="_blank" rel="noreferrer" data-view-group="exit-docs" data-view-name={DOC_TYPES.find((t) => t.key === d.doc_type)?.label ?? d.doc_type}>{DOC_TYPES.find((t) => t.key === d.doc_type)?.label ?? d.doc_type}</a></li>)}</ul>
             : <p className="text-sm text-slate-500">No files uploaded.</p>}</section>
       </div>
 

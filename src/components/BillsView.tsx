@@ -162,7 +162,7 @@ export default function BillsView({ project }: { project: string }) {
               {r.file ? <>
                 <button type="button" className={`${iconBtn} ${open === r.key ? "chip-on" : ""}`} aria-expanded={open === r.key} title={open === r.key ? "Hide preview" : "Preview here"} aria-label={open === r.key ? "Hide preview" : "Preview here"} onClick={() => setOpen(open === r.key ? "" : r.key)}>{I.eye}</button>
                 <button type="button" className={iconBtn} title="Review full screen, with next and previous" aria-label="Review full screen" onClick={() => setReview(Math.max(0, reviewable.findIndex((x) => x.key === r.key)))}>{I.review}</button>
-                <a className={iconBtn} href={billUrl(r)} target="_blank" rel="noreferrer" title="Open in a new tab" aria-label="Open in a new tab">{I.open}</a>
+                <a className={iconBtn} href={billUrl(r)} target="_blank" rel="noreferrer" data-viewer="off" title="Open in a new tab" aria-label="Open in a new tab">{I.open}</a>
                 <a className={iconBtn} href={billUrl(r, true)} title="Download this bill" aria-label="Download this bill">{I.download}</a>
               </> : mayAttach && <label className={`${iconBtn} cursor-pointer ${at ? "opacity-50 pointer-events-none" : ""}`} title="Attach the bill (photo or PDF)" aria-label="Attach the bill">
                 {at ? <span className="text-xs px-1">…</span> : I.upload}<input type="file" accept="image/*,application/pdf" className="sr-only" onChange={(e) => { attach(r, e.target.files?.[0]); e.target.value = ""; }} /></label>}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { companyAdmin, fileNameFor } from "@/lib/companyAdmin";
 import { r2Get, r2SignedGetUrl } from "@/lib/r2";
+import { serveStored } from "@/lib/fileServe";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export async function GET(req: NextRequest) {
   if (fid) { const { data: f } = await a.sb.from("company_document_files").select("file_path").eq("id", fid).eq("document_id", doc).maybeSingle(); path = f?.file_path ?? null; }
   if (!path || !path.startsWith("company/")) return NextResponse.json({ error: "No file uploaded for this document yet." }, { status: 404 });
   const name = fileNameFor(d.title, path);
+  if (q.get("meta") === "1") return serveStored(req, path, { name });   // the in-app viewer
   if (q.get("raw") === "1") {
     const b = await r2Get(path); if (!b) return NextResponse.json({ error: "The file could not be read." }, { status: 502 });
     if (b.byteLength > RAW_MAX) return NextResponse.json({ error: "too-large" }, { status: 413 });

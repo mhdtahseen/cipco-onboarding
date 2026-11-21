@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { openViewer } from "@/lib/viewer";
 import { supabase } from "@/lib/supabase/client";
 import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
 import { docTypesFor, isHeadOffice, type Employee } from "@/lib/types";
@@ -36,7 +37,11 @@ export default function DocsTab({ emp }: { emp: Employee }) {
     const out = await openScanner({ files: [file], mode: (SCAN[d.key] ?? "pages") as "id" | "photo" | "pages", accept: "image/*,application/pdf", name: `${d.label} - ${emp.full_name}` });
     if (out?.[0]) await upload(d.key, out[0]);
   }
-  function view(path: string) { window.open(`/api/docs/view?path=${encodeURIComponent(path)}`, "_blank"); }
+  // opens in the in-app viewer, with every uploaded document of this person to step through (Aadhaar, PAN, bank…)
+  function view(path: string) {
+    const list = types.filter((d) => rows[d.key]?.file_path).map((d) => ({ src: `/api/docs/view?path=${encodeURIComponent(rows[d.key].file_path!)}`, name: `${d.label} - ${emp.full_name}`, path: rows[d.key].file_path }));
+    openViewer(list.map(({ src, name }) => ({ src, name })), Math.max(0, list.findIndex((x) => x.path === path)));
+  }
   const types = docTypesFor(emp);   // head office: no ESIC or medical documents
   const done = types.filter((d) => ["received", "verified", "not_required"].includes(rows[d.key]?.status)).length;
   return (

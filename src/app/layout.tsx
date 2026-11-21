@@ -3,6 +3,7 @@ import "./dark.css";
 import type { Metadata, Viewport } from "next";
 import AppShell from "@/components/AppShell";
 import ScanProvider from "@/components/scan/ScanProvider";
+import FileViewer from "@/components/viewer/FileViewer";
 import { THEME_BOOT } from "@/lib/theme";
 export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
@@ -17,5 +18,5 @@ export const metadata: Metadata = {
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: [{ media: "(prefers-color-scheme: light)", color: "#1e4fa3" }, { media: "(prefers-color-scheme: dark)", color: "#0e1420" }], viewportFit: "cover" };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (<html lang="en" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} /></head><body><AppShell>{children}</AppShell><ScanProvider /></body></html>);
+  return (<html lang="en" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} /></head><body><AppShell>{children}</AppShell><ScanProvider /><FileViewer /></body></html>);
 }

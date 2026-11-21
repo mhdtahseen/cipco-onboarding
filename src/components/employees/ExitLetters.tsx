@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { openViewer } from "@/lib/viewer";
 import { EXIT_LETTER, draftLetter, letterBlock, rupees, settlementNet, type Exit, type ExitItem, type ExitLetterKind, type NoticeArgs, type SettlementRow } from "@/lib/offboarding";
 import type { Employee } from "@/lib/types";
 
@@ -42,7 +43,7 @@ export default function ExitLetters({ emp, exit, items, slips, advance, admin, l
     setBusy("preview"); setErr("");
     const r = await fetch("/api/exit-letters", { method: "POST", headers: { "Content-Type": "application/json" }, body: body(true) });
     setBusy(""); if (!r.ok) { const j = await r.json().catch(() => ({})); setErr(j.error || "Could not make the preview."); return; }
-    window.open(URL.createObjectURL(await r.blob()), "_blank");
+    openViewer({ src: URL.createObjectURL(await r.blob()), kind: "pdf", name: "Letter preview.pdf" });
   }
   async function issue(override = false) {
     setBusy("issue"); setErr(""); setOk("");
@@ -50,7 +51,7 @@ export default function ExitLetters({ emp, exit, items, slips, advance, admin, l
     setBusy("");
     if (r.status === 409 && j.needOverride) { if (confirm(`${j.error}\n\nIssue it anyway as an Admin override? The override is recorded on the letter.`)) issue(true); return; }
     if (!r.ok) { setErr(j.error || "Could not issue the letter."); return; }
-    setOk(`${EXIT_LETTER[kind!].label} issued · ${j.ref_no}`); window.open(`/api/letters/${j.id}/pdf`, "_blank"); onIssued();
+    setOk(`${EXIT_LETTER[kind!].label} issued · ${j.ref_no}`); openViewer({ src: `/api/letters/${j.id}/pdf` }); onIssued();
   }
 
   return (

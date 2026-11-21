@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serverClient } from "@/lib/supabase/server";
 import { cleanName, isBillSrc, pathsFor } from "@/lib/billsData";
-import { r2SignedGetUrl } from "@/lib/r2";
+import { serveStored } from "@/lib/fileServe";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,5 +17,5 @@ export async function GET(req: NextRequest) {
   if (!path) return new NextResponse("This bill has no file, or you cannot open it.", { status: 404 });
   const ext = /\.([a-z0-9]{2,4})$/i.exec(path)?.[1]?.toLowerCase() || "";
   const name = q.get("dl") === "1" ? `${cleanName(q.get("name") || "bill")}${ext ? `.${ext}` : ""}` : undefined;
-  return NextResponse.redirect(await r2SignedGetUrl(path, 300, name), 302);
+  return serveStored(req, path, { downloadName: name });
 }

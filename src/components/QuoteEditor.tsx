@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { openViewer } from "@/lib/viewer";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
@@ -66,7 +67,7 @@ export default function QuoteEditor({ id }: { id: string }) {
     setBusy("preview"); setMsg("");
     const r = await fetch("/api/quotations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quote: q }) }); setBusy("");
     if (!r.ok) { setMsg((await r.json().catch(() => ({}))).error || "Preview failed"); return; }
-    window.open(URL.createObjectURL(await r.blob()), "_blank");
+    openViewer({ src: URL.createObjectURL(await r.blob()), kind: "pdf", name: "Quotation preview.pdf" });
   }
   async function issue() {
     if (!q!.items.some((i) => i.desc.trim())) { setMsg("Add at least one line item with a description."); return; }
@@ -75,7 +76,7 @@ export default function QuoteEditor({ id }: { id: string }) {
     setBusy("issue");
     const r = await fetch("/api/quotations/issue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: sid }) }); const j = await r.json(); setBusy("");
     if (!r.ok) { setMsg(j.error || "Failed"); return; }
-    swrDrop("quotations"); setQ({ ...q!, id: sid, status: "issued", ref_no: j.ref_no }); setMsg(`Issued ${j.ref_no}`); window.open(`/api/quotations/${sid}/pdf`, "_blank"); if (isNew) router.replace(`/quotations/${sid}`);
+    swrDrop("quotations"); setQ({ ...q!, id: sid, status: "issued", ref_no: j.ref_no }); setMsg(`Issued ${j.ref_no}`); openViewer({ src: `/api/quotations/${sid}/pdf` }); if (isNew) router.replace(`/quotations/${sid}`);
   }
   async function duplicate() {
     setBusy("dup");
@@ -167,7 +168,7 @@ export default function QuoteEditor({ id }: { id: string }) {
 
       <div className="flex flex-wrap items-center gap-3 sticky bottom-[var(--bottom-nav-h,0px)] z-10 border-t border-slate-200 bg-[#f6f7fb] py-3">
         {!locked && <button className="btn btn-primary" disabled={!!busy} onClick={() => save()}>{busy === "save" ? "Saving…" : "Save draft"}</button>}
-        <button className="btn" disabled={!!busy} onClick={locked ? () => window.open(`/api/quotations/${q.id}/pdf`, "_blank") : preview}>{locked ? "View PDF" : busy === "preview" ? "Preparing…" : "Preview PDF"}</button>
+        <button className="btn" disabled={!!busy} onClick={locked ? () => openViewer({ src: `/api/quotations/${q.id}/pdf` }) : preview}>{locked ? "View PDF" : busy === "preview" ? "Preparing…" : "Preview PDF"}</button>
         {!locked && <button className="btn" disabled={!!busy} onClick={issue}>{busy === "issue" ? "Issuing…" : "Issue (assign ref. no.)"}</button>}
         {q.id && <button className="btn" disabled={!!busy} onClick={duplicate}>Duplicate</button>}
         {!locked && q.id && <button className="btn btn-danger sm:ml-auto" onClick={remove}>Delete draft</button>}

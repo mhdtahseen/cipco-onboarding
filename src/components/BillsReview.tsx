@@ -33,7 +33,7 @@ export default function BillsReview({ rows, start, onClose, dupNote }: { rows: B
         </div>
         <div className="flex flex-wrap gap-2">
           <a className={btn} href={billUrl(r, true)} title="Download this bill" aria-label="Download this bill">{svg(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /><path d="M12 15V3" /></>)}</a>
-          <a className={btn} href={billUrl(r)} target="_blank" rel="noreferrer" title="Open in a new tab" aria-label="Open in a new tab">{svg(<><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><path d="M15 3h6v6" /><path d="M10 14 21 3" /></>)}</a>
+          <a className={btn} href={billUrl(r)} target="_blank" rel="noreferrer" data-viewer="off" title="Open in a new tab" aria-label="Open in a new tab">{svg(<><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><path d="M15 3h6v6" /><path d="M10 14 21 3" /></>)}</a>
           <a className={btn} href={r.go} title={`Go to the entry in ${r.section.split(" · ")[0]}`} aria-label="Go to the entry">{svg(<><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></>)}</a>
           <button className={btn} onClick={onClose} title="Close (Esc)" aria-label="Close">{svg(<><path d="M18 6 6 18" /><path d="m6 6 12 12" /></>)}</button>
         </div>

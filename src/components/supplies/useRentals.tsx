@@ -205,8 +205,8 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
           {money && !r.voided_at && <button className="btn btn-sm" onClick={() => openTerms(r)}>{t && pd !== null ? "Terms & rates" : "Set terms & rates"}</button>}
           {money && !r.voided_at && dep.paid > 0 && r.returned_on && <button className="btn btn-sm" onClick={() => openDeposit(r)}>{t?.refund_on ? "Deposit details" : "Deposit back"}</button>}
           {staff && r.returned_on && !r.voided_at && <button className="btn btn-sm" onClick={() => undoReturn(r)}>Undo return</button>}
-          {r.delivery_doc_path && <a className="btn btn-sm" href={`/api/docs/view?path=${encodeURIComponent(r.delivery_doc_path)}`} target="_blank" rel="noreferrer">Delivery note</a>}
-          {r.return_doc_path && <a className="btn btn-sm" href={`/api/docs/view?path=${encodeURIComponent(r.return_doc_path)}`} target="_blank" rel="noreferrer">Return receipt</a>}
+          {r.delivery_doc_path && <a className="btn btn-sm" href={`/api/docs/view?path=${encodeURIComponent(r.delivery_doc_path)}`} target="_blank" rel="noreferrer" data-view-group={`rent-${r.id}`} data-view-name={`Delivery note - ${vName(r.vendor_id)}`}>Delivery note</a>}
+          {r.return_doc_path && <a className="btn btn-sm" href={`/api/docs/view?path=${encodeURIComponent(r.return_doc_path)}`} target="_blank" rel="noreferrer" data-view-group={`rent-${r.id}`} data-view-name={`Return receipt - ${vName(r.vendor_id)}`}>Return receipt</a>}
           {r.inventory_bill_id && <a className="btn btn-sm" href={`/inventory?bill=${r.inventory_bill_id}`}>{bills[r.inventory_bill_id]?.jsl_wanted ? "JSL portal entry" : "Inventory entry"}</a>}
           {mayVoid(r) && <button className="btn btn-sm btn-danger" onClick={() => voidRental(r)}>Void</button>}
         </div>

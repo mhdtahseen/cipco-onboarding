@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { openViewer } from "@/lib/viewer";
 import { supabase } from "@/lib/supabase/client";
 import { buildVars, isSuggested, renderSections, salaryFor, type AcceptMode } from "@/lib/clauses";
 import { annexureNotes, annexureRows } from "@/lib/salary";
@@ -40,14 +41,14 @@ export default function LettersTab({ emp, onIssued }: { emp: Employee; onIssued?
     setBusy("preview"); setMsg("");
     const r = await fetch("/api/letters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload(true)) }); setBusy("");
     if (!r.ok) { setMsg((await r.json().catch(() => ({}))).error || "Preview failed"); return; }
-    window.open(URL.createObjectURL(await r.blob()), "_blank");
+    openViewer({ src: URL.createObjectURL(await r.blob()), kind: "pdf", name: "Letter preview.pdf" });
   }
   async function issue() {
     setBusy("issue"); setMsg("");
     const r = await fetch("/api/letters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload(false)) });
     const j = await r.json(); setBusy("");
     if (!r.ok) { setMsg(j.error || "Failed"); return; }
-    setMsg(`Issued ${j.ref_no}`); onIssued?.(kind); setExtras([]); await loadLetters(); window.open(`/api/letters/${j.id}/pdf`, "_blank");
+    setMsg(`Issued ${j.ref_no}`); onIssued?.(kind); setExtras([]); await loadLetters(); openViewer({ src: `/api/letters/${j.id}/pdf` });
   }
   const setAll = (on: boolean) => setPicked(on ? new Set(clauses.map((c) => c.id)) : new Set());
   const rows = calc ? annexureRows(calc) : [];
