@@ -6,6 +6,8 @@ import Logo from "@/components/Logo";
 import type { Run, TransportRate, Vehicle } from "@/lib/attendance";
 import { inr, routeText, vehicleSummary, type TErrand, type TPay } from "@/lib/transportCalc";
 import { VENDOR_LANGS, isVLang, localeOf, makeVT, pinMessage, type VLang } from "@/lib/vendorI18n";
+import { useVendorBeacon, vendorBeat, vendorEvent } from "@/lib/vendorBeacon";
+import { askLocation, geoPermission } from "@/lib/geo";
 
 // Public page for a vehicle's operator: the link plus a PIN. Talks to the database only through the vendor_* functions (one vehicle, nothing else),
 // with no app sign-in, so a signed-in staff member opening it on the same phone changes nothing.
@@ -17,6 +19,10 @@ const keyOf = (t: string) => `cipco_vendor_${t.slice(0, 16)}`;
 const readSession = (t: string) => { try { return localStorage.getItem(keyOf(t)) || ""; } catch { return ""; } };
 const writeSession = (t: string, s: string) => { try { if (s) localStorage.setItem(keyOf(t), s); else localStorage.removeItem(keyOf(t)); } catch { /* private window: the PIN is asked each time */ } };
 const LANG_KEY = "cipco_vendor_lang";
+// the location question: asked once after the PIN; "Not now" asks again after 7 days; allowed (or blocked by the phone) never asks again
+const GEO_KEY = "cipco_vendor_geo";
+const geoAskedRecently = () => { try { const v = localStorage.getItem(GEO_KEY); return v === "done" || (!!v && Date.now() - Number(v) < 7 * 86_400_000); } catch { return true; } };
+const geoRemember = (v: string) => { try { localStorage.setItem(GEO_KEY, v); } catch { /* storage off: asked again next time */ } };
 const shiftMonth = (m: string, by: number) => { const [y, mo] = m.split("-").map(Number); const d = new Date(y, mo - 1 + by, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
 const daysBefore = (d: string, n: number) => { const x = new Date(d + "T00:00:00"); x.setDate(x.getDate() - n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`; };
 const OTHER = "__other";
@@ -29,6 +35,7 @@ const I = ({ d, className = "h-5 w-5" }: { d: string; className?: string }) => <
 const IC = {
   left: "M15 18l-6-6 6-6", right: "M9 18l6-6-6-6", down: "M6 9l6 6 6-6", plus: "M12 5v14M5 12h14", lock: "M7 11V7a5 5 0 0110 0v4M5 11h14v10H5z",
   check: "M20 6L9 17l-5-5", clock: "M12 7v5l3 2M12 21a9 9 0 100-18 9 9 0 000 18z", x: "M18 6L6 18M6 6l12 12", refresh: "M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5",
+  pin: "M12 21s-7-6.2-7-11.5A7 7 0 0112 2.5a7 7 0 017 7C19 14.8 12 21 12 21zM12 12a2.5 2.5 0 100-5 2.5 2.5 0 000 5z",
   out: "M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9", phone: "M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012.1 4.2 2 2 0 014.1 2h3a2 2 0 012 1.7c.1.9.4 1.8.7 2.7a2 2 0 01-.5 2.1L8 9.8a16 16 0 006 6l1.3-1.3a2 2 0 012.1-.4c.9.3 1.8.6 2.7.7a2 2 0 011.7 2z",
 };
 const STATUS = {
@@ -81,12 +88,14 @@ export default function VendorPage() {
 
   async function signIn(e: React.FormEvent) {
     e.preventDefault(); if (!/^\d{4,6}$/.test(pin)) { setPinErr(t("pin.bad")); return; }
-    setBusy(true); setPinErr(""); const { data, error } = await db().rpc("vendor_login", { p_token: token, p_pin: pin }); setBusy(false);
-    if (error) { setPinErr(t("net.pin")); return; }
+    setBusy(true); setPinErr("");
+    const r = await fetch("/api/vendor/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, pin }) }).catch(() => null);
+    const data = r?.ok ? await r.json().catch(() => null) : null; setBusy(false);
+    if (!data) { setPinErr(t("net.pin")); return; }
     if (!data?.ok) { if (data?.gone) { setState("gone"); return; } setPinErr(pinMessage(data?.error || "", t) || t("pin.wrong", { n: 0 })); setPin(""); return; }
     writeSession(token, data.session); setPin(""); setPinWhy(""); if (data.must_set) { setSetWhy(data.why === "expired" ? "expired" : "temp"); setState("setpin"); return; } setState("loading"); load();
   }
-  async function signOut() { const s = readSession(token); writeSession(token, ""); setD(null); setPinWhy(""); setState("pin"); if (s) await db().rpc("vendor_logout", { p_token: token, p_session: s }); }
+  async function signOut() { const s = readSession(token); writeSession(token, ""); setD(null); setPinWhy(""); setState("pin"); if (s) { await vendorEvent(token, s, "sign_out"); await db().rpc("vendor_logout", { p_token: token, p_session: s }); } }
 
   // choosing their own PIN: right after a temporary one (state "setpin"), or later from "Change my PIN" (needs the current PIN)
   const [np, setNp] = useState({ cur: "", a: "", b: "" }); const [npErr, setNpErr] = useState<Partial<Record<"cur" | "a" | "b", string>>>({}); const [changing, setChanging] = useState(false); const [setWhy, setSetWhy] = useState<"temp" | "expired">("temp");
@@ -100,6 +109,7 @@ export default function VendorPage() {
     if (error) { setNpErr({ a: t("net.send") }); return; }
     if (!data?.ok) { if (data?.pin) { toPin("pin.again"); return; }
       const code = data?.code as string | undefined; if (code === "current") setNpErr({ cur: t("set.curWrong") }); else setNpErr({ a: code === "weak" ? t("set.weak") : code === "same" ? t("set.same") : code === "format" ? t("pin.bad") : data?.error || t("net.send") }); return; }
+    void vendorEvent(token, readSession(token), "pin_set", withCurrent ? "changed" : setWhy);
     setNp({ cur: "", a: "", b: "" }); setNpErr({}); setChanging(false); setNote(t("set.saved")); setTimeout(() => setNote(""), 8000);
     if (state === "setpin") { setState("loading"); load(); } else window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -141,6 +151,13 @@ export default function VendorPage() {
     setNote(t("withdrawn")); setTimeout(() => setNote(""), 5000); load(true);
   }
 
+  // how long and where (2026-11-vendor-activity.sql): while signed in and the page is on screen
+  useVendorBeacon(state === "ready" || state === "setpin", token, () => readSession(token), state === "setpin" ? "set-pin" : changing ? "change-pin" : adding ? "add-trip" : "account");
+  const [geoAsk, setGeoAsk] = useState(false); const [geoBusy, setGeoBusy] = useState(false);
+  useEffect(() => { if (state !== "ready" || geoAskedRecently()) return; let live = true; geoPermission().then((p) => { if (!live) return; if (p === "prompt") setGeoAsk(true); else if (p !== "unsupported") geoRemember("done"); }); return () => { live = false; }; }, [state]);
+  async function allowGeo() { setGeoBusy(true); await askLocation(); setGeoBusy(false); geoRemember("done"); setGeoAsk(false); void vendorBeat(token, readSession(token), "account", { geo: true }); }
+  const geoLater = () => { geoRemember(String(Date.now())); setGeoAsk(false); };
+
   const sum = useMemo(() => d && month ? vehicleSummary(d.vehicle, d.runs, d.rates, d.errands, d.payments, month) : null, [d, month]);
   const monthErrands = useMemo(() => (d?.errands ?? []).filter((x) => x.work_date.startsWith(month)).sort((a, b) => b.work_date.localeCompare(a.work_date)), [d, month]);
   const waiting = monthErrands.filter((x) => x.approval === "awaiting");
@@ -181,6 +198,16 @@ export default function VendorPage() {
       <button className="btn btn-primary w-full justify-center !h-12 !text-base" disabled={busy}>{busy ? t("pin.checking") : t("pin.open")}</button>
       <p className="text-sm text-slate-500">{t("pin.forgot")}</p>
     </form>);
+
+  if (geoAsk) return shell(
+    <section className="card space-y-4 !p-6" aria-labelledby="geo-t">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-700"><I d={IC.pin} /></div>
+      <div className="space-y-1"><h1 id="geo-t" className="text-xl font-semibold">{t("geo.t")}</h1><p className="text-[15px] text-slate-600">{t("geo.d")}</p></div>
+      <p className="text-sm text-slate-500">{t("geo.next")}</p>
+      <div className="flex flex-col gap-2 min-[400px]:flex-row-reverse">
+        <button type="button" className="btn btn-primary justify-center !h-12 !text-base min-[400px]:flex-[2]" disabled={geoBusy} onClick={allowGeo} autoFocus>{t("geo.allow")}</button>
+        <button type="button" className="btn justify-center !h-12 min-[400px]:flex-1" disabled={geoBusy} onClick={geoLater}>{t("geo.later")}</button></div>
+    </section>, true);
 
   const v = d.vehicle; const due = sum.due;
   // an errands-only vehicle (not on employee transport) has no pickups and drops to show, unless some were recorded this month before it was switched
