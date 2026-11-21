@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
-import { effectiveStatus, fmtTime, isLockedFor, isSupervisorRole, istToday, type AttRow, type DayRow, type Person, type Run, type Vehicle } from "@/lib/attendance";
+import { effectiveStatus, fmtTime, isLockedFor, isSupervisorRole, istToday, onSheet, type AttRow, type DayRow, type Person, type Run, type Vehicle } from "@/lib/attendance";
 import { trackEntry } from "@/lib/geo";
 import type { Readiness } from "@/lib/reminders";
 import PromptDialog, { type PromptSpec } from "./PromptDialog";
@@ -34,7 +34,7 @@ export default function DayBar({ projectId, date, role, day, names, people, rows
 
   // what looks missing, worked out here: used only until the readiness check above is available
   const issues = useMemo(() => {
-    const out: { label: string; names: string[] }[] = []; const act = vehicles.filter((v) => v.active || runs.some((x) => x.vehicle_id === v.id));
+    const out: { label: string; names: string[] }[] = []; const act = vehicles.filter((v) => onSheet(v, runs));
     const unmarked = people.filter((p) => effectiveStatus(p, date, rows[p.employee_id]) === null).map((p) => p.full_name); if (unmarked.length) out.push({ label: "Not marked yet", names: unmarked });
     const todo: string[] = [], missed: string[] = [];
     act.forEach((v) => (["pickup", "drop"] as const).forEach((leg) => { const x = runs.find((q) => q.vehicle_id === v.id && q.leg === leg); const t = `${v.name} ${leg}`; if (!x) todo.push(t); else if (x.status === "no_show") missed.push(t); }));

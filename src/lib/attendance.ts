@@ -42,7 +42,9 @@ export const canWriteDay = (role: string | null | undefined, iso: string) => rol
 // ── transport ──
 export type Leg = "pickup" | "drop";
 export type Billing = "per_trip" | "monthly";
-export type Vehicle = { id: string; project_id: string | null; name: string; operator: string; billing: Billing; active: boolean; sort_order: number };
+export type Vehicle = { id: string; project_id: string | null; name: string; operator: string; billing: Billing; active: boolean; sort_order: number; staff_transport?: boolean };   // staff_transport: on the daily attendance sheet (pickups and drops); otherwise errands only
+/** On the day's transport sheet: vehicles used for employee transport, plus any vehicle that already has a record that day (history stays). */
+export const onSheet = (v: Vehicle, runs: { vehicle_id: string }[]) => (v.active && v.staff_transport !== false) || runs.some((r) => r.vehicle_id === v.id);
 /** One vehicle, one direction, one day: it showed up (with the time) or it did not. */
 export type Run = { id: string; project_id: string; work_date: string; leg: Leg; vehicle_id: string; status: "showed" | "no_show"; at: string | null; created_by?: string | null; rank?: number; updated_by?: string | null; updated_at?: string | null };
 export type TransportRate = { id: string; vehicle_id: string; price: number; effective_from: string };

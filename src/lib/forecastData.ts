@@ -54,8 +54,8 @@ export async function loadForecast(sb: SupabaseClient, projectId?: string): Prom
     // rooms
     const mine = rooms.filter((r) => r.project_id === p.id && (!r.vacated_on || monthOf(r.vacated_on) >= month));
 
-    // transport: a monthly vehicle costs its fixed price; a per-trip vehicle its recent trips × rate. One-off errands are not counted here.
-    const lines = vehicles.filter((v) => v.project_id === p.id && v.active !== false).map((v) => { const runs = tRuns.filter((r) => r.vehicle_id === v.id && r.status === "showed"); const rate = tripRate(tr, v.id, today) ?? 0; const monthly = v.billing === "monthly" ? rate : windowDays ? (runs.length / windowDays) * days * rate : 0; return { id: v.id as string, name: v.name as string, billing: v.billing as string, trips: runs.length, rate, monthly, runs }; });
+    // transport: a monthly vehicle costs its fixed price; a per-trip vehicle its recent trips × rate. Only vehicles on employee transport; one-off errands are not counted here.
+    const lines = vehicles.filter((v) => v.project_id === p.id && v.active !== false && v.staff_transport !== false).map((v) => { const runs = tRuns.filter((r) => r.vehicle_id === v.id && r.status === "showed"); const rate = tripRate(tr, v.id, today) ?? 0; const monthly = v.billing === "monthly" ? rate : windowDays ? (runs.length / windowDays) * days * rate : 0; return { id: v.id as string, name: v.name as string, billing: v.billing as string, trips: runs.length, rate, monthly, runs }; });
     const perTrip = lines.filter((l) => l.billing !== "monthly"), fixed = lines.filter((l) => l.billing === "monthly").reduce((s, l) => s + l.monthly, 0), tripsMonthly = perTrip.reduce((s, l) => s + l.monthly, 0);
     const tSpread = spread(fullWeeks.map((w) => perTrip.reduce((s, l) => s + l.runs.filter((r) => inWeek(r.work_date, w)).length * l.rate, 0)));
 

@@ -2,14 +2,14 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { Icon } from "./NavIcons";
-import { LEG_LABEL, fmtTime, istISO, type Leg, type Run, type Vehicle } from "@/lib/attendance";
+import { LEG_LABEL, fmtTime, istISO, onSheet, type Leg, type Run, type Vehicle } from "@/lib/attendance";
 import { trackEntry } from "@/lib/geo";
 
 // Transport for the day: did each hired vehicle show up for the pickup and the drop? Stamped with the server's clock.
 // Independent of attendance. Prices and payments are the Admin's, on the Transport page.
 export default function TransportCard({ projectId, date, vehicles, runs, canWrite, today, names, reload, role }: { projectId: string; date: string; vehicles: Vehicle[]; runs: Run[]; canWrite: boolean; today: boolean; names: Record<string, string>; reload: () => void; role?: string | null }) {
   const [busy, setBusy] = useState(""); const [err, setErr] = useState(""); const [editing, setEditing] = useState<string | null>(null); const [hhmm, setHhmm] = useState("");
-  const list = vehicles.filter((v) => v.active || runs.some((r) => r.vehicle_id === v.id));
+  const list = vehicles.filter((v) => onSheet(v, runs));
   const find = (v: Vehicle, leg: Leg) => runs.find((r) => r.vehicle_id === v.id && r.leg === leg);
   const showed = runs.filter((r) => r.status === "showed").length, missed = runs.filter((r) => r.status === "no_show").length, expected = list.length * 2;
 

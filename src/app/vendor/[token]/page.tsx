@@ -182,7 +182,9 @@ export default function VendorPage() {
       <p className="text-sm text-slate-500">{t("pin.forgot")}</p>
     </form>);
 
-  const v = d.vehicle; const due = sum.due; const thisMonth = d.today.slice(0, 7); const owed = due > 0.005, ahead = due < -0.005;
+  const v = d.vehicle; const due = sum.due;
+  // an errands-only vehicle (not on employee transport) has no pickups and drops to show, unless some were recorded this month before it was switched
+  const runsShown = v.staff_transport !== false || d.runs.some((r) => r.vehicle_id === v.id && r.work_date.startsWith(month)); const thisMonth = d.today.slice(0, 7); const owed = due > 0.005, ahead = due < -0.005;
   const shortMonth = monthOnly(month);
   // the trips line's "how": "39 × ₹450" stays as it is; the worded forms are said in the chosen language
   const how = (() => { const h = sum.how; if (!h) return ""; const m = h.match(/^(\d+) trips at (\d+) rates$/); if (m) return t("m.tripsRates", { n: m[1], k: m[2] }); if (/^monthly hire from/.test(h)) return t("m.hireFrom", { date: fmtD(sum.tripLines[0]?.date ?? month + "-01") }); return h; })();
@@ -192,7 +194,7 @@ export default function VendorPage() {
     {/* who this account is for */}
     <div className="space-y-1"><h1 className="text-2xl font-semibold leading-tight break-words">{v.name}</h1>
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-slate-600"><span>{[v.operator, d.project].filter(Boolean).join(" · ")}</span>
-        <span className="rounded-full bg-slate-200/70 px-2.5 py-0.5 text-xs font-medium text-slate-700">{v.billing === "monthly" ? t("bill.monthly") : t("bill.trip")}</span></p></div>
+        <span className="rounded-full bg-slate-200/70 px-2.5 py-0.5 text-xs font-medium text-slate-700">{v.staff_transport === false ? t("bill.errands") : v.billing === "monthly" ? t("bill.monthly") : t("bill.trip")}</span></p></div>
 
     <div aria-live="polite">{note && <p className="flex items-start gap-2 rounded-xl bg-emerald-50 px-3 py-2.5 text-[15px] text-emerald-900 ring-1 ring-emerald-200"><I d={IC.check} className="mt-0.5 h-5 w-5 shrink-0" />{note}</p>}</div>
     {pageErr && <p role="alert" className="rounded-xl bg-rose-50 px-3 py-2.5 text-[15px] text-rose-900 ring-1 ring-rose-200">{pageErr}</p>}
@@ -240,19 +242,19 @@ export default function VendorPage() {
         <h2 className="flex-1 text-center text-lg font-semibold" aria-live="polite">{monthLabel(month)}</h2>
         <button type="button" className="btn !h-11 !w-11 justify-center !p-0" aria-label={t("m.next")} disabled={month >= thisMonth} onClick={() => setMonth(shiftMonth(month, 1))}><I d={IC.right} /></button></div>
       <div className="text-[15px] tabular-nums">
-        <button type="button" className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-2 rounded-lg px-2 py-2.5 text-left hover:bg-slate-50" aria-expanded={showTrips} aria-controls={tripsId} onClick={() => setShowTrips(!showTrips)}>
+        {runsShown && <><button type="button" className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-2 rounded-lg px-2 py-2.5 text-left hover:bg-slate-50" aria-expanded={showTrips} aria-controls={tripsId} onClick={() => setShowTrips(!showTrips)}>
           <span className="min-w-0 flex-1">{v.billing === "monthly" ? t("m.monthly") : t("m.trips")}{how && <span className="block text-sm text-slate-600">{how}</span>}</span>
           <span className="font-medium">₹{inr(sum.tripMonth)}</span><I d={IC.down} className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${showTrips ? "rotate-180" : ""}`} /><span className="sr-only">{showTrips ? t("m.hide") : t("m.show")}</span></button>
-        {showTrips && <ul id={tripsId} className="mb-2 max-h-72 divide-y divide-slate-200/70 overflow-y-auto rounded-xl bg-slate-50 px-3 text-sm">{sum.tripLines.length ? sum.tripLines.map((l, n) => <li key={n} className="flex gap-3 py-2"><span className="w-28 shrink-0 text-slate-600">{fmtDay(l.date)}</span><span className="min-w-0 flex-1">{lineLabel(l.label, l.date)}</span><span className="shrink-0">{l.amount === null ? <span className="text-amber-800">{t("m.noPrice")}</span> : `₹${inr(l.amount)}`}</span></li>) : <li className="py-2 text-slate-600">{t("m.noTrips")}</li>}</ul>}
+        {showTrips && <ul id={tripsId} className="mb-2 max-h-72 divide-y divide-slate-200/70 overflow-y-auto rounded-xl bg-slate-50 px-3 text-sm">{sum.tripLines.length ? sum.tripLines.map((l, n) => <li key={n} className="flex gap-3 py-2"><span className="w-28 shrink-0 text-slate-600">{fmtDay(l.date)}</span><span className="min-w-0 flex-1">{lineLabel(l.label, l.date)}</span><span className="shrink-0">{l.amount === null ? <span className="text-amber-800">{t("m.noPrice")}</span> : `₹${inr(l.amount)}`}</span></li>) : <li className="py-2 text-slate-600">{t("m.noTrips")}</li>}</ul>}</>}
         <div className="flex items-center justify-between py-2.5"><span>{t("m.erApproved")}{sum.erCount > 0 && <span className="text-slate-600"> · {sum.erCount}</span>}</span><span className="font-medium">₹{inr(sum.erMonth)}</span></div>
         <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-base font-semibold"><span>{t("m.total", { month: shortMonth })}</span><span>₹{inr(sum.month)}</span></div>
         {waiting.length > 0 && <p className="mt-2 flex items-start gap-1.5 text-sm text-amber-900"><I d={IC.clock} className="mt-0.5 h-4 w-4 shrink-0" />{t("m.waiting", { amt: inr(waiting.reduce((s, x) => s + (x.quoted_amount ?? 0), 0)), n: waiting.length })}</p>}
       </div>
-      <div className="space-y-1 rounded-xl bg-slate-50 px-3 py-2.5 text-sm">
+      {runsShown && <div className="space-y-1 rounded-xl bg-slate-50 px-3 py-2.5 text-sm">
         <p className="flex flex-wrap gap-x-4 gap-y-1"><span className="inline-flex items-center gap-1 text-emerald-800"><I d={IC.check} className="h-4 w-4" />{t("m.showed", { n: sum.showed })}</span>
           {sum.missed > 0 && <span className="inline-flex items-center gap-1 text-rose-800"><I d={IC.x} className="h-4 w-4" />{t("m.noshow", { n: sum.missed })}</span>}</p>
         {sum.missed > 0 && <><p className="text-slate-700">{t("m.noshows", { list: noShows.join(", ") })}</p><p className="text-slate-600">{v.billing === "per_trip" ? t("m.notPaid") : t("m.raised")} {t("m.wrong")}</p></>}
-      </div>
+      </div>}
     </section>
 
     {/* errands */}
