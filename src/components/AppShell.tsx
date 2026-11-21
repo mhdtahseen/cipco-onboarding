@@ -26,7 +26,7 @@ import PullToRefresh from "./PullToRefresh";
 //  tablet  (768–1279): a permanent icon rail; its menu button opens the full labelled menu
 //  phone   (<768):     a top bar with a menu button, a bottom bar with the main pages + More, and a slide-out menu
 //  single-purpose logins (a supervisor): no sidebar and no bottom bar, just the top bar
-const BARE = ["/login", "/apply"];   // login and the public candidate form carry no app chrome
+const BARE = ["/login", "/apply", "/vendor/"];   // login, the public candidate form and the vendor page carry no app chrome
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();

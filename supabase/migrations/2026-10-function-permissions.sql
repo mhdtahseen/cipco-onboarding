@@ -48,7 +48,7 @@ do $$ declare r record; had_auth boolean; begin
   loop
     had_auth := has_function_privilege('authenticated', r.oid, 'execute');
     execute format('revoke all on function %s from public, anon, authenticated', r.fn);
-    if r.proname in ('invite_get', 'invite_submit', 'invite_file') then
+    if r.proname in ('invite_get', 'invite_submit', 'invite_file', 'vendor_login', 'vendor_logout', 'vendor_get', 'vendor_add_errand', 'vendor_withdraw_errand') then   -- candidate links; the vendor portal (2026-11-transport-vendor-portal.sql)
       execute format('grant execute on function %s to anon, authenticated', r.fn);
     elsif had_auth and r.ret <> 'trigger' and r.proname not in ('sync_payroll_expense', 'custom_access_token_hook') then
       execute format('grant execute on function %s to authenticated', r.fn);
