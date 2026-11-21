@@ -4,10 +4,10 @@ import type { Metadata } from "next";
 // never sends it on to another site (no Referer) and is never listed by search engines.
 export const metadata: Metadata = {
   title: { absolute: "CIPCO · Your vehicle account" },
-  description: "Your trips, errands and payments with CIPCO.",
+  description: "Your trips and payments with CIPCO.",
   referrer: "no-referrer",
   robots: { index: false, follow: false, nocache: true },
-  openGraph: { type: "website", siteName: "CIPCO", title: "CIPCO · Your vehicle account", description: "Your trips, errands and payments with CIPCO. Open it and enter your PIN.", images: [{ url: "/branding/logo.png", width: 464, height: 186 }] },
+  openGraph: { type: "website", siteName: "CIPCO", title: "CIPCO · Your vehicle account", description: "Your trips and payments with CIPCO. Open it and enter your PIN.", images: [{ url: "/branding/logo.png", width: 464, height: 186 }] },
 };
 
 export default function VendorLayout({ children }: { children: React.ReactNode }) {

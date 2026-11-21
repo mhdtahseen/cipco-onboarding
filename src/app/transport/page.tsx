@@ -5,7 +5,7 @@ import PaymentBill from "@/components/PaymentBill";
 import PayeeBank from "@/components/PayeeBank";
 import { supabase } from "@/lib/supabase/client";
 import { istToday, tripRate, type Billing, type Run, type TransportRate, type Vehicle } from "@/lib/attendance";
-import { fmtD, fmtDay, inr, isCounted, vehicleSummary, type TErrand as Errand, type TPay as Pay } from "@/lib/transportCalc";
+import { fmtD, fmtDay, inr, isCounted, routeText, vehicleSummary, type TErrand as Errand, type TPay as Pay } from "@/lib/transportCalc";
 import type { Project } from "@/lib/types";
 import { PageLoader } from "@/components/Loader";
 import { useRole } from "@/lib/roles";
@@ -167,6 +167,7 @@ export default function TransportPage() {
           <ul className="divide-y divide-slate-100">{awaiting.map((x) => { const d = decideOn(x); const set = (p: Partial<typeof d>) => setDecide((s) => ({ ...s, [x.id]: { ...d, ...p } }));
             return <li key={x.id} className="py-3 space-y-2">
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1"><span className="font-medium">{vName(x.vehicle_id)}</span><span className="text-sm text-slate-500 tabular-nums">{fmtDay(x.work_date)}</span><span className="ml-auto text-lg font-semibold tabular-nums">₹{inr(x.quoted_amount ?? 0)}<span className="text-xs font-normal text-slate-400"> quoted</span></span></div>
+              {routeText(x) && <p className="text-sm font-medium break-words">{routeText(x)}</p>}
               <p className="text-sm break-words">{x.description}</p>
               <p className="text-xs text-slate-500">Asked by <b className="font-medium text-slate-700">{x.asked_by || "—"}</b>{x.created_at && <> · entered {new Date(x.created_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</>}</p>
               {admin && <div className="flex flex-wrap items-center gap-2">
@@ -188,7 +189,7 @@ export default function TransportPage() {
           {editing && <p className="text-xs text-amber-800">Editing the ₹{inr(editing.amount)} errand of {editing.work_date}. Saving enters the corrected one and voids this one, which stays in the list.</p>}
           <ul className="divide-y divide-slate-100 text-sm" data-errands>{listed.map((x) => { const rejected = x.approval === "rejected";
             return <li key={x.id} className={`py-2 flex flex-wrap items-center gap-x-3 ${x.voided_at || rejected ? "text-slate-400" : ""} ${x.voided_at ? "line-through" : ""}`}><span className="tabular-nums w-24">{x.work_date}</span><span className="w-32 truncate">{vName(x.vehicle_id)}</span>{rejected ? <span className="tabular-nums w-28">₹{inr(x.quoted_amount ?? 0)} quoted</span> : x.pending && !x.voided_at ? <span className="w-28 inline-flex items-center gap-1"><input className="inp !w-20 !py-0.5 text-xs" inputMode="decimal" placeholder="₹" aria-label="Errand amount" value={pendAmt[x.id] ?? ""} onChange={(e) => setPendAmt((s) => ({ ...s, [x.id]: e.target.value.replace(/[^\d.]/g, "") }))} /><button className="text-xs text-blue-700 underline" onClick={() => setPendingAmount(x)}>Save</button></span> : <span className="tabular-nums w-28">{x.pending ? "no amount" : `₹${inr(x.amount)}`}</span>}
-              <span className="text-xs text-slate-500 flex-1 min-w-0 truncate">{x.source === "vendor" && <span className="mr-1 rounded bg-slate-100 px-1 text-slate-600">from vendor{x.asked_by ? ` · asked by ${x.asked_by}` : ""}</span>}{rejected && <span className="mr-1 rounded bg-rose-50 px-1 text-rose-700">rejected</span>}{x.description}{x.source === "vendor" && !rejected && x.quoted_amount != null && x.quoted_amount !== x.amount ? <span className="text-amber-700"> · quoted ₹{inr(x.quoted_amount)}</span> : null}{x.decision_note ? <span className="italic"> · “{x.decision_note}”</span> : null}{x.pending && !x.voided_at ? <span className="text-amber-700"> · needs amount</span> : null}</span>
+              <span className="text-xs text-slate-500 flex-1 min-w-0 truncate">{x.source === "vendor" && <span className="mr-1 rounded bg-slate-100 px-1 text-slate-600">from vendor{x.asked_by ? ` · asked by ${x.asked_by}` : ""}</span>}{rejected && <span className="mr-1 rounded bg-rose-50 px-1 text-rose-700">rejected</span>}{routeText(x) && <span className="text-slate-700">{routeText(x)} · </span>}{x.description}{x.source === "vendor" && !rejected && x.quoted_amount != null && x.quoted_amount !== x.amount ? <span className="text-amber-700"> · quoted ₹{inr(x.quoted_amount)}</span> : null}{x.decision_note ? <span className="italic"> · “{x.decision_note}”</span> : null}{x.pending && !x.voided_at ? <span className="text-amber-700"> · needs amount</span> : null}</span>
               {x.voided_at ? <span className="text-xs">void</span> : rejected ? null : <>{!x.pending && <button className="text-xs text-blue-700 underline" onClick={() => editErrand(x)}>Edit</button>}<button className="text-xs text-red-700 underline" onClick={() => voidIt("transport_errands", x, "errand")}>Void</button></>}</li>; })}</ul>
           {!listed.length && <p className="text-sm text-slate-400">No errands recorded.</p>}</section>
 

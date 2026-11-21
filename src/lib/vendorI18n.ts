@@ -9,6 +9,8 @@ export type VLang = (typeof VENDOR_LANGS)[number]["code"];
 export const isVLang = (c: unknown): c is VLang => VENDOR_LANGS.some((l) => l.code === c);
 
 const en = {
+  "f.from": "From", "f.to": "To", "f.fromPh": "e.g. Yard", "f.toPh": "e.g. Mundra port",
+  "e.from": "Say where the trip started.", "e.to": "Say where the trip ended.",
   "lang": "Language", "hdr.account": "Vehicle account", "refresh": "Refresh", "refreshing": "Refreshing", "signOut": "Sign out", "loading": "Loading your account…",
   "gone.t": "This link is not active any more", "gone.d": "Ask the CIPCO office to send you a new link.",
   "pin.t": "Enter your PIN", "pin.d": "The CIPCO office gave you a PIN with this link.", "pin.label": "PIN", "pin.hint": "4 to 6 digits.", "pin.show": "Show", "pin.hide": "Hide",
@@ -45,6 +47,8 @@ export type VKey = keyof typeof en;
 type Dict = Partial<Record<VKey, string>> & Record<Exclude<VKey, `${string}.1`>, string>;
 
 const hi: Dict = {
+  "f.from": "कहाँ से", "f.to": "कहाँ तक", "f.fromPh": "जैसे: यार्ड", "f.toPh": "जैसे: मुंद्रा पोर्ट",
+  "e.from": "बताइए ट्रिप कहाँ से शुरू हुई।", "e.to": "बताइए ट्रिप कहाँ खत्म हुई।",
   "lang": "भाषा", "hdr.account": "वाहन खाता", "refresh": "ताज़ा करें", "refreshing": "ताज़ा हो रहा है", "signOut": "बाहर निकलें", "loading": "आपका खाता खुल रहा है…",
   "gone.t": "यह लिंक अब चालू नहीं है", "gone.d": "नया लिंक भेजने के लिए CIPCO ऑफिस से कहें।",
   "pin.t": "अपना PIN डालें", "pin.d": "CIPCO ऑफिस ने इस लिंक के साथ आपको एक PIN दिया है।", "pin.label": "PIN", "pin.hint": "4 से 6 अंक।", "pin.show": "दिखाएँ", "pin.hide": "छिपाएँ",
@@ -79,6 +83,8 @@ const hi: Dict = {
 };
 
 const gu: Dict = {
+  "f.from": "ક્યાંથી", "f.to": "ક્યાં સુધી", "f.fromPh": "દા.ત. યાર્ડ", "f.toPh": "દા.ત. મુંદ્રા પોર્ટ",
+  "e.from": "ટ્રિપ ક્યાંથી શરૂ થઈ તે લખો.", "e.to": "ટ્રિપ ક્યાં પૂરી થઈ તે લખો.",
   "lang": "ભાષા", "hdr.account": "વાહન ખાતું", "refresh": "તાજું કરો", "refreshing": "તાજું થઈ રહ્યું છે", "signOut": "બહાર નીકળો", "loading": "તમારું ખાતું ખુલી રહ્યું છે…",
   "gone.t": "આ લિંક હવે ચાલુ નથી", "gone.d": "નવી લિંક મોકલવા CIPCO ઑફિસને કહો.",
   "pin.t": "તમારો PIN નાખો", "pin.d": "CIPCO ઑફિસે આ લિંક સાથે તમને PIN આપ્યો છે.", "pin.label": "PIN", "pin.hint": "4 થી 6 અંક.", "pin.show": "બતાવો", "pin.hide": "છુપાવો",

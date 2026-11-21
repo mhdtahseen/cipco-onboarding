@@ -5,6 +5,7 @@ type Money = { id: string; vehicle_id: string; amount: number; voided_at: string
 export type TPay = Money & { paid_on: string; reference: string; note?: string; bill_path?: string | null };
 /** pending: a gas-trip errand whose amount is not entered yet (counted as 0). approval: a vendor's errand waits for an Admin; before the vendor-portal migration it is absent (= approved). */
 export type TErrand = Money & { work_date: string; description: string; pending?: boolean; gas_trip_ref?: string | null; approval?: Approval; source?: "staff" | "vendor";
+  from_place?: string; to_place?: string;
   quoted_amount?: number | null; asked_by?: string | null; decision_note?: string | null; decided_at?: string | null; created_at?: string };
 export type Line = { date: string; label: string; amount: number | null };
 
@@ -35,3 +36,6 @@ export function vehicleSummary(v: Vehicle, runs: Run[], rates: TransportRate[], 
   const noShows = mr.filter((r) => r.status === "no_show").sort((a, b) => a.work_date.localeCompare(b.work_date)).map((r) => `${fmtD(r.work_date)} ${r.leg}`);
   return { v, tripLines, erLines: erM, noShows, oldest, showed, missed: mr.filter((r) => r.status === "no_show").length, tripMonth: inMonth, erMonth, erCount: erM.length, month: inMonth + erMonth, how, tripAll: all, erAll, billed: all + erAll, paid, due: all + erAll - paid, unpriced };
 }
+
+/** Where a trip went: "Yard → Block C"; "" for trips entered before From / To existed. */
+export const routeText = (x: Pick<TErrand, "from_place" | "to_place">) => (x.from_place || x.to_place ? `${x.from_place || "?"} → ${x.to_place || "?"}` : "");

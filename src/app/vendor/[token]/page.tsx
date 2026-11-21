@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import Logo from "@/components/Logo";
 import type { Run, TransportRate, Vehicle } from "@/lib/attendance";
-import { inr, vehicleSummary, type TErrand, type TPay } from "@/lib/transportCalc";
+import { inr, routeText, vehicleSummary, type TErrand, type TPay } from "@/lib/transportCalc";
 import { VENDOR_LANGS, isVLang, localeOf, makeVT, pinMessage, type VLang } from "@/lib/vendorI18n";
 
 // Public page for a vehicle's operator: the link plus a PIN. Talks to the database only through the vendor_* functions (one vehicle, nothing else),
@@ -20,8 +20,9 @@ const LANG_KEY = "cipco_vendor_lang";
 const shiftMonth = (m: string, by: number) => { const [y, mo] = m.split("-").map(Number); const d = new Date(y, mo - 1 + by, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
 const daysBefore = (d: string, n: number) => { const x = new Date(d + "T00:00:00"); x.setDate(x.getDate() - n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`; };
 const OTHER = "__other";
+
 const MAX_WHAT = 300;
-type FieldErr = Partial<Record<"date" | "description" | "asker" | "amount" | "form", string>>;
+type FieldErr = Partial<Record<"date" | "from" | "to" | "description" | "asker" | "amount" | "form", string>>;
 
 // ---------- small inline icons (decorative: the words next to them carry the meaning) ----------
 const I = ({ d, className = "h-5 w-5" }: { d: string; className?: string }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><path d={d} /></svg>;
@@ -53,6 +54,7 @@ export default function VendorPage() {
   const [busy, setBusy] = useState(false); const [refreshing, setRefreshing] = useState(false); const [note, setNote] = useState(""); const [pageErr, setPageErr] = useState("");
   const [month, setMonth] = useState(""); const [adding, setAdding] = useState(false); const [showTrips, setShowTrips] = useState(false);
   const [f, setF] = useState({ date: "", description: "", amount: "", asker: "", other: "" }); const [fe, setFe] = useState<FieldErr>({});
+  const [route, setRoute] = useState({ from: "", to: "" });   // where the trip went
   const [confirmId, setConfirmId] = useState<string | null>(null); const [fresh, setFresh] = useState<string | null>(null);
   const addBtn = useRef<HTMLButtonElement>(null); const errandsRef = useRef<HTMLElement>(null);
   const tripsId = useId();
@@ -92,15 +94,18 @@ export default function VendorPage() {
     e.preventDefault(); if (!d) return;
     const asked = f.asker === OTHER ? f.other.trim() : f.asker; const amount = parseFloat(f.amount); const errs: FieldErr = {};
     if (!f.date || f.date > d.today || f.date < daysBefore(d.today, 7)) errs.date = t("e.date");
+    if (!route.from.trim()) errs.from = t("e.from");
+    if (!route.to.trim()) errs.to = t("e.to");
     if (!f.description.trim()) errs.description = t("e.what");
     if (!asked) errs.asker = f.asker === OTHER ? t("e.whoName") : t("e.who");
     if (!(amount > 0)) errs.amount = t("e.price");
     setFe(errs); if (Object.keys(errs).length) { document.getElementById(`ve-${Object.keys(errs)[0]}`)?.focus(); return; }
     setBusy(true);
-    const r = await fetch("/api/vendor/errand", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, session: readSession(token), date: f.date, description: f.description.trim(), amount, asked_by: asked }) }).catch(() => null);
+    const r = await fetch("/api/vendor/errand", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, session: readSession(token), date: f.date, description: f.description.trim(), amount, asked_by: asked,
+      from: route.from.trim(), to: route.to.trim() }) }).catch(() => null);
     setBusy(false); const j = r ? await r.json().catch(() => ({})) : { error: t("net.send") };
     if (!r?.ok) { if (j.pin) { toPin("pin.againErrand"); return; } setFe({ form: j.error || t("net.send") }); return; }
-    setF((s) => ({ ...s, description: "", amount: "", other: "" })); setAdding(false); setMonth(f.date.slice(0, 7)); setFresh(f.date);
+    setF((s) => ({ ...s, description: "", amount: "", other: "" })); setRoute({ from: "", to: "" }); setAdding(false); setMonth(f.date.slice(0, 7)); setFresh(f.date);
     setNote(t("sent")); setTimeout(() => setNote(""), 8000);
     await load(true); setTimeout(() => { errandsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); setFresh(null); }, 50);
   }
@@ -183,6 +188,11 @@ export default function VendorPage() {
       <div><h2 id="ve-add" className="text-lg font-semibold">{t("add.btn")}</h2><p className="text-sm text-slate-600">{t("add.d")}</p></div>
       <Field id="ve-date" label={t("f.date")} hint={t("f.dateHint")} err={fe.date}>
         <input id="ve-date" type="date" className="inp" min={daysBefore(d.today, 7)} max={d.today} value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} {...aria("ve-date", fe.date, true)} /></Field>
+      <div className="grid gap-4 min-[480px]:grid-cols-2">
+        {(["from", "to"] as const).map((k) => <Field key={k} id={`ve-${k}`} label={t(k === "from" ? "f.from" : "f.to")} err={fe[k]}>
+          <input id={`ve-${k}`} className="inp" maxLength={120} autoComplete="off" placeholder={t(k === "from" ? "f.fromPh" : "f.toPh")} value={route[k]}
+            onChange={(e) => { const v = e.target.value; setRoute((r) => ({ ...r, [k]: v })); if (fe[k]) setFe((x) => ({ ...x, [k]: undefined })); }} {...aria(`ve-${k}`, fe[k])} /></Field>)}
+      </div>
       <Field id="ve-description" label={t("f.what")} hint={`${f.description.length}/${MAX_WHAT}`} err={fe.description}>
         <textarea id="ve-description" className="inp min-h-24 resize-y" maxLength={MAX_WHAT} placeholder={t("f.whatPh")} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} autoFocus {...aria("ve-description", fe.description, true)} /></Field>
       <Field id="ve-asker" label={t("f.who")} err={fe.asker}>
@@ -225,6 +235,7 @@ export default function VendorPage() {
         <li key={x.id} className={`rounded-xl border p-3 space-y-1.5 transition-colors ${fresh && x.work_date === fresh && x.approval === "awaiting" ? "border-blue-300 bg-blue-50/50" : "border-slate-200"}`}>
           <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-medium text-slate-700 tabular-nums">{fmtDay(x.work_date)}</span>
             <span className={`ml-auto inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ${st.cls}`}><I d={st.icon} className="h-3.5 w-3.5" />{t(st.text)}</span></div>
+          {routeText(x) && <p className="text-sm font-medium text-slate-800 break-words">{routeText(x)}</p>}
           <p className="text-[15px] break-words">{x.description}</p>
           <p className="text-sm text-slate-600 tabular-nums">{x.approval === "approved" ? (x.pending ? t("er.officeAmt") : <><b className="font-semibold text-slate-900">₹{inr(x.amount)}</b>{x.quoted_amount != null && x.quoted_amount !== x.amount && <> ({t("er.youAskedSmall", { amt: inr(x.quoted_amount) })})</>}</>) : t("er.youAsked", { amt: inr(x.quoted_amount ?? 0) })}{x.asked_by && <> · {t("er.askedBy", { name: x.asked_by })}</>}{x.source === "staff" && <> · {t("er.byOffice")}</>}</p>
           {x.decision_note && <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-800"><span className="font-medium">{t("er.cipco")}</span> {x.decision_note}</p>}
@@ -253,3 +264,4 @@ function Field({ id, label, hint, err, children }: { id: string; label: string; 
     {err ? <p id={`${id}-err`} className="mt-1.5 text-sm text-rose-700">{err}</p> : hint ? <p id={`${id}-hint`} className="mt-1.5 text-sm text-slate-500">{hint}</p> : null}</div>;
 }
 const aria = (id: string, err?: string, hint = false) => ({ "aria-invalid": !!err || undefined, "aria-describedby": err ? `${id}-err` : hint ? `${id}-hint` : undefined });
+
