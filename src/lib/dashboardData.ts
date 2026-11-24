@@ -6,7 +6,8 @@ import { CATEGORY_LABEL } from "./pdf/paymentsDue";
 import { loadBills } from "./billsData";
 import { DOC_TYPES } from "./types";
 import type { Snapshot } from "./reminders";
-import { depositState, nextBill, rentFor, type RentalItem, type RentalTerms } from "./rentals";
+import { depositState, rentFor, vendorNextBills } from "./rentals";
+import { loadRentalBook } from "./rentalBook";
 
 // Everything the Dashboard shows (the plain address, Admin only), gathered in one call. Each part is read on its own: if one fails, its section is left out
 // and named in `warnings`, the rest still shows. Numbers are sent per project where it matters, so the page's site picker filters without asking again.
@@ -60,13 +61,7 @@ export async function loadDashboard(sb: SupabaseClient): Promise<Dash> {
     safe("App activity", () => all(() => sb.from("usage_sessions").select("user_id, last_seen_at").gte("last_seen_at", new Date(Date.parse(today + "T00:00:00+05:30")).toISOString())), [] as Any[]),
     safe("Users", () => all(() => sb.from("user_roles").select("user_id, role")), [] as Any[]),
     safe("Phones", () => all(() => adminClient().from("push_subscriptions").select("user_id")), [] as Any[]),
-    (async () => {   // rented items (2026-11-rentals.sql): before that migration, simply no alerts
-      const rs = await all(() => sb.from("rentals").select("id, project_id, vendor_id, delivered_on, returned_on, voided_at, gas_vendors(name)").is("voided_at", null));
-      const ids = rs.map((r) => r.id); if (!ids.length) return [] as Any[];
-      const [its, tms] = await Promise.all([all(() => sb.from("rental_items").select("*").in("rental_id", ids)), all(() => sb.from("rental_terms").select("*").in("rental_id", ids))]);
-      const rts = its.length ? await all(() => sb.from("rental_item_rates").select("item_id, rate").in("item_id", its.map((i) => i.id))) : [];
-      return rs.map((r) => ({ ...r, items: its.filter((i) => i.rental_id === r.id), terms: tms.find((t) => t.rental_id === r.id) ?? null, rates: Object.fromEntries(rts.map((x) => [x.item_id, Number(x.rate)])) }));
-    })().catch(() => [] as Any[]),
+    loadRentalBook(sb),   // rented items: before the migrations, simply no alerts
   ]);
 
   const pname = new Map(projects.map((p) => [p.id, p.name as string]));
@@ -122,16 +117,18 @@ export async function loadDashboard(sb: SupabaseClient): Promise<Dash> {
   if (billsNoFile) alerts.push({ level: "warn", text: `${plural(billsNoFile, "payment")} in the last 90 days without a bill`, href: "/expenses?tab=bills" });
   if (jsl.authorized) alerts.push({ level: "info", text: `${plural(jsl.authorized, "bill")} authorized for the JSL portal, going out at 08:30`, href: "/inventory" });
   // rented items: a rent period about to renew (return them first if they are not needed), a month-end bill due, a deposit waiting to come back
-  rentals.forEach((r) => {
-    const t = r.terms as RentalTerms | null, items = (r.items as RentalItem[]).map((i) => ({ ...i, qty: Number(i.qty), missing_qty: Number(i.missing_qty) })), vname = r.gas_vendors?.name ?? "Rental vendor";
-    if (!t) return; const tt = { ...t, period_days: Number(t.period_days), min_days: Number(t.min_days), gst_pct: Number(t.gst_pct), deposit: Number(t.deposit), deduction: Number(t.deduction), refund_amount: t.refund_amount === null ? null : Number(t.refund_amount) };
-    const nb = nextBill(r as any, tt, today), days = nb?.dueOn ? Math.round((Date.parse(nb.dueOn + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / 86400000) : null;
-    if (!r.returned_on && nb && days !== null && days >= 0 && days <= 3 && tt.billing !== "on_return") {
-      const amt = rentFor(r as any, items, r.rates, tt, nb.from, nb.to).total;
-      alerts.push({ level: days <= 1 ? "bad" : "warn", p: r.project_id, href: "/site-supplies", text: tt.billing === "advance" ? `${vname}: rent renews ${days === 0 ? "today" : `in ${plural(days, "day")}`} (${inr(amt)} for ${nb.from.slice(8)}/${nb.from.slice(5, 7)}–${nb.to.slice(8)}/${nb.to.slice(5, 7)}). Return the items first if they are not needed` : `${vname}: month-end rent ${inr(amt)} due ${days === 0 ? "today" : `in ${plural(days, "day")}`}` });
-    }
-    const dep = depositState(r as any, tt);
-    if (dep.toCollect > 0) alerts.push({ level: "warn", p: r.project_id, href: "/site-supplies", text: `${vname}: deposit ${inr(dep.toCollect)} to collect (items returned ${r.returned_on.slice(8)}/${r.returned_on.slice(5, 7)})` });
+  // per vendor and project: the next bill expected by the vendor's billing setting (2026-11-rentals-vendor.sql)
+  const rbook = rentals; const groups = new Map<string, typeof rbook.rentals>(); rbook.rentals.forEach((r) => { const k = `${r.vendor_id}|${r.project_id}`; groups.set(k, [...(groups.get(k) ?? []), r]); });
+  groups.forEach((rs) => {
+    const vt = rbook.vterms(rs[0].vendor_id), vname = rs[0].vendor_name;
+    if (vt.billing !== "on_return") vendorNextBills(rs, vt, today).forEach((nb) => {
+      const days = nb.dueOn ? Math.round((Date.parse(nb.dueOn + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / 86400000) : null; if (days === null || days < 0 || days > 3) return;
+      const amt = rs.filter((r) => nb.rentalIds.includes(r.id)).reduce((s, r) => s + rentFor(r, r.items, r.rates, r.terms, nb.from, nb.to).total, 0); const span = `${nb.from.slice(8)}/${nb.from.slice(5, 7)}–${nb.to.slice(8)}/${nb.to.slice(5, 7)}`;
+      const when = days === 0 ? "today" : `in ${plural(days, "day")}`;
+      alerts.push({ level: days <= 1 ? "bad" : "warn", p: rs[0].project_id, href: "/site-supplies", text: vt.billing === "month_end" ? `${vname}: month-end rent bill expected ${when} (about ${inr(amt)} for ${span})` : `${vname}: rent for ${span} due ${when} (about ${inr(amt)}). Return what is not needed first` });
+    });
+    rs.forEach((r) => { const dep = depositState(r, r.terms);
+      if (dep.toCollect > 0 && r.returned_on) alerts.push({ level: "warn", p: r.project_id, href: "/site-supplies", text: `${vname}: deposit ${inr(dep.toCollect)} to collect (items returned ${r.returned_on.slice(8)}/${r.returned_on.slice(5, 7)})` }); });
   });
   if (docsMissing.length) alerts.push({ level: "info", text: `${plural(docsMissing.length, "Aadhaar, PAN or bank document")} missing for people on the rolls`, href: "/employees" });
   const rank = { bad: 0, warn: 1, info: 2 }; alerts.sort((a, b) => rank[a.level] - rank[b.level]);

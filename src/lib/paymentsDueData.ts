@@ -6,6 +6,8 @@ import type { Bank, NotIncluded, Payee, ProjectDues } from "./pdf/paymentsDue";
 import { bankFor } from "./payee";
 import { groupRuns, runCharge, type GOrder, type GPricing, type GProduct, type GRate, type GRunMove, type GTerms } from "./gas";
 import { chargeFor, type EqLog, type EqRate } from "./equipment";
+import { rentFor } from "./rentals";
+import { loadRentalBook } from "./rentalBook";
 import type { DueItem } from "./paymentsDueLabels";
 
 export type KeyedPayee = Payee & { key: string };
@@ -131,6 +133,12 @@ export async function loadPaymentsDue(sb: SupabaseClient): Promise<PaymentsDue> 
   const gPrice = { orders: gorders as GOrder[], pricing: gpricing.map((x: any) => ({ ...x, rate: num(x.rate), gst_pct: num(x.gst_pct) })) as GPricing[], rates: grates.map((x: any) => ({ ...x, rate: num(x.rate), gst_pct: num(x.gst_pct) })) as GRate[], products: gprods.map((p: any) => ({ ...p, deposit_per_cylinder: num(p.deposit_per_cylinder) })) as GProduct[], terms: gtermsN };
   const gRuns = groupRuns(gAll as GRunMove[]); const gDoc = new Map<string, any>(gDocs.map((d: any) => [d.run_ref, d]));
   const eqRates: EqRate[] = erates.map((r: any) => ({ item_id: r.item_id, unit: r.unit, rate: num(r.rate), min_hours: num(r.min_hours), round_minutes: num(r.round_minutes), overtime_after_hours: r.overtime_after_hours === null ? null : num(r.overtime_after_hours), overtime_rate: r.overtime_rate === null ? null : num(r.overtime_rate), gst_pct: num(r.gst_pct), valid_from: r.valid_from }));
+  // rented items: what this month's rent comes to for the days no bill covers yet (2026-11-rentals-vendor.sql), like meals
+  const rbook = await loadRentalBook(sb, { since: monthStart });
+  const rentRunning = (vid: string, pid: string, periods: { from: string; to: string }[]): number => {
+    const mine = rbook.rentals.filter((r) => r.vendor_id === vid && r.project_id === pid); if (!mine.length) return 0;
+    return uncovered(monthStart, today, periods.filter((p) => p.to >= monthStart && p.from <= today)).reduce((t, [from, to]) => t + mine.reduce((s, r) => s + rentFor(r, r.items, r.rates, r.terms, from, to).total, 0), 0);
+  };
   const runningFor = (vid: string, pid: string, kind: string, periods: { from: string; to: string }[]): number => {
     const ranges = uncovered(monthStart, today, periods.filter((p) => p.to >= monthStart && p.from <= today)); let total = 0;
     ranges.forEach(([from, to]) => {
@@ -152,11 +160,13 @@ export async function loadPaymentsDue(sb: SupabaseClient): Promise<PaymentsDue> 
     add(pid, { key: `gas:${vid}:${pid}`, category: "gas", name: v?.name ?? "Vendor", forWhat: `${rs.length} run${rs.length === 1 ? "" : "s"}${expected.length ? `, ${expected.length} without an invoice yet` : ""}`, total: billed.reduce((s, i) => s + i.total, 0), paid: paidAll, oldestDue: firstOpen?.dueOn ?? null, bank: bankOf("gas_vendor", vid), lines: billed.map((i) => ({ label: i.label, total: i.total, paid: i.paid })), items: [...billed, ...expected] });
   });
   // hired equipment: approved site bills; payments go to the oldest bill first; what is logged and not billed yet is shown apart
-  new Set([...[...sv.keys()].filter((k) => k.endsWith("|equipment")), ...[...spaid.keys()].filter((k) => k.endsWith("|equipment")), ...elogs.map((l: any) => `${l.vendor_id}|${l.project_id}|equipment`)]).forEach((k) => { const [vid, pid, kind] = k.split("|"); const v = gvendors.find((x) => x.id === vid); const mine = sv.get(k) ?? []; const ap = mine.filter((b) => b.status === "approved");
+  new Set([...[...sv.keys()].filter((k) => k.endsWith("|equipment")), ...[...spaid.keys()].filter((k) => k.endsWith("|equipment")), ...elogs.map((l: any) => `${l.vendor_id}|${l.project_id}|equipment`), ...rbook.rentals.map((r) => `${r.vendor_id}|${r.project_id}|equipment`)]).forEach((k) => { const [vid, pid, kind] = k.split("|"); const v = gvendors.find((x) => x.id === vid); const mine = sv.get(k) ?? []; const ap = mine.filter((b) => b.status === "approved");
     mine.filter((b) => b.status !== "approved").forEach((b) => notIncluded.push({ label: `${pname.get(pid) ?? "—"} · ${v?.name ?? "Vendor"} · Bill ${b.bill_no || "(no number)"}, ${span(b.period_from, b.period_to)} (received, not approved yet)`, amount: num(b.bill_amount) }));
     const items: DueItem[] = ap.map((b) => ({ month: String(b.period_from).slice(0, 7), label: `Bill ${b.bill_no || "–"} · ${span(b.period_from, b.period_to)}`, total: num(b.approved_amount ?? b.bill_amount), paid: 0, dueOn: kind === "gas" ? gdue(vid, b.bill_date) : b.bill_date, state: "billed" as const }));
     const paidAll = spaid.get(k) ?? 0; allocate(items, paidAll);
-    const running = runningFor(vid, pid, kind, mine.map((b) => ({ from: b.period_from, to: b.period_to }))); if (running > 0.004) items.push({ month: thisMonth, label: kind === "gas" ? "Delivered this month, not billed yet" : "Hours logged this month, not billed yet", total: Math.round(running * 100) / 100, paid: 0, dueOn: null, state: "running" });
+    const periods = mine.map((b) => ({ from: b.period_from, to: b.period_to })); const hours = runningFor(vid, pid, kind, periods); const rent = kind === "equipment" ? rentRunning(vid, pid, periods) : 0; const running = hours + rent;
+    if (hours > 0.004) items.push({ month: thisMonth, label: kind === "gas" ? "Delivered this month, not billed yet" : "Hours logged this month, not billed yet", total: Math.round(hours * 100) / 100, paid: 0, dueOn: null, state: "running" });
+    if (rent > 0.004) items.push({ month: thisMonth, label: "Rent this month, not billed yet", total: Math.round(rent * 100) / 100, paid: 0, dueOn: null, state: "running" });
     const billed = items.filter((i) => i.state !== "running"), firstOpen = billed.find((i) => i.total - i.paid > 0.004);
     add(pid, { key: `${kind}:${vid}:${pid}`, category: kind === "gas" ? "gas" : "equipment", name: v?.name ?? "Vendor", forWhat: ap.length ? `${ap.length} approved bill${ap.length === 1 ? "" : "s"}` : running > 0.004 ? "Not billed yet" : "Paid ahead of any approved bill", total: billed.reduce((s, i) => s + i.total, 0), paid: paidAll, oldestDue: firstOpen?.dueOn ?? null, bank: bankOf(kind === "gas" ? "gas_vendor" : "equipment_vendor", vid), lines: billed.map((i) => ({ label: i.label, total: i.total, paid: i.paid })), items }); });
 

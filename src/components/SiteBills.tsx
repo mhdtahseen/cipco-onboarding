@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase/client";
 import { istToday } from "@/lib/attendance";
 import { MAX_UPLOAD, prepareUpload } from "@/lib/compress";
 import { paidByBill } from "@/lib/siteBillsPaid";
+import { useRole } from "@/lib/roles";
 
 export type Computed = { amount: number; lines: string[]; warn?: string };
 type Kind = "gas" | "equipment";
@@ -11,8 +12,8 @@ type Kind = "gas" | "equipment";
 export type Stretch = { id: string; vendor_id: string; date: string; label: string; amount: number | null; bill_id: string | null };
 /** compute: what the site records come to between two dates (gas; rented items). stretches: machine work, which a bill claims one by one instead of by dates. */
 export type BillSource = { kind: Kind; label: string; vendors: { id: string; name: string }[]; compute: (vendorId: string, from: string, to: string) => Computed; stretches?: Stretch[] };
-type Bill = { id: string; kind: Kind; vendor_id: string; bill_no: string; no_bill?: boolean; bill_date: string; period_from: string; period_to: string; bill_amount: number; status: "received" | "approved"; approved_amount: number | null; computed_amount: number | null; note: string; bill_path: string | null; voided_at: string | null };
-type Pay = { id: string; kind: Kind; vendor_id: string; site_bill_id?: string | null; paid_on: string; amount: number; reference: string; note: string; voided_at: string | null };
+type Bill = { id: string; kind: Kind; vendor_id: string; bill_no: string; no_bill?: boolean; bill_date: string; period_from: string; period_to: string; bill_amount: number; status: "received" | "approved"; approved_amount: number | null; computed_amount: number | null; note: string; bill_path: string | null; voided_at: string | null; edited_at?: string | null };
+type Pay = { id: string; kind: Kind; vendor_id: string; site_bill_id?: string | null; paid_on: string; amount: number; reference: string; note: string; voided_at: string | null; edited_at?: string | null };
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const dmy = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
@@ -22,6 +23,7 @@ const dmy = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString("en-
 //  - Cranes and other machines: a bill claims the stretches of work it covers (2026-11-equipment-claims.sql), so the same work is never billed twice.
 //    When the vendor sends no bill, "No bill" makes a statement from the stretches, approved at once.
 //  - Each approved bill shows what is paid on it and has a Pay button; a payment without a bill is an advance. Only approved bills count in Payments due.
+//  - An Admin can edit a bill or a payment at any time (2026-11-rentals-vendor.sql): the payment's expense follows. Operations void and record again.
 export default function SiteBills({ projectId, sources, onChange }: { projectId: string; sources: BillSource[]; onChange?: () => void }) {
   const vendors = sources.flatMap((x) => x.vendors); const kindOf = (vid: string) => sources.find((x) => x.vendors.some((v) => v.id === vid))?.kind ?? null;
   const labelOf = (k: Kind) => sources.find((x) => x.kind === k)?.label ?? k; const [show, setShow] = useState<"all" | Kind>("all");
@@ -31,6 +33,9 @@ export default function SiteBills({ projectId, sources, onChange }: { projectId:
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [pf, setPf] = useState({ vendor_id: "", amount: "", paid_on: today, reference: "", note: "", bill_id: "" });
   const [claimEdit, setClaimEdit] = useState<{ bill: string; ids: Set<string> } | null>(null);
+  const { role } = useRole(); const isAdmin = role === "admin";
+  const [be, setBe] = useState<{ id: string; bill_no: string; bill_date: string; from: string; to: string; amount: string; approved: string; note: string; file: File | null } | null>(null);
+  const [pe, setPe] = useState<{ id: string; paid_on: string; amount: string; reference: string; note: string } | null>(null);
   const note = (m: string) => { setMsg(m); setTimeout(() => setMsg(""), 5000); };
   const vName = (id: string) => vendors.find((v) => v.id === id)?.name ?? "?";
 
@@ -103,6 +108,23 @@ export default function SiteBills({ projectId, sources, onChange }: { projectId:
   const payBill = (b: Bill) => { const due = r2((b.approved_amount ?? 0) - paidOn(b.id)); setPf({ ...pf, vendor_id: b.vendor_id, amount: String(due > 0 ? due : ""), bill_id: b.id }); setTimeout(() => document.getElementById("pay-form")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); };
   async function voidPay(p: Pay) { if (!confirm(`Void the ₹${inr(p.amount)} payment to ${vName(p.vendor_id)}? Its expense is removed.`)) return; const { error } = await supabase().from("site_payments").update({ voided_at: new Date().toISOString() }).eq("id", p.id); if (error) { setErr(error.message); return; } note("Voided ✓"); changed(); }
 
+  // ---------- an Admin edits a bill or a payment ----------
+  const editBill = (b: Bill) => { setErr(""); setBe({ id: b.id, bill_no: b.bill_no, bill_date: b.bill_date, from: b.period_from, to: b.period_to, amount: String(b.bill_amount), approved: b.approved_amount === null ? "" : String(b.approved_amount), note: b.note, file: null }); };
+  async function saveBillEdit(b: Bill) {
+    if (!be) return; const amount = parseFloat(be.amount), approved = parseFloat(be.approved);
+    if (!(amount >= 0) || be.amount === "") { setErr("Enter the amount on the bill."); return; } if (be.from > be.to) { setErr("The first day is after the last day."); return; }
+    if (b.status === "approved" && !(approved >= 0)) { setErr("Enter the approved amount."); return; }
+    setBusy(true); setErr(""); let bill_path = b.bill_path;
+    if (be.file) { const f = await prepareUpload(be.file); if (f.size > MAX_UPLOAD) { setErr("The bill is larger than 5 MB: please send a smaller photo or compressed PDF."); setBusy(false); return; } const fd = new FormData(); fd.set("file", f); fd.set("employeeId", `sbill-${projectId}`); fd.set("docType", "sitebill"); const r = await fetch("/api/docs/upload", { method: "POST", body: fd }); if (!r.ok) { setErr(await r.text()); setBusy(false); return; } bill_path = (await r.json()).path; }
+    const { error } = await supabase().from("site_bills").update({ bill_no: be.bill_no.trim(), bill_date: be.bill_date, period_from: be.from, period_to: be.to, bill_amount: amount, note: be.note.trim(), bill_path, ...(b.status === "approved" ? { approved_amount: approved } : {}) }).eq("id", b.id);
+    setBusy(false); if (error) { setErr(error.message); return; } setBe(null); note("Bill updated ✓"); changed();
+  }
+  async function savePayEdit() {
+    if (!pe) return; const amount = parseFloat(pe.amount); if (!(amount > 0)) { setErr("Enter the amount paid."); return; }
+    setBusy(true); const { error } = await supabase().from("site_payments").update({ paid_on: pe.paid_on, amount, reference: pe.reference.trim(), note: pe.note.trim() }).eq("id", pe.id); setBusy(false);
+    if (error) { setErr(error.message); return; } setPe(null); note("Payment updated ✓ Its expense follows."); changed();
+  }
+
   const live = bills.filter((b) => !b.voided_at); const lp = pays.filter((p) => !p.voided_at);
   const billName = (b: Bill) => (b.no_bill ? "statement (no bill)" : b.bill_no ? `bill ${b.bill_no}` : "bill");
   const sums = vendors.map((v) => { const total = live.filter((b) => b.vendor_id === v.id && b.status === "approved").reduce((s, b) => s + (b.approved_amount ?? 0), 0); const paid = lp.filter((p) => p.vendor_id === v.id).reduce((s, p) => s + p.amount, 0);
@@ -160,13 +182,34 @@ export default function SiteBills({ projectId, sources, onChange }: { projectId:
           <div className="flex flex-wrap gap-2">{!b.voided_at && b.status === "received" && <><button className="btn btn-sm btn-primary" onClick={() => approve(b, b.bill_amount)}>Approve ₹{inr(b.bill_amount)} (as billed)</button>{Math.abs(diff) >= 1 && <button className="btn btn-sm" onClick={() => approve(b, r2(c.amount))}>Approve ₹{inr(c.amount)} (site records)</button>}<button className="btn btn-sm" onClick={() => approveOther(b)}>Approve another amount…</button>
               {claims && !editing && <button className="btn btn-sm" onClick={() => setClaimEdit({ bill: b.id, ids: new Set(byStretch(b.vendor_id).filter((s) => s.bill_id === b.id).map((s) => s.id)) })}>Change stretches</button>}</>}
             {!b.voided_at && b.status === "approved" && due > 0 && <button className="btn btn-sm btn-primary" onClick={() => payBill(b)}>Pay ₹{inr(due)}</button>}
-            {!b.voided_at && b.status === "approved" && <button className="btn btn-sm" onClick={() => reopen(b)}>Reopen</button>}{b.bill_path && <a className="btn btn-sm" href={`/api/docs/view?path=${encodeURIComponent(b.bill_path)}`} target="_blank" rel="noreferrer">View bill</a>}{!b.voided_at && <button className="btn btn-sm btn-danger" onClick={() => voidBill(b)}>Void</button>}</div></div>); })}
+            {!b.voided_at && b.status === "approved" && <button className="btn btn-sm" onClick={() => reopen(b)}>Reopen</button>}{b.bill_path && <a className="btn btn-sm" href={`/api/docs/view?path=${encodeURIComponent(b.bill_path)}`} target="_blank" rel="noreferrer">View bill</a>}{!b.voided_at && isAdmin && be?.id !== b.id && <button className="btn btn-sm" onClick={() => editBill(b)}>Edit</button>}{!b.voided_at && <button className="btn btn-sm btn-danger" onClick={() => voidBill(b)}>Void</button>}</div>
+          {b.edited_at && <p className="text-xs text-slate-400">Edited {dmy(b.edited_at.slice(0, 10))}</p>}
+          {be?.id === b.id && <div className="rounded-xl border border-slate-200 p-3 space-y-2">
+            <div className="flex flex-wrap items-end gap-2">
+              {!b.no_bill && <div><label className="lbl">Bill no.</label><input className="inp !w-32" value={be.bill_no} onChange={(e) => setBe({ ...be, bill_no: e.target.value })} /></div>}
+              <div><label className="lbl">Date</label><input type="date" className="inp" value={be.bill_date} onChange={(e) => setBe({ ...be, bill_date: e.target.value })} /></div>
+              <div><label className="lbl">Covers from</label><input type="date" className="inp" value={be.from} onChange={(e) => setBe({ ...be, from: e.target.value })} /></div>
+              <div><label className="lbl">to</label><input type="date" className="inp" value={be.to} onChange={(e) => setBe({ ...be, to: e.target.value })} /></div>
+              <div><label className="lbl">Amount on bill (₹)</label><input className="inp !w-32" inputMode="decimal" value={be.amount} onChange={(e) => setBe({ ...be, amount: e.target.value.replace(/[^\d.]/g, "") })} /></div>
+              {b.status === "approved" && <div><label className="lbl">Approved (₹)</label><input className="inp !w-32" inputMode="decimal" value={be.approved} onChange={(e) => setBe({ ...be, approved: e.target.value.replace(/[^\d.]/g, "") })} /></div>}
+              {!b.no_bill && <div><label className="lbl">{b.bill_path ? "Replace the file" : "Bill (photo or PDF)"}</label><input type="file" accept="image/*,application/pdf" className="text-xs" onChange={(e) => setBe({ ...be, file: e.target.files?.[0] ?? null })} /></div>}
+            </div>
+            <div><label className="lbl">Note</label><input className="inp" value={be.note} onChange={(e) => setBe({ ...be, note: e.target.value })} /></div>
+            <div className="flex gap-2"><button className="btn btn-sm btn-primary" disabled={busy} onClick={() => saveBillEdit(b)}>{busy ? "Saving…" : "Save"}</button><button className="btn btn-sm" onClick={() => setBe(null)}>Cancel</button></div>
+            {b.status === "approved" && <p className="text-xs text-slate-400">Payments due uses the approved amount.</p>}
+          </div>}</div>); })}
 
       <div id="pay-form" className="card !p-3 space-y-3"><div className="font-medium">Payments to vendors</div>
         {pf.bill_id && (() => { const b = bills.find((x) => x.id === pf.bill_id); return b ? <p className="text-sm">Paying {vName(b.vendor_id)} · {billName(b)} <button className="tlink" onClick={() => setPf({ ...pf, bill_id: "" })}>not for this bill</button></p> : null; })()}
         <div className="flex flex-wrap items-end gap-2"><div><label className="lbl">Vendor</label><select className="inp !w-52" value={pf.vendor_id} onChange={(e) => setPf({ ...pf, vendor_id: e.target.value, bill_id: "" })}>{vendorOptions}</select></div><div><label className="lbl">Amount (₹)</label><input className="inp !w-36" inputMode="decimal" value={pf.amount} onChange={(e) => setPf({ ...pf, amount: e.target.value.replace(/[^\d.]/g, "") })} /></div><div><label className="lbl">Paid on</label><input type="date" className="inp" max={today} value={pf.paid_on} onChange={(e) => setPf({ ...pf, paid_on: e.target.value })} /></div><div><label className="lbl">Reference</label><input className="inp !w-40" value={pf.reference} onChange={(e) => setPf({ ...pf, reference: e.target.value })} placeholder="UTR / cheque no." /></div><button className="btn btn-primary" onClick={addPay}>Record payment</button></div>
         {!pf.bill_id && <p className="text-xs text-slate-400">To pay a particular bill, use its Pay button. A payment made here is an advance to the vendor.</p>}
-        {pays.some((p) => show === "all" || p.kind === show) && <ul className="text-sm space-y-1">{pays.filter((p) => show === "all" || p.kind === show).map((p) => { const b = p.site_bill_id ? bills.find((x) => x.id === p.site_bill_id) : null; return <li key={p.id} className={`flex flex-wrap gap-2 ${p.voided_at ? "opacity-60 line-through" : ""}`}><span>{dmy(p.paid_on)}</span><b>{vName(p.vendor_id)}</b><span className="tabular-nums">₹{inr(p.amount)}</span><span className="text-slate-500">{[b ? `for ${billName(b)}` : "", p.reference].filter(Boolean).join(" · ")}</span>{!p.voided_at && <button className="tlink tlink-danger" onClick={() => voidPay(p)}>Void</button>}</li>; })}</ul>}</div>
+        {pays.some((p) => show === "all" || p.kind === show) && <ul className="text-sm space-y-1">{pays.filter((p) => show === "all" || p.kind === show).map((p) => { const b = p.site_bill_id ? bills.find((x) => x.id === p.site_bill_id) : null; return <li key={p.id} className={`flex flex-wrap gap-2 ${p.voided_at ? "opacity-60 line-through" : ""}`}><span>{dmy(p.paid_on)}</span><b>{vName(p.vendor_id)}</b><span className="tabular-nums">₹{inr(p.amount)}</span><span className="text-slate-500">{[b ? `for ${billName(b)}` : "", p.reference].filter(Boolean).join(" · ")}</span>{p.edited_at && <span className="text-xs text-slate-400">edited {dmy(p.edited_at.slice(0, 10))}</span>}{!p.voided_at && isAdmin && <button className="tlink" onClick={() => { setErr(""); setPe({ id: p.id, paid_on: p.paid_on, amount: String(p.amount), reference: p.reference, note: p.note }); }}>Edit</button>}{!p.voided_at && <button className="tlink tlink-danger" onClick={() => voidPay(p)}>Void</button>}
+          {pe?.id === p.id && <div className="basis-full rounded-xl border border-slate-200 p-3 space-y-2 no-underline" style={{ textDecoration: "none" }}><div className="flex flex-wrap items-end gap-2">
+            <div><label className="lbl">Paid on</label><input type="date" className="inp" max={today} value={pe.paid_on} onChange={(e) => setPe({ ...pe, paid_on: e.target.value })} /></div>
+            <div><label className="lbl">Amount (₹)</label><input className="inp !w-32" inputMode="decimal" value={pe.amount} onChange={(e) => setPe({ ...pe, amount: e.target.value.replace(/[^\d.]/g, "") })} /></div>
+            <div><label className="lbl">Reference</label><input className="inp !w-40" value={pe.reference} onChange={(e) => setPe({ ...pe, reference: e.target.value })} /></div>
+            <div className="min-w-40 flex-1"><label className="lbl">Note</label><input className="inp" value={pe.note} onChange={(e) => setPe({ ...pe, note: e.target.value })} /></div></div>
+            <div className="flex gap-2"><button className="btn btn-sm btn-primary" disabled={busy} onClick={savePayEdit}>{busy ? "Saving…" : "Save"}</button><button className="btn btn-sm" onClick={() => setPe(null)}>Cancel</button></div></div>}</li>; })}</ul>}</div>
     </div>
   );
 }
