@@ -15,7 +15,7 @@ export function openViewer(files: ViewFile | ViewFile[], start = 0) {
 }
 
 // Stored files: the route says where the file is (meta=1). Files the app makes: read straight from the route.
-const STORED = [/^\/api\/docs\/view$/, /^\/api\/gas\/file$/, /^\/api\/inventory\/view$/, /^\/api\/bills\/file$/, /^\/api\/company\/file$/];
+const STORED = [/^\/api\/docs\/view$/, /^\/api\/gas\/file$/, /^\/api\/inventory\/view$/, /^\/api\/bills\/file$/, /^\/api\/company\/file$/, /^\/api\/payroll\/advance-proof$/];
 const MADE = [/^\/api\/letters\/[^/]+\/pdf$/, /^\/api\/quotations\/[^/]+\/pdf$/, /^\/api\/payslips\/[0-9a-f-]{36}$/, /^\/api\/payments-due\/pdf$/, /^\/api\/vendor-statement$/,
   /^\/api\/tools\/transfer\/[^/]+$/, /^\/api\/payroll-bank-letter$/, /^\/api\/invoices\/[0-9a-f-]{36}$/];
 export const isStored = (u: URL) => STORED.some((r) => r.test(u.pathname));

@@ -7,7 +7,7 @@ export type Run = { id: string; project_id: string; pay_month: string; status: "
 export type Line = { id: string; run_id: string; employee_id: string; project_id: string; kind: "salaried" | "daily"; days_in_month: number; paid_days: number; lop_days: number; gross: number; deductions: number; net: number; pf_emp: number; pf_er: number; pf_admin: number; esi_emp: number; esi_er: number; pt: number; er_total: number; pay_mode: string; items: { kind: "earning" | "deduction"; label: string; amount: number; advance_id?: string; note?: string }[]; snapshot: Record<string, any>; held: boolean; hold_reason: string };
 export type Payment = { id: string; line_id: string; run_id: string; employee_id: string; project_id: string; amount: number; mode: string; paid_on: string; reference: string; voided_at: string | null };
 export type AdjRow = Adjustment & { employee_id: string; pay_month: string; project_id: string; voided_at: string | null };
-export type AdvanceRow = { id: string; employee_id: string; project_id: string; amount: number; given_on: string; instalment: number; note: string; voided_at: string | null };
+export type AdvanceRow = { id: string; employee_id: string; project_id: string; amount: number; given_on: string; instalment: number; note: string; voided_at: string | null; proof_path?: string | null };
 export type StatPay = { id: string; project_id: string; pay_month: string; kind: "pf" | "esi" | "pt" | "tds" | "other"; amount: number; paid_on: string; challan_no: string; note: string; voided_at: string | null };
 const num = <T extends Record<string, any>>(o: T, keys: string[]): T => { const c: Record<string, any> = { ...o }; keys.forEach((k) => { if (c[k] !== null && c[k] !== undefined) c[k] = Number(c[k]); }); return c as T; };
 
