@@ -163,7 +163,7 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
       const rows = ((made || []) as { id: string; line_no: number }[]).map((m) => ({ item_id: m.id, rate: parseFloat(lines[m.line_no - 1]?.rate ?? "") })).filter((x) => x.rate >= 0);
       if (rows.length) await sb.from("rental_item_rates").upsert(rows.map((x) => ({ ...x, updated_at: new Date().toISOString() })));
     }
-    setBusy(""); setForm(null); note(!portal ? "Delivery recorded ✓" : jsl ? "Delivery recorded ✓ Its own JSL portal entry is in Inventory, ready for an Admin to authorize." : "Delivery recorded ✓ It is in Inventory, without a JSL portal entry (you can switch one on there)."); await load();
+    setBusy(""); setForm(null); note(!portal ? "Delivery recorded ✓" : jsl ? "Delivery recorded ✓ Its own JSL portal entry is in Purchases, ready for an Admin to authorize." : "Delivery recorded ✓ It is in Purchases, without a JSL portal entry (you can switch one on there)."); await load();
   }
 
   // ---------- a delivery's terms and rates, and its deposit (Operations / Admin) ----------
@@ -200,7 +200,7 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
     const { error } = await supabase().rpc("rental_update", { p_rental: ef.rid, p_delivered_on: ef.delivered_on, p_vehicle: ef.vehicle, p_note_no: ef.note_no, p_note: ef.note,
       p_items: lines.map((l) => ({ id: l.id, name: l.name.trim(), qty: parseFloat(l.qty), unit: l.unit || "No", rate: l.rate === "" ? null : parseFloat(l.rate) })) });
     setBusy(""); if (error) { setErr(error.message); return; }
-    setEf(null); note(b && st && !["none", "authorized", "failed"].includes(st) ? "Delivery updated ✓ Rent follows it. The portal entry is unchanged: correct it on the portal." : b ? "Delivery updated ✓ Its Inventory entry has the same items." : "Delivery updated ✓"); await load();
+    setEf(null); note(b && st && !["none", "authorized", "failed"].includes(st) ? "Delivery updated ✓ Rent follows it. The portal entry is unchanged: correct it on the portal." : b ? "Delivery updated ✓ Its Purchases entry has the same items." : "Delivery updated ✓"); await load();
   }
   async function voidRental(r: Row) {
     const why = prompt("Void this delivery? Its JSL portal entry is voided too (only while it is not on the portal). Reason:"); if (why === null) return;
@@ -290,7 +290,7 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
           {money && !r.voided_at && <button className="btn btn-sm" onClick={() => { setEf(null); openTerms(r); }}>{t && pd !== null ? "Rates, minimum & deposit" : "Set rates"}</button>}
           {money && !r.voided_at && dep.paid > 0 && r.returned_on && <button className="btn btn-sm" onClick={() => openDeposit(r)}>{t?.refund_on ? "Deposit details" : "Deposit back"}</button>}
           {r.delivery_doc_path && <a className="btn btn-sm" href={`/api/docs/view?path=${encodeURIComponent(r.delivery_doc_path)}`} target="_blank" rel="noreferrer" data-view-group={`rent-${r.vendor_id}`} data-view-name={`Delivery note ${dmy(r.delivered_on)} - ${vName(r.vendor_id)}`}>Delivery note</a>}
-          {r.inventory_bill_id && <a className="btn btn-sm" href={`/inventory?bill=${r.inventory_bill_id}`}>{bills[r.inventory_bill_id]?.jsl_wanted ? "JSL portal entry" : "Inventory entry"}</a>}
+          {r.inventory_bill_id && <a className="btn btn-sm" href={`/inventory?bill=${r.inventory_bill_id}`}>{bills[r.inventory_bill_id]?.jsl_wanted ? "JSL portal entry" : "Purchases entry"}</a>}
           {!r.voided_at && staff && <button className="btn btn-sm btn-danger" onClick={() => voidRental(r)}>Void</button>}
         </div>
         {ef?.rid === r.id && <div className="rounded-xl border border-slate-200 p-3 space-y-2">
@@ -311,7 +311,7 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
             <button type="button" className="btn btn-sm" onClick={() => setEf({ ...ef, lines: [...ef.lines, { ...blankLine(), id: null }] })}>+ Add item</button></div>
           <div><label className="lbl">Note (optional)</label><input className="inp" value={ef.note} onChange={(e) => setEf({ ...ef, note: e.target.value })} /></div>
           <div className="flex gap-2"><button className="btn btn-primary" disabled={busy === "edit"} onClick={saveEdit}>{busy === "edit" ? "Saving…" : "Save changes"}</button><button className="btn" onClick={() => setEf(null)}>Cancel</button></div>
-          <p className="text-xs text-slate-400">{r.inventory_bill_id ? "Its Inventory entry gets the same date, note number and items (and the vehicle, when it goes by vehicle). Once the entry is on the JSL portal, a change here fixes the rent only: the portal entry stays as submitted, and you are told where it differs." : "Rates can also be changed later."} A quantity cannot go below what has already gone back.</p>
+          <p className="text-xs text-slate-400">{r.inventory_bill_id ? "Its Purchases entry gets the same date, note number and items (and the vehicle, when it goes by vehicle). Once the entry is on the JSL portal, a change here fixes the rent only: the portal entry stays as submitted, and you are told where it differs." : "Rates can also be changed later."} A quantity cannot go below what has already gone back.</p>
         </div>}
         {tf?.rid === r.id && <div className="rounded-xl border border-slate-200 p-3 space-y-2">
           <div className="font-medium text-sm">Rates, minimum days and deposit for this delivery</div>
@@ -497,11 +497,11 @@ export function useRentals(project: SupplyProject | undefined, vendors: { id: st
           <div><label className="lbl">Person&apos;s name</label><input className="inp !w-44" value={form.person_name} onChange={(e) => setForm({ ...form, person_name: e.target.value })} /></div>
           <div><label className="lbl">ID type</label><select className="inp !w-32" value={form.person_id_type} onChange={(e) => setForm({ ...form, person_id_type: e.target.value })}><option value=""></option>{ID_TYPES.map((t) => <option key={t}>{t}</option>)}</select></div>
           <div><label className="lbl">ID no.</label><input className="inp !w-44 uppercase" autoComplete="off" value={form.person_id_no} onChange={(e) => setForm({ ...form, person_id_no: e.target.value })} /></div></div>}
-        <p className="text-xs text-slate-400">{form.jsl === "none" ? "It is still listed in Inventory, so a portal entry can be switched on there later." : form.jsl === "vehicle" ? "The vehicle number above is used for the portal." : "An Admin then authorizes it in Inventory (or the 08:30 automatic send takes it)."}</p>
+        <p className="text-xs text-slate-400">{form.jsl === "none" ? "It is still listed in Purchases, so a portal entry can be switched on there later." : form.jsl === "vehicle" ? "The vehicle number above is used for the portal." : "An Admin then authorizes it in Inventory (or the 08:30 automatic send takes it)."}</p>
       </div>}
       <div><label className="lbl">Note (optional)</label><input className="inp" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="e.g. Bracing came with the frames" /></div>
       <div className="flex gap-2"><button className="btn btn-primary" disabled={busy === "save"} onClick={saveDelivery}>{busy === "save" ? "Saving…" : "Save delivery"}</button><button className="btn" onClick={() => setForm(null)}>Cancel</button></div>
-      <p className="text-xs text-slate-400">{portal ? "Saving also lists it in Inventory, marked as rented, with no amount (rent is billed by the vendor). " : ""}It can be edited afterwards with Edit delivery.</p>
+      <p className="text-xs text-slate-400">{portal ? "Saving also lists it in Purchases, marked as rented, with no amount (rent is billed by the vendor). " : ""}It can be edited afterwards with Edit delivery.</p>
     </>}
   </div>;
 

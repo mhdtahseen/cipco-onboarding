@@ -7,12 +7,13 @@ import { stockIndex, type StockRow, type ToolItem, type Transfer } from "@/lib/t
 import StockTab from "@/components/tools/StockTab";
 import TransfersTab from "@/components/tools/TransfersTab";
 import ItemsTab from "@/components/tools/ItemsTab";
+import ToAddTab from "@/components/tools/ToAddTab";
 
 type Site = { id: string; name: string; status: string };
-type Tab = "stock" | "transfers" | "items";
+type Tab = "stock" | "transfers" | "items" | "toadd";
 const SITE_KEY = "cipco_tools_site";
 
-// Tools & equipment: what the company owns (the container list, and later purchases) and where it is. Stock is the sum of recorded movements per site
+// Inventory (the route is still /tools; it was "Tools & equipment"): what the company owns (the container list, and later purchases) and where it is. Stock is the sum of recorded movements per site
 // (2026-11-tools-register.sql): opening stock, used up, damaged, repaired, lost, recounts, and two-step transfers between sites. Admin and Operations make changes; the Viewer can look.
 export default function ToolsPage() {
   const { role, staff } = useRole(); const canAct = staff && role !== "viewer";
@@ -52,17 +53,18 @@ export default function ToolsPage() {
   return (
     <div className="space-y-4" data-tools-page>
       <div className="flex flex-wrap items-center gap-2">
-        <div className="sm:mr-auto"><h1 className="text-xl font-bold">Tools &amp; equipment</h1><p className="text-sm text-slate-500">What the company owns, and which site it is at</p></div>
+        <div className="sm:mr-auto"><h1 className="text-xl font-bold">Inventory</h1><p className="text-sm text-slate-500">Tools, equipment and materials the company holds, and which site they are at</p></div>
         {!missing && <select className="inp !w-auto" aria-label="Site" value={site} onChange={(e) => setSite(e.target.value)}><option value="all">All sites</option>{shownSites.map((s) => <option key={s.id} value={s.id}>{s.name}{s.status === "closed" ? " (closed)" : ""}</option>)}</select>}
       </div>
       {missing ? <div className="card space-y-1 text-sm"><p className="font-medium">Not switched on yet.</p><p className="text-slate-600">Run <code>2026-11-tools-register.sql</code> in the Supabase SQL editor, then <code>supabase/seed/tools-opening-csl.sql</code> to load the container list at CSL.</p></div>
         : err ? <p className="warn !text-sm">Couldn&apos;t load: {err}</p> : <>
         <div role="tablist" className="flex border-b border-slate-200 overflow-x-auto">
-          {([["stock", "Stock"], ["transfers", "Transfers"], ["items", "Catalogue"]] as [Tab, string][]).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? "tab-on" : ""}`} onClick={() => setTab(k)}>{l}{k === "transfers" && inTransit > 0 && <span className="ml-1.5 text-xs font-normal text-amber-700">{inTransit} in transit</span>}{k === "items" && <span className="ml-1.5 text-xs font-normal text-slate-500">{items.length}</span>}</button>)}
+          {([["stock", "Stock"], ["transfers", "Transfers"], ["items", "Items"], ...(canAct ? [["toadd", "To add"]] : [])] as [Tab, string][]).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? "tab-on" : ""}`} onClick={() => setTab(k)}>{l}{k === "transfers" && inTransit > 0 && <span className="ml-1.5 text-xs font-normal text-amber-700">{inTransit} in transit</span>}{k === "items" && <span className="ml-1.5 text-xs font-normal text-slate-500">{items.length}</span>}</button>)}
         </div>
         {tab === "stock" && <StockTab items={items} at={at} sites={shownSites} site={site} canAct={canAct} names={names} reload={load} />}
         {tab === "transfers" && <TransfersTab items={items} at={at} sites={shownSites} site={site} transfers={transfers} canAct={canAct} names={names} reload={load} />}
         {tab === "items" && <ItemsTab items={items} canAct={canAct} reload={load} />}
+        {tab === "toadd" && <ToAddTab site={site} sites={shownSites} canAct={canAct} />}
       </>}
     </div>
   );

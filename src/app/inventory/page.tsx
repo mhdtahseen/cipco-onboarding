@@ -4,7 +4,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useRole } from "@/lib/roles";
 import { keepProject, rememberedProject } from "@/lib/lastProject";
-import { gasItemName, inr, JSL_LABEL, stageOf, stockFrom, type InvBill, type InvItem } from "@/lib/inventory";
+import { dueOfBill, gasItemName, inr, isPayable, JSL_LABEL, stageOf, stockFrom, type InvBill, type InvItem } from "@/lib/inventory";
+import VendorsTab from "@/components/inventory/VendorsTab";
+import { istToday } from "@/lib/attendance";
 import BillEditor from "@/components/inventory/BillEditor";
 import CsvImport from "@/components/inventory/CsvImport";
 import { InlineLoader, PageLoader } from "@/components/Loader";
@@ -13,18 +15,19 @@ type Project = { id: string; name: string; status: string };
 const dmy = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 const pill = "text-[11px] rounded-full px-2 py-0.5";
 
-// Inventory: purchase bills, entered item by item. Each bill posts its total to the project's expenses when it is recorded, and becomes one MRR on the JSL portal once an Admin authorizes it.
-// The Received tab adds up what has come in. It does not yet take off what was issued or used (see "Inventory tracker" in to-do.md).
+// Purchases (the route is still /inventory): purchase bills, entered item by item. Each bill posts its total to the project's expenses when it is recorded, and can become
+// one MRR on the JSL portal once an Admin authorizes it. A bill is paid at the time, or "To pay" to its vendor (2026-11-purchases-credit.sql).
+// Tabs: Bills; Items bought (everything that came in on bills, added up: it is not stock, see Inventory); Vendors (credit accounts, payments, statements).
 // A link elsewhere in the app (e.g. a gas delivery on Site supplies) can jump straight to one bill with ?project=<id>&bill=<id>.
 export default function Inventory() { return <Suspense fallback={<PageLoader />}><InventoryScreen /></Suspense>; }
 
 function InventoryScreen() {
-  const { role, viewer, admin } = useRole(); const canEnter = !!role && role !== "none" && !viewer;
+  const { role, viewer, admin, staff } = useRole(); const canEnter = !!role && role !== "none" && !viewer;
   const router = useRouter(); const pathname = usePathname(); const sp = useSearchParams();
   const [projects, setProjects] = useState<Project[]>([]); const [pid, setPid] = useState(""); const [loaded, setLoaded] = useState(false);
   const [bills, setBills] = useState<InvBill[]>([]); const [items, setItems] = useState<InvItem[]>([]); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   // approval: true once 2026-11-inventory-approval.sql has been run. Until then the page works as it did before it: no submit or review buttons, nothing sent that the database would not understand.
-  const [tab, setTab] = useState<"bills" | "received">("bills"); const [openId, setOpenId] = useState<string | "new" | null>(null); const [newKind, setNewKind] = useState<"bill" | "no_bill">("bill"); const [chip, setChip] = useState<"all" | "submitted" | "returned" | "draft" | "recorded">("all"); const [q, setQ] = useState(""); const [showVoid, setShowVoid] = useState(false); const [approval, setApproval] = useState(false); const [gasHeld, setGasHeld] = useState<{ name: string; qty: number }[]>([]); const [importing, setImporting] = useState(false); const [deepLinked, setDeepLinked] = useState(false);
+  const [tab, setTab] = useState<"bills" | "received" | "vendors">(sp.get("tab") === "vendors" ? "vendors" : sp.get("tab") === "received" ? "received" : "bills"); const [paidMap, setPaidMap] = useState<Record<string, number>>({}); const [openId, setOpenId] = useState<string | "new" | null>(null); const [newKind, setNewKind] = useState<"bill" | "no_bill">("bill"); const [chip, setChip] = useState<"all" | "submitted" | "returned" | "draft" | "recorded">("all"); const [q, setQ] = useState(""); const [showVoid, setShowVoid] = useState(false); const [approval, setApproval] = useState(false); const [gasHeld, setGasHeld] = useState<{ name: string; qty: number }[]>([]); const [importing, setImporting] = useState(false); const [deepLinked, setDeepLinked] = useState(false);
 
   useEffect(() => { (async () => {
     const { data, error } = await supabase().from("projects").select("id, name, status").order("status").order("name");
@@ -66,6 +69,9 @@ function InventoryScreen() {
       const held = new Map<string, number>(); for (const m of (gm.data ?? []) as { product_id: string; kind: string; qty: number }[]) held.set(m.product_id, (held.get(m.product_id) ?? 0) + (m.kind === "delivery" || m.kind === "opening" ? Number(m.qty) : m.kind === "emptied" ? 0 : -Number(m.qty)));
       setGasHeld(((gp.data ?? []) as { id: string; name: string; capacity: string | null }[]).filter((x) => held.has(x.id)).map((x) => ({ name: gasItemName(x.name, x.capacity), qty: held.get(x.id) ?? 0 })).sort((a, b) => a.name.localeCompare(b.name)));
     } else setGasHeld([]);
+    // what is paid to the vendor on each bill to pay (2026-11-purchases-credit.sql; Operations, Admin and Viewer only)
+    const payIds = list.filter((x) => x.pay_status === "to_pay").map((x) => x.id);
+    if (payIds.length) { const r = await sb.from("purchase_payment_bills").select("bill_id, amount, purchase_payments!inner(voided_at)").in("bill_id", payIds).is("purchase_payments.voided_at", null); const m: Record<string, number> = {}; ((r.data ?? []) as { bill_id: string; amount: number }[]).forEach((x) => { m[x.bill_id] = (m[x.bill_id] ?? 0) + Number(x.amount); }); setPaidMap(m); } else setPaidMap({});
     setBills(list); setItems(all); setBusy(false);
   }, [pid]);
   useEffect(() => { void load(); }, [load]);
@@ -92,9 +98,13 @@ function InventoryScreen() {
   const titleOf = (b: InvBill) => (b.kind === "gas" ? `Gas delivery · ${b.vendor_name}` : b.kind === "rental" ? `Rented · ${b.vendor_name}` : b.kind === "no_bill" ? (b.vendor_name ? `No bill · ${b.vendor_name}` : "Entry without a bill") : b.vendor_name);
   const subOf = (b: InvBill) => (b.kind === "gas" ? (b.bill_no ? `challan ${b.bill_no}` : "no challan number") : b.kind === "rental" ? (b.bill_no ? `delivery note ${b.bill_no}` : "returns to the vendor") : b.kind === "no_bill" ? (b.note.length > 48 ? `${b.note.slice(0, 48)}…` : b.note) : `bill ${b.bill_no}`);
   const amountOf = (b: InvBill) => (b.kind !== "bill" && !(Number(b.bill_total) > 0) ? "—" : `₹${inr(Number(b.bill_total))}`);
+  // vendor credit: a bill to pay shows what is left and whether it is late (due at the end of the bill's month)
+  const payPill = (b: InvBill) => { if (b.voided_at || b.pay_status !== "to_pay") return null; const left = Number(b.bill_total) - (paidMap[b.id] ?? 0);
+    if (isPayable(b) && left <= 0.004) return <span className={`${pill} bg-green-50 text-green-800`}>Paid to vendor</span>;
+    const late = isPayable(b) && dueOfBill(b.bill_date) < istToday(); return <span className={`${pill} ${late ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"}`}>{late ? "Overdue" : (paidMap[b.id] ?? 0) > 0 ? `₹${inr(left)} to pay` : "To pay"}</span>; };
   const pillsOf = (b: InvBill) => {
     const sg = stageOf(b); const j = JSL_LABEL[b.jsl_status]; const recd = b.status === "recorded" && !b.voided_at;
-    return <><span className={`${pill} ${sg.cls}`}>{sg.text}</span>{b.kind === "gas" && <span className={`${pill} bg-cyan-50 text-cyan-800`}>Gas</span>}{b.kind === "rental" && <span className={`${pill} bg-violet-50 text-violet-800`}>Rented</span>}{recd && b.jsl_wanted && <span className={`${pill} ${b.jsl_status === "none" ? "bg-blue-50 text-blue-800" : j.cls}`}>{b.jsl_status === "none" ? "For the JSL portal" : j.text}</span>}</>;
+    return <><span className={`${pill} ${sg.cls}`}>{sg.text}</span>{b.kind === "gas" && <span className={`${pill} bg-cyan-50 text-cyan-800`}>Gas</span>}{b.kind === "rental" && <span className={`${pill} bg-violet-50 text-violet-800`}>Rented</span>}{recd && b.jsl_wanted && <span className={`${pill} ${b.jsl_status === "none" ? "bg-blue-50 text-blue-800" : j.cls}`}>{b.jsl_status === "none" ? "For the JSL portal" : j.text}</span>}{payPill(b)}</>;
   };
   const inExp = live.filter((b) => b.status === "recorded"); const spent = inExp.reduce((t, b) => t + Number(b.bill_total), 0);
   const waiting = live.filter((b) => b.status === "submitted").length; const open = live.filter((b) => b.status === "draft" || b.status === "returned").length;
@@ -106,15 +116,15 @@ function InventoryScreen() {
 
   return (
     <div className="space-y-4 mob">
-      <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold sm:mr-auto">Inventory</h1>
+      <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold sm:mr-auto">Purchases</h1>
         {projects.length > 0 && <select className="inp w-full sm:!w-auto max-w-full" aria-label="Project" value={pid} onChange={(e) => { setPid(e.target.value); keepProject(e.target.value); }}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>}
         {admin && pid && <button className="btn w-full sm:w-auto justify-center" onClick={() => setImporting(!importing)}>Import CSV</button>}
         {canEnter && pid && approval && <button className="btn w-full sm:w-auto justify-center" onClick={() => { setNewKind("no_bill"); setOpenId("new"); }}>+ Entry without a bill</button>}
         {canEnter && pid && <button className="btn btn-primary w-full sm:w-auto justify-center" onClick={() => { setNewKind("bill"); setOpenId("new"); }}>+ New bill</button>}</div>
       {importing && admin && pid && <CsvImport projectId={pid} onClose={() => setImporting(false)} onChanged={load} onCreated={(id) => { setImporting(false); setOpenId(id); }} />}
       <div className="space-y-4 md:space-y-0 md:flex md:items-end md:gap-4">
-      <div role="tablist" className="flex border-b border-slate-200 md:flex-1">{([["bills", `Bills (${live.length})`], ["received", "Received"]] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={seg(tab === k)} onClick={() => setTab(k)}>{l}</button>)}</div>
-      {(bills.length > 0) && <input className="inp md:!w-72" type="search" aria-label="Search" placeholder={tab === "bills" ? "Search vendor, bill number or item" : "Search items"} value={q} onChange={(e) => setQ(e.target.value)} />}
+      <div role="tablist" className="flex border-b border-slate-200 md:flex-1">{([["bills", `Bills (${live.length})`], ["received", "Items bought"], ...(staff || viewer ? [["vendors", "Vendors"]] : [])] as [typeof tab, string][]).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={seg(tab === k)} onClick={() => setTab(k)}>{l}</button>)}</div>
+      {(bills.length > 0) && tab !== "vendors" && <input className="inp md:!w-72" type="search" aria-label="Search" placeholder={tab === "bills" ? "Search vendor, bill number or item" : "Search items"} value={q} onChange={(e) => setQ(e.target.value)} />}
       </div>
       {err && <p className="warn" role="alert">{err}</p>}
       {!loaded ? <PageLoader /> : busy ? <InlineLoader /> : null}
@@ -146,11 +156,13 @@ function InventoryScreen() {
         {voided > 0 && <button className="tlink" onClick={() => setShowVoid(!showVoid)}>{showVoid ? "Hide" : "Show"} {voided} void bill{voided === 1 ? "" : "s"}</button>}
       </div>}
 
+      {tab === "vendors" && (staff || viewer) && <VendorsTab projects={projects} />}
+
       {pid && tab === "received" && <div className="card !p-3 space-y-2">
         {gasHeld.length > 0 && <div className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-3 space-y-1"><div className="text-sm font-semibold">Gas cylinders with us now</div>
           <ul className="text-sm divide-y divide-cyan-100">{gasHeld.filter((g) => !q.trim() || g.name.toLowerCase().includes(q.trim().toLowerCase())).map((g) => <li key={g.name} className="py-1 flex justify-between gap-3"><span>{g.name}</span><b className="tabular-nums whitespace-nowrap">{g.qty} No</b></li>)}</ul>
           <p className="text-xs text-slate-500">Cylinders are swapped on every truck visit, not used up, so this is the number we hold, counted from <a className="underline" href="/site-supplies">Site supplies</a>. Each delivery is also an entry on the Bills tab, for the JSL portal.</p></div>}
-        <p className="text-xs text-slate-500">Everything received on recorded bills. Issues and returns are not taken off yet.</p>
+        <p className="text-xs text-slate-500">Everything bought on recorded bills, added up. This is not stock: nothing used or moved is taken off. What the site holds is on the <a className="underline" href="/tools">Inventory</a> page.</p>
         {!stock.length ? (gasHeld.length ? null : <p className="text-sm text-slate-500">Nothing received yet.</p>) : <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-left text-slate-500 border-b"><tr><th className="py-2 pr-3">Item</th><th className="pr-3 text-right">Received</th><th className="pr-3 text-right">Rate</th><th className="text-right">Bills</th></tr></thead>
           <tbody>{stock.map((s) => <tr key={s.key} className="border-b border-slate-100"><td className="py-2 pr-3">{s.name}</td><td className="pr-3 text-right whitespace-nowrap tabular-nums">{s.qty.toLocaleString("en-IN", { maximumFractionDigits: 3 })} {s.unit}</td><td className="pr-3 text-right whitespace-nowrap tabular-nums">₹{inr(s.minRate)}{s.maxRate !== s.minRate ? ` to ₹${inr(s.maxRate)}` : ""}</td><td className="text-right tabular-nums">{s.bills}</td></tr>)}</tbody></table></div>}
       </div>}

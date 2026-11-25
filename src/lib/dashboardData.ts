@@ -108,6 +108,10 @@ export async function loadDashboard(sb: SupabaseClient): Promise<Dash> {
   });
   const overdue = dues.reduce((s, x) => s + x.overdue, 0), overduePayees = payees.filter((x) => x.overdue > 0.5).length;
   if (overdue > 0.5) alerts.push({ level: "bad", text: `${inr(overdue)} is overdue to ${plural(overduePayees, "payee")}`, href: "/expenses?tab=due" });
+  // purchases on credit fall due at the month end: a reminder in its last 3 days
+  { const [y, m] = today.split("-").map(Number); const end = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); const left = Math.round((Date.parse(end + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / 86400000);
+    const credit = dues.filter((x) => x.cat === "purchases").reduce((s, x) => s + x.pending, 0);
+    if (left <= 3 && credit > 0.5) alerts.push({ level: left <= 1 ? "bad" : "warn", text: `${inr(credit)} of purchases on credit is due ${left === 0 ? "today" : `in ${plural(left, "day")}`} (month end)`, href: "/inventory?tab=vendors" }); }
   if (jsl.failed + jsl.needsCheck > 0) alerts.push({ level: "bad", text: `JSL portal: ${[jsl.failed && `${plural(jsl.failed, "bill")} failed`, jsl.needsCheck && `${jsl.needsCheck} to check on the portal`].filter(Boolean).join(", ")}`, href: "/inventory" });
   docs.forEach((d) => alerts.push({ level: d.days <= 7 ? "bad" : "warn", text: d.days < 0 ? `${d.title} expired ${plural(-d.days, "day")} ago` : d.days === 0 ? `${d.title} expires today` : `${d.title} expires in ${plural(d.days, "day")}`, href: "/company" }));
   if (jsl.toReview) alerts.push({ level: "warn", text: `${plural(jsl.toReview, "inventory bill")} waiting for review`, href: "/inventory" });

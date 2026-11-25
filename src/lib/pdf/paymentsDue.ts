@@ -6,7 +6,7 @@ import { fmtMoney } from "../mealStatement";
 
 import { CATEGORY_LABEL, type Category, type DueItem } from "../paymentsDueLabels";
 export { CATEGORY_LABEL, type Category };
-const ORDER: Category[] = ["food", "transport", "accommodation", "gas", "equipment", "salary", "statutory"];
+const ORDER: Category[] = ["food", "transport", "accommodation", "gas", "equipment", "purchases", "salary", "statutory"];
 export type Bank = { holder?: string; bank?: string; branch?: string; accountNo?: string; ifsc?: string; upi?: string };
 /** One person or business to pay, on one project. total = everything billed/approved so far, paid = everything paid (advances included). */
 export type Payee = {

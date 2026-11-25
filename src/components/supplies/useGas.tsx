@@ -282,7 +282,7 @@ export function useGas(project: SupplyProject | undefined, go: (tab: "orders") =
         <div className="sm:col-span-4"><label className="lbl">Reason for the correction</label><input className="inp" value={ef.reason} onChange={(e) => set({ reason: e.target.value })} placeholder="e.g. challan number typed wrong" /></div>
       </div>
       <div className="flex gap-2"><button className="btn btn-sm btn-primary" disabled={busy} onClick={saveEdit}>{busy ? "Saving…" : "Save correction"}</button><button className="btn btn-sm" onClick={() => setEf(null)}>Cancel</button></div>
-      <p className="text-[11px] text-slate-400">Counts, the order, the Inventory entry and the transport errand follow the correction. It is kept in this entry's history.</p>
+      <p className="text-[11px] text-slate-400">Counts, the order, the Purchases entry and the transport errand follow the correction. It is kept in this entry's history.</p>
     </div>); };
   // one entry, with what can be done to it (edit, void, the JSL portal); used in the run detail and the log
   const moveNode = (m: Move, inRun = false) => { const gb = gasBillOf(m); return <div className={`py-2.5 text-sm ${m.voided_at ? "opacity-60" : ""}`}>

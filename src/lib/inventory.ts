@@ -6,8 +6,10 @@ export type NoteField = "" | "vendor" | "gstin" | "bill_no" | "date" | "total" |
 export type ReviewNote = { id: string; bill_id: string; item_id: string | null; item_name: string; field: NoteField; note: string; state: "open" | "done"; created_at: string; resolved_at: string | null };
 export type BillEvent = { id: string; bill_id: string; kind: "submitted" | "returned" | "approved" | "recorded" | "reopened" | "voided"; note: string; created_at: string };
 export type JslStatus = "none" | "authorized" | "sending" | "submitting" | "submitted" | "failed" | "needs_check";
-export type InvBill = { id: string; project_id: string; vendor_name: string; vendor_gstin: string; bill_no: string; bill_date: string; bill_total: number; other_charges: number; bill_path: string | null; note: string; status: BillStatus; kind: "bill" | "no_bill" | "gas" | "rental"; source: string | null; submitted_by: string | null; submitted_at: string | null; jsl_status: JslStatus; jsl_wanted: boolean; jsl_authorized_at: string | null; jsl_ref: string | null; jsl_error: string | null; jsl_submitted_at: string | null; created_at: string; voided_at: string | null; void_reason: string | null };
-export type InvItem = { id: string; bill_id: string; line_no: number; name: string; hsn: string; qty: number; unit: string; rate: number; gst_pct: number; amount: number; jsl_send?: boolean };   // jsl_send: goes to the JSL portal (2026-11-inventory-jsl-pick.sql; missing before it is run = yes)
+export type InvBill = { id: string; project_id: string; vendor_name: string; vendor_gstin: string; bill_no: string; bill_date: string; bill_total: number; other_charges: number; bill_path: string | null; note: string; status: BillStatus; kind: "bill" | "no_bill" | "gas" | "rental"; source: string | null; submitted_by: string | null; submitted_at: string | null; jsl_status: JslStatus; jsl_wanted: boolean; jsl_authorized_at: string | null; jsl_ref: string | null; jsl_error: string | null; jsl_submitted_at: string | null; created_at: string; voided_at: string | null; void_reason: string | null;
+  /** 2026-11-purchases-credit.sql: the vendor on the list, and whether the bill is paid (missing before it is run = paid) */
+  vendor_id?: string | null; pay_status?: "paid" | "to_pay"; paid_how?: "" | "office" | "site_cash"; paid_by?: string; paid_ref?: string; paid_on?: string | null };
+export type InvItem = { id: string; bill_id: string; line_no: number; name: string; hsn: string; qty: number; unit: string; rate: number; gst_pct: number; amount: number; jsl_send?: boolean; jsl_qty?: number | null; stock_skip?: boolean };   // jsl_qty: a smaller quantity for the portal; stock_skip: not stock (2026-11-purchases-credit.sql)   // jsl_send: goes to the JSL portal (2026-11-inventory-jsl-pick.sql; missing before it is run = yes)
 export type Gatepass = { wo_no: string; received_by: "hand" | "vehicle"; person_source: "employee" | "other"; person_employee_id: string | null; person_name: string; person_id_type: string; person_id_no: string; vehicle_no: string; driver_name: string; driver_dl_no: string; codriver_name: string; codriver_id_type: string; codriver_id_no: string };
 export type ProjectPerson = { employee_id: string; full_name: string; designation: string | null; aadhaar_last4: string | null; is_default: boolean };
 export type ProjectWo = { wo_no: string; title: string };
@@ -96,3 +98,11 @@ export function stageOf(b: Pick<InvBill, "status" | "voided_at"> & Partial<Pick<
 /** The parts of an entry a reviewer can mark, in the words the reviewer sees. */
 export const NOTE_FIELDS: Record<Exclude<NoteField, "">, string> = { vendor: "Vendor", gstin: "GSTIN", bill_no: "Bill number", date: "Date", total: "Total", other_charges: "Freight or discount", photo: "Photo", reason: "Reason", amount: "Amount paid" };
 export const noteTitle = (n: Pick<ReviewNote, "field" | "item_id" | "item_name">) => (n.item_id || n.item_name ? n.item_name || "An item" : n.field ? NOTE_FIELDS[n.field] : "The entry");
+
+// ---------- vendor credit (2026-11-purchases-credit.sql) ----------
+export type PurchaseVendor = { id: string; name: string; gstin: string; phone: string; address: string; credit: boolean; credit_limit: number | null; note: string; active: boolean };
+/** A bill on credit falls due at the end of its month. */
+export const dueOfBill = (billDate: string) => { const [y, m] = billDate.split("-").map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
+/** Bills that count as owed: recorded, not void, to pay, with an amount. */
+export const isPayable = (b: Pick<InvBill, "status" | "voided_at" | "bill_total"> & { pay_status?: string }) => b.status === "recorded" && !b.voided_at && b.pay_status === "to_pay" && Number(b.bill_total) > 0;
+export const PAID_HOW: Record<"office" | "site_cash", string> = { office: "Office (bank / UPI)", site_cash: "Site cash" };

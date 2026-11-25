@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
-type Kind = "food_vendor" | "vehicle" | "room" | "gas_vendor" | "equipment_vendor" | "landlord";
+type Kind = "food_vendor" | "vehicle" | "room" | "gas_vendor" | "equipment_vendor" | "landlord" | "purchase_vendor";
 type B = { holder: string; bank: string; branch: string; account_no: string; ifsc: string; upi: string };
 const BLANK: B = { holder: "", bank: "", branch: "", account_no: "", ifsc: "", upi: "" };
 

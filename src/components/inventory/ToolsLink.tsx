@@ -50,16 +50,16 @@ export default function ToolsLink({ bill, items }: { bill: InvBill; items: InvIt
     setBusy(true); setErr("");
     const { data, error } = await supabase().rpc("tool_receive_from_bill", { p_bill: bill.id, p_lines: lines });
     setBusy(false); if (error) { setErr(error.message); return; }
-    setMsg(`${data} line${data === 1 ? "" : "s"} added to Tools & equipment ✓`); setPicks({}); load();
+    setMsg(`${data} line${data === 1 ? "" : "s"} added to Inventory ✓`); setPicks({}); load();
   }
   async function undo(l: Linked) {
-    const why = prompt("Take this back out of Tools & equipment? It stays in the item's history, marked void. Reason:"); if (!why?.trim()) return;
+    const why = prompt("Take this back out of Inventory? It stays in the item's history, marked void. Reason:"); if (!why?.trim()) return;
     const { error } = await supabase().rpc("tool_move_void", { p_move: l.id, p_reason: why.trim() }); if (error) { setErr(error.message); return; } load();
   }
 
   return (
     <section className="card !p-3 space-y-3" data-tools-link>
-      <div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-semibold">Tools &amp; equipment</h2>
+      <div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-semibold">Add to Inventory (stock)</h2>
         <span className="text-xs text-slate-500">{linked.length} of {items.length} line{items.length === 1 ? "" : "s"} added</span>
         <button type="button" className="btn btn-sm ml-auto" onClick={() => setOpen(!open)} aria-expanded={open}>{open ? "Close" : open_.length ? "Add lines to the register" : "Show"}</button></div>
       {!open && <p className="text-xs text-slate-500">Tools, equipment and consumables you want tracked by site can be added from this bill. Materials used straight away can be left out.</p>}
@@ -98,7 +98,7 @@ export default function ToolsLink({ bill, items }: { bill: InvBill; items: InvIt
         </ul>
         <datalist id="tl-cats">{[...new Set(catalogue.map((x) => x.category))].sort().map((c) => <option key={c} value={c} />)}</datalist>
         {open_.length > 0 && <div className="flex flex-wrap items-center gap-2"><button type="button" className="btn btn-primary" disabled={busy || !chosen.length} onClick={add}>{busy ? "Adding…" : `Add ${chosen.length} line${chosen.length === 1 ? "" : "s"} to this site's stock`}</button>
-          <span className="text-xs text-slate-500">They appear in Tools &amp; equipment at this bill's site, dated {bill.bill_date}. The names are remembered for next time.</span></div>}
+          <span className="text-xs text-slate-500">They appear in Inventory at this bill's site, dated {bill.bill_date}. The names are remembered for next time.</span></div>}
       </>}
       {msg && <p className="text-sm text-emerald-800 bg-emerald-50 rounded-xl px-3 py-2">{msg}</p>}
       {err && <p className="text-sm text-red-700 bg-red-50 rounded-xl px-3 py-2">{err}</p>}

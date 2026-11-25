@@ -159,6 +159,22 @@ export async function loadPaymentsDue(sb: SupabaseClient): Promise<PaymentsDue> 
     const firstOpen = billed.find((i) => i.total - i.paid > 0.004), expected = items.filter((i) => i.state === "running");
     add(pid, { key: `gas:${vid}:${pid}`, category: "gas", name: v?.name ?? "Vendor", forWhat: `${rs.length} run${rs.length === 1 ? "" : "s"}${expected.length ? `, ${expected.length} without an invoice yet` : ""}`, total: billed.reduce((s, i) => s + i.total, 0), paid: paidAll, oldestDue: firstOpen?.dueOn ?? null, bank: bankOf("gas_vendor", vid), lines: billed.map((i) => ({ label: i.label, total: i.total, paid: i.paid })), items: [...billed, ...expected] });
   });
+  // purchases on credit (2026-11-purchases-credit.sql): each bill "To pay" is owed to its vendor, due at the end of the bill's month; payments name the bills they pay
+  {
+    const [pbills, plines, pvend] = await Promise.all([
+      soft<any>(() => sb.from("inventory_bills").select("id, project_id, vendor_id, bill_no, bill_date, bill_total").eq("status", "recorded").eq("pay_status", "to_pay").is("voided_at", null).gt("bill_total", 0).not("vendor_id", "is", null).order("bill_date")),
+      soft<any>(() => sb.from("purchase_payment_bills").select("bill_id, amount, purchase_payments!inner(voided_at)").is("purchase_payments.voided_at", null)),
+      soft<any>(() => sb.from("purchase_vendors").select("id, name")),
+    ]);
+    const paidOf = new Map<string, number>(); plines.forEach((l: any) => paidOf.set(l.bill_id, (paidOf.get(l.bill_id) ?? 0) + num(l.amount)));
+    const groups = new Map<string, any[]>(); pbills.forEach((b: any) => { const k = `${b.vendor_id}|${b.project_id}`; (groups.get(k) ?? groups.set(k, []).get(k)!).push(b); });
+    groups.forEach((bs, k) => {
+      const [vid, pid] = k.split("|"); const v = pvend.find((x: any) => x.id === vid); const endOf = (d: string) => { const [y, m] = d.split("-").map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
+      const items: DueItem[] = bs.map((b: any) => ({ month: String(b.bill_date).slice(0, 7), label: `Bill ${b.bill_no || "–"} · ${span(b.bill_date, b.bill_date)}`, total: num(b.bill_total), paid: Math.min(num(b.bill_total), paidOf.get(b.id) ?? 0), dueOn: endOf(String(b.bill_date)), state: "billed" as const }));
+      const firstOpen = items.find((i) => i.total - i.paid > 0.004);
+      add(pid, { key: `purchases:${vid}:${pid}`, category: "purchases", name: v?.name ?? "Vendor", forWhat: `${items.length} bill${items.length === 1 ? "" : "s"} on credit`, total: items.reduce((s, i) => s + i.total, 0), paid: items.reduce((s, i) => s + i.paid, 0), oldestDue: firstOpen?.dueOn ?? null, bank: bankOf("purchase_vendor", vid), lines: items.map((i) => ({ label: i.label, total: i.total, paid: i.paid })), items });
+    });
+  }
   // hired equipment: approved site bills; payments go to the oldest bill first; what is logged and not billed yet is shown apart
   new Set([...[...sv.keys()].filter((k) => k.endsWith("|equipment")), ...[...spaid.keys()].filter((k) => k.endsWith("|equipment")), ...elogs.map((l: any) => `${l.vendor_id}|${l.project_id}|equipment`), ...rbook.rentals.map((r) => `${r.vendor_id}|${r.project_id}|equipment`)]).forEach((k) => { const [vid, pid, kind] = k.split("|"); const v = gvendors.find((x) => x.id === vid); const mine = sv.get(k) ?? []; const ap = mine.filter((b) => b.status === "approved");
     mine.filter((b) => b.status !== "approved").forEach((b) => notIncluded.push({ label: `${pname.get(pid) ?? "—"} · ${v?.name ?? "Vendor"} · Bill ${b.bill_no || "(no number)"}, ${span(b.period_from, b.period_to)} (received, not approved yet)`, amount: num(b.bill_amount) }));
